@@ -1,0 +1,60 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "providers": {
+    "ollama": {
+      "network_config": {
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 120,
+        "max_retries": 3,
+        "retry_backoff_initial": 500,
+        "retry_backoff_max": 5000
+      },
+      "keys": [
+        {
+          "name": "ollama-docker",
+          "value": "",
+          "models": ["*"],
+          "weight": 1.0,
+          "ollama_key_config": {
+            "url": "http://ollama:11434"
+          }
+        }
+      ]
+    },
+    "openai": {
+      "network_config": {
+        "default_request_timeout_in_seconds": 120,
+        "max_retries": 3,
+        "retry_backoff_initial": 500,
+        "retry_backoff_max": 5000
+      },
+      "keys": [
+        {
+          "name": "openai-key-1",
+          "value": "env.OPENAI_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ]
+    }
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "./config.db"
+    }
+  },
+  "mcp": {
+    "client_configs": [
+      {
+        "name": "deepwiki",
+        "connection_type": "http",
+        "connection_string": "https://mcp.deepwiki.com/mcp",
+        "auth_type": "none",
+        "is_ping_available": true,
+        "tools_to_execute": ["*"]
+      }
+    ]
+  }
+}
