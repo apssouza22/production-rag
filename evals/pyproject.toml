@@ -1,0 +1,36 @@
+[project]
+name = "rag-evals"
+version = "0.1.0"
+description = "Langfuse trace evaluation framework for the RAG API"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "colorama>=0.4.6",
+    "langfuse>=3.0.0",
+    "openai>=1.0.0",
+    "pydantic>=2.11.3",
+    "pydantic-settings>=2.8.1",
+    "tqdm>=4.66.0",
+]
+readme = "README.md"
+
+[project.scripts]
+rag-eval = "rag_evals.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rag_evals"]
+
+[tool.ruff]
+line-length = 130
+src = ["rag_evals"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
