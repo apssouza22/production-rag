@@ -177,10 +177,11 @@ class Settings(BaseConfigSettings):
     bifrost_api_key: str = "sk-bf-agent-1-dev"
     bifrost_api_key_agent_1: str = "sk-bf-agent-1-dev"
     bifrost_api_key_agent_2: str = "sk-bf-agent-2-dev"
-    # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-4o-mini,ollama/llama3.2:1b)
-    bifrost_fallback_models: str = "openai/gpt-4o-mini,ollama/llama3.2:1b"
+    # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-5.6-luna,ollama/llama3.2:1b)
+    bifrost_fallback_models: str = "openai/gpt-5.6-luna,ollama/llama3.2:1b"
     ollama_model: str = "llama3.2:1b"
-    agent_model: str = "gpt-4o-mini"
+    agent_model: str = "gpt-5.6-luna"
+    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
     ollama_timeout: int = 300
 
     # Jina AI embeddings configuration

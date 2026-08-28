@@ -222,7 +222,96 @@ The application talks to LLMs through a `LLMClient` protocol with two implementa
 
 The abstraction earns its keep through the fallback chain. Bifrost is configured with an ordered list of models, `openai/gpt-4o-mini,ollama/llama3.2:1b`. On failure the client walks the chain, logging each hop. Note what this buys you: when OpenAI has an incident, requests land on a local model. Answers get worse; the service stays up. Whether that trade is right depends entirely on your product, and it should be a deliberate decision rather than an accident of whichever SDK you imported first.
 
-The gateway also gives you one place for request logging, per-provider metrics, and key management, instead of provider-specific code sprinkled through the domain layer.
+The gateway also gives you one place for request logging, per-provider metrics, and key management, instead of provider-specific code sprinkled through the domain layer. In this codebase that management is not aspirational: `bifrost/config.json` seeds **governance** on startup — virtual keys, budgets, and rate limits — into a SQLite config store so policy travels with the repo.
+
+### 6.1 Virtual keys, budgets, and rate limits
+
+Bifrost virtual keys are scoped API tokens. Clients send them on every inference request (`x-bf-vk`, `Authorization: Bearer …`, or other supported headers). Each key carries its own provider allow-list, model allow-list, spend cap, and throttle. With `client.enforce_auth_on_inference: true`, requests without a valid key are rejected before they reach a provider.
+
+The system defines two keys, mapped to the two agent workloads:
+
+| Virtual key | Token | Agent(s) | Budget | Rate limits |
+|---|---|---|---|---|
+| **agent-1** | `sk-bf-agent-1-dev` | Agentic RAG (fusion search) + chunk contextualization at index time | $10 / month | 10k tokens/hour, 100 requests/minute |
+| **agent-2** | `sk-bf-agent-2-dev` | Knowledge router + text-to-SQL | $5 / month | 5k tokens/hour, 50 requests/minute |
+
+Agent-1 owns the heavier graph: guardrail, grading, rewriting, and answer generation over retrieved chunks. Agent-2 owns routing decisions and SQL generation — lighter calls, tighter caps. The plain `/ask` endpoint and health checks use the default `BIFROST_API_KEY` (also `sk-bf-agent-1-dev` by default).
+
+Wiring is explicit in code, not implicit in a shared client. `make_agent_llm_client("agent_1")` and `make_agent_llm_client("agent_2")` build separate `BifrostClient` instances with the matching virtual key. FastAPI dependencies inject the right client per service:
+
+- `get_agentic_rag_service` → agent-1 key
+- `get_text_to_sql_service` and `get_knowledge_router_service` → agent-2 key
+
+Environment variables mirror the split:
+
+```bash
+LLM_PROVIDER=bifrost
+BIFROST_HOST=http://localhost:8090          # http://bifrost:8080 inside compose
+BIFROST_API_KEY=sk-bf-agent-1-dev           # default for /ask, ping
+BIFROST_API_KEY_AGENT_1=sk-bf-agent-1-dev   # Agentic RAG
+BIFROST_API_KEY_AGENT_2=sk-bf-agent-2-dev   # router + SQL
+```
+
+Provider routing still lives in `bifrost/config.json`. OpenAI and Ollama are both registered; Ollama points at the Docker network (`allow_private_network: true`). Each virtual key's `provider_configs` set weights and `allowed_models` — agent-1 can reach `gpt-4o-mini`, `gpt-4o`, and two Ollama sizes; agent-2 is restricted to `gpt-4o-mini` and `llama3.2:1b`.
+
+One config detail worth knowing if you edit governance by hand: with `config_store` enabled (SQLite here), `key_ids` must be `["*"]` to allow provider keys, not human-readable names like `openai-key-1`. Name-based `key_ids` fail at sync with `could not resolve keys` because the store resolves database IDs, not provider key names. Model restrictions still apply via `allowed_models`; with one key per provider, `["*"]` is equivalent to pinning a specific key.
+
+After changing `config.json`, remove the seeded SQLite DB and restart Bifrost so governance reloads from the file:
+
+```bash
+rm -f bifrost/config.db bifrost/config.db-journal
+docker compose restart bifrost
+```
+
+The governance block in config looks like this (abbreviated):
+
+```json
+{
+  "client": { "enforce_auth_on_inference": true },
+  "governance": {
+    "virtual_keys": [
+      {
+        "id": "vk-agent-1",
+        "name": "agent-1",
+        "value": "sk-bf-agent-1-dev",
+        "provider_configs": [
+          { "provider": "openai", "weight": 0.7, "allowed_models": ["gpt-4o-mini", "gpt-4o"], "key_ids": ["*"] },
+          { "provider": "ollama", "weight": 0.3, "allowed_models": ["llama3.2:1b", "llama3.2:3b"], "key_ids": ["*"] }
+        ],
+        "rate_limit_id": "rate-limit-agent-1"
+      },
+      {
+        "id": "vk-agent-2",
+        "name": "agent-2",
+        "value": "sk-bf-agent-2-dev",
+        "provider_configs": [
+          { "provider": "openai", "weight": 0.6, "allowed_models": ["gpt-4o-mini"], "key_ids": ["*"] },
+          { "provider": "ollama", "weight": 0.4, "allowed_models": ["llama3.2:1b"], "key_ids": ["*"] }
+        ],
+        "rate_limit_id": "rate-limit-agent-2"
+      }
+    ],
+    "budgets": [
+      { "id": "budget-agent-1", "virtual_key_id": "vk-agent-1", "max_limit": 10.0, "reset_duration": "1M" },
+      { "id": "budget-agent-2", "virtual_key_id": "vk-agent-2", "max_limit": 5.0, "reset_duration": "1M" }
+    ],
+    "rate_limits": [
+      {
+        "id": "rate-limit-agent-1",
+        "token_max_limit": 10000, "token_reset_duration": "1h",
+        "request_max_limit": 100, "request_reset_duration": "1m"
+      },
+      {
+        "id": "rate-limit-agent-2",
+        "token_max_limit": 5000, "token_reset_duration": "1h",
+        "request_max_limit": 50, "request_reset_duration": "1m"
+      }
+    ]
+  }
+}
+```
+
+This is gateway-level governance, not application middleware. It caps spend and throughput per agent workload and blocks model escalation (agent-2 cannot call `gpt-4o` even if the application code asks for it). It does not replace API authentication on the FastAPI surface — that gap is still open — but it is the right layer for LLM budget control because every model call, including LangChain traffic through `/langchain`, passes through Bifrost.
 
 Prompt construction is worth one specific note: the chunks sent to the model are stripped down to `arxiv_id` and `chunk_text`. Titles, abstracts and search metadata are useful for ranking and for citations, and they are pure token cost inside the prompt. Trimming that metadata cut prompt size by roughly 80% compared to passing search hits through untouched. Tokens are latency and money, and prompt padding is the easiest place to waste both.
 
@@ -438,6 +527,8 @@ Service construction goes through `make_*` factory functions, cached where a sin
 
 The LLM layer is a `Protocol`, not a base class. Ollama and Bifrost clients satisfy it structurally, tests substitute trivial fakes, and no domain code imports a provider SDK. This is what makes the "switch providers with one env var" claim true rather than aspirational.
 
+When `LLM_PROVIDER=bifrost`, each LangGraph agent gets its own virtual key via `make_agent_llm_client`, so governance budgets and rate limits attach to workloads rather than to a single shared API token.
+
 ---
 
 ## 13. Where the time actually goes
@@ -486,6 +577,8 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Reason | Query rewriting loop, bounded at 2 attempts | A vague question gets a second, better-phrased search | Up to 2 extra retrieval rounds | Yes |
 | Reason | Query decomposition and source routing | "How many X and what do they say?" gets a SQL answer and a retrieval answer | One classification call, parallel branches | Yes |
 | Reason | SQL review node before execution | Generated SQL is checked by a second model before it touches the database | One LLM call per query attempt | Yes |
+| Generate | Bifrost virtual keys per agent workload | Spend and throughput caps at the gateway; model allow-lists per agent | Two keys to manage; `enforce_auth` breaks `dummy-key` dev shortcuts | Yes, when `LLM_PROVIDER=bifrost` |
+| Generate | Provider fallback chain via Bifrost | Primary model outage lands on local Ollama instead of a 500 | Lower answer quality on fallback | Yes |
 | Generate | Prompt trimmed to `arxiv_id` + `chunk_text` | ~80% smaller prompts, less distraction | None | Yes |
 | Generate | Grounding instructions + citation requirement | Answers cite papers and admit insufficient context | Longer system prompt | Yes |
 | Generate | Structured output for judgement nodes | Guardrail and grader return parseable scores, not prose | None | Yes |
@@ -507,7 +600,7 @@ Most of these are cheap. Field boosts, the asymmetric embedding task, the analyz
 
 Being specific about the gaps is more useful than a checklist of things that are handled. This system is a teaching codebase, and these are the things I would not ship as-is:
 
-The API has no authentication, no rate limiting and no request middleware. `middlewares.py` is a stub with a comment admitting as much. Anyone who can reach the port can spend your LLM budget.
+The API has no authentication, no rate limiting and no request middleware. `middlewares.py` is a stub with a comment admitting as much. Anyone who can reach the port can spend your LLM budget. Bifrost virtual keys add **gateway-level** throttling and spend caps per agent when `LLM_PROVIDER=bifrost`, but they do not authenticate HTTP callers to the API itself.
 
 OpenSearch runs with the security plugin disabled, one node, one shard, zero replicas. That is a dev setup. Production means TLS, credentials, multiple nodes and replicas, and index lifecycle management.
 
@@ -529,7 +622,7 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Chunking:** respect document structure, and match your embedding model's asymmetric tasks. This is where quality is won.
 - **Contextual retrieval:** give the retriever an enriched chunk and the generator the original one. A chunk that says "the second variant improves recall by 12%" is unfindable until something puts the paper back around it.
 - **Retrieval:** keyword and vector are peers, fuse them by rank not score, then rerank with a cross-encoder. Cheap recall, expensive precision, in that order.
-- **Generation:** put a gateway in front of providers so fallback is possible, and stop paying tokens for metadata the model doesn't need.
+- **Generation:** put a gateway in front of providers so fallback is possible, seed virtual keys with budgets and rate limits per agent workload, and stop paying tokens for metadata the model doesn't need.
 - **Orchestration:** a state machine with explicit guardrail, grading and bounded retry beats a straight pipeline, and costs you extra LLM calls.
 - **Failure:** decide the direction each fallback fails in, and make sure your failure handler cannot fail.
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.

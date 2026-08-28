@@ -16,10 +16,13 @@ logger = logging.getLogger(__name__)
 class BifrostClient(RAGGenerationMixin):
     """Client for LLM requests routed through the Bifrost gateway."""
 
+    _REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
     def __init__(self, settings: Settings, api_key: str | None = None):
         self.bifrost_host = settings.bifrost_host.rstrip("/")
         self.api_key = api_key or settings.bifrost_api_key
         self.fallback_models = settings.bifrost_fallback_models
+        self.reasoning_effort = settings.reasoning_effort
         self.timeout = float(settings.ollama_timeout)
         self.prompt_builder = RAGPromptBuilder()
         self.response_parser = ResponseParser()
@@ -37,6 +40,11 @@ class BifrostClient(RAGGenerationMixin):
             return f"openai/{model}"
 
         return f"ollama/{model}"
+
+    @classmethod
+    def _supports_reasoning_effort(cls, model: str) -> bool:
+        model_name = model.split("/", 1)[-1]
+        return model_name.startswith(cls._REASONING_MODEL_PREFIXES)
 
     def _build_fallbacks(self, model: str) -> List[str]:
         """Build the Bifrost fallback chain, excluding the primary model."""
@@ -79,15 +87,23 @@ class BifrostClient(RAGGenerationMixin):
         if response_format is not None:
             model_kwargs["response_format"] = response_format
 
-        return ChatOpenAI(
-            model=self._normalize_model(model),
-            base_url=self.langchain_base_url,
-            api_key=self.api_key,
-            temperature=temperature,
-            top_p=top_p,
-            timeout=self.timeout,
-            model_kwargs=model_kwargs,
-        )
+        chat_kwargs: Dict[str, Any] = {
+            "model": self._normalize_model(model),
+            "base_url": self.langchain_base_url,
+            "api_key": self.api_key,
+            "timeout": self.timeout,
+            "model_kwargs": model_kwargs,
+        }
+        if self._supports_reasoning_effort(model):
+            chat_kwargs["reasoning_effort"] = self.reasoning_effort
+            if self.reasoning_effort == "none":
+                chat_kwargs["temperature"] = temperature
+                chat_kwargs["top_p"] = top_p
+        else:
+            chat_kwargs["temperature"] = temperature
+            chat_kwargs["top_p"] = top_p
+
+        return ChatOpenAI(**chat_kwargs)
 
     def get_langchain_model(self, model: str, temperature: float = 0.7) -> ChatOpenAI:
         """Return a LangChain ChatOpenAI instance configured for Bifrost."""

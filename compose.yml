@@ -155,7 +155,7 @@ services:
       - rag-network
 
   bifrost:
-    image: maximhq/bifrost:latest
+    image: maximhq/bifrost:v2.0.0
     container_name: rag-bifrost
     ports:
       - "8090:8080"

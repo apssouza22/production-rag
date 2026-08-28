@@ -10,6 +10,14 @@ from src.domain.bifrost.client import BifrostClient
 def test_normalize_model_routes_openai_models():
     assert BifrostClient._normalize_model("gpt-4o-mini") == "openai/gpt-4o-mini"
     assert BifrostClient._normalize_model("openai/gpt-4o-mini") == "openai/gpt-4o-mini"
+    assert BifrostClient._normalize_model("gpt-5.6-luna") == "openai/gpt-5.6-luna"
+
+
+def test_supports_reasoning_effort_for_openai_reasoning_models():
+    assert BifrostClient._supports_reasoning_effort("gpt-5.6-luna") is True
+    assert BifrostClient._supports_reasoning_effort("openai/gpt-5.6-luna") is True
+    assert BifrostClient._supports_reasoning_effort("llama3.2:1b") is False
+    assert BifrostClient._supports_reasoning_effort("openai/gpt-4o-mini") is False
 
 
 def test_normalize_model_routes_ollama_models():
@@ -47,10 +55,38 @@ def test_build_model_chain_includes_primary_and_fallbacks():
     ]
 
 
+def test_create_chat_model_passes_reasoning_effort_for_reasoning_models():
+    client = BifrostClient(Settings(reasoning_effort="low"))
+
+    llm = client._create_chat_model(model="gpt-5.6-luna")
+
+    assert llm.reasoning_effort == "low"
+    assert llm.top_p is None
+    assert llm.temperature is None
+
+
+def test_create_chat_model_allows_sampling_params_when_reasoning_disabled():
+    client = BifrostClient(Settings(reasoning_effort="none"))
+
+    llm = client._create_chat_model(model="gpt-5.6-luna", temperature=0.2, top_p=0.8)
+
+    assert llm.reasoning_effort == "none"
+    assert llm.temperature == 0.2
+    assert llm.top_p == 0.8
+
+
+def test_create_chat_model_omits_reasoning_effort_for_non_reasoning_models():
+    client = BifrostClient(Settings(reasoning_effort="low"))
+
+    llm = client._create_chat_model(model="llama3.2:1b")
+
+    assert llm.reasoning_effort is None
+
+
 def test_create_chat_model_does_not_pass_fallbacks_to_openai_sdk():
     client = BifrostClient(
         Settings(
-            bifrost_fallback_models="openai/gpt-4o-mini,ollama/llama3.2:1b",
+            bifrost_fallback_models="openai/gpt-5.6-luna,ollama/llama3.2:1b",
         )
     )
 

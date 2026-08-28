@@ -17,7 +17,7 @@ dependencies = [
     "docling>=2.43.0",
     "python-dateutil>=2.9.0.post0",
     "sentence-transformers>=5.1.0",
-    "langfuse>=3.0.0",
+    "langfuse>=4.0.0",
     "redis>=6.4.0",
     # >=1.2.9 pulls langgraph-checkpoint>=4.1.0 (Reviver allowed_objects fix)
     "langgraph>=1.2.9",

@@ -555,7 +555,8 @@ Full interactive docs: http://localhost:8000/docs
 | `BIFROST_API_KEY` | If `LLM_PROVIDER=bifrost` | API key for Bifrost (use `dummy-key` for local dev) |
 | `OLLAMA_MODEL` | Yes | Default LLM (default `llama3.2:1b`; see [Ollama](#ollama)) |
 | `OLLAMA_TIMEOUT` | Optional | Generation timeout in seconds (default `300`) |
-| `AGENT_MODEL` | Optional | Model used by agent graphs (default `gpt-4o-mini`) |
+| `AGENT_MODEL` | Optional | Model used by agent graphs (default `gpt-5.6-luna`) |
+| `REASONING_EFFORT` | Optional | Reasoning effort for GPT-5.x models via Bifrost (default `low`) |
 | `CHUNKING__*` | Optional | Chunk size, overlap, and contextualization tuning |
 | `REDIS__TTL_HOURS` | Optional | Cache expiration (default `6`) |
 

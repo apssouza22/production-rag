@@ -40,4 +40,5 @@ def test_settings_llm_defaults():
     assert settings.ollama_host in ["http://localhost:11434", "http://ollama:11434"]
     assert settings.bifrost_host in ["http://localhost:8090", "http://bifrost:8080"]
     assert settings.ollama_model == "llama3.2:1b"
-    assert settings.agent_model == "gpt-4o-mini"
+    assert settings.agent_model == "gpt-5.6-luna"
+    assert settings.reasoning_effort == "low"

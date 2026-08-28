@@ -76,25 +76,21 @@ class KnowledgeRouterService:
                 config=self.agent_config,
             )
 
-        trace = None
         metadata = {
-            "env": self.agent_config.settings.environment,
             "service": "knowledge_router",
             "model": model_to_use,
         }
 
-        if self.langfuse_tracer and self.langfuse_tracer.client:
-            trace = self.langfuse_tracer.client.start_as_current_span(name="knowledge_router_request")
-
         async def _execute_with_trace():
-            if trace is not None:
-                with trace as trace_obj:
-                    trace_obj.update(
-                        input={"query": query},
-                        metadata=metadata,
-                        user_id=user_id,
-                        session_id=f"session_{user_id}",
-                    )
+            if self.langfuse_tracer and self.langfuse_tracer.client:
+                with self.langfuse_tracer.trace_agent_request(
+                    name="knowledge_router_request",
+                    input_data={"query": query},
+                    user_id=user_id,
+                    session_id=f"session_{user_id}",
+                    environment=self.agent_config.settings.environment,
+                    metadata=metadata,
+                ) as trace_obj:
                     return await self._run_workflow(query, user_id, trace_obj)
             return await self._run_workflow(query, user_id, None)
 
@@ -135,7 +131,6 @@ class KnowledgeRouterService:
                     "execution_time": execution_time,
                 }
             )
-            trace.end()
             self.langfuse_tracer.flush()
 
         return {

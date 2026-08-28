@@ -67,26 +67,22 @@ class TextToSQLService:
                 config=self.agent_config,
             )
 
-        trace = None
         metadata = {
-            "env": self.agent_config.settings.environment,
             "service": "text_to_sql",
             "model": model_to_use,
             "dialect": self.agent_config.dialect,
         }
 
-        if self.langfuse_tracer and self.langfuse_tracer.client:
-            trace = self.langfuse_tracer.client.start_as_current_span(name="text_to_sql_request")
-
         async def _execute_with_trace():
-            if trace is not None:
-                with trace as trace_obj:
-                    trace_obj.update(
-                        input={"query": query},
-                        metadata=metadata,
-                        user_id=user_id,
-                        session_id=f"session_{user_id}",
-                    )
+            if self.langfuse_tracer and self.langfuse_tracer.client:
+                with self.langfuse_tracer.trace_agent_request(
+                    name="text_to_sql_request",
+                    input_data={"query": query},
+                    user_id=user_id,
+                    session_id=f"session_{user_id}",
+                    environment=self.agent_config.settings.environment,
+                    metadata=metadata,
+                ) as trace_obj:
                     return await self._run_workflow(query, user_id, trace_obj)
             return await self._run_workflow(query, user_id, None)
 
@@ -127,7 +123,6 @@ class TextToSQLService:
                     "execution_time": execution_time,
                 }
             )
-            trace.end()
             self.langfuse_tracer.flush()
 
         return {
