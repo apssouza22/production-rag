@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 class BifrostClient(RAGGenerationMixin):
     """Client for LLM requests routed through the Bifrost gateway."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, api_key: str | None = None):
         self.bifrost_host = settings.bifrost_host.rstrip("/")
-        self.api_key = settings.bifrost_api_key
+        self.api_key = api_key or settings.bifrost_api_key
         self.fallback_models = settings.bifrost_fallback_models
         self.timeout = float(settings.ollama_timeout)
         self.prompt_builder = RAGPromptBuilder()

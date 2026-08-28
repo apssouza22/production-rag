@@ -31,7 +31,7 @@ Learn to build modern AI systems production grade from the ground up through han
 
 | Document | What it covers |
 |----------|----------------|
-| **[Anatomy of a Production-Grade Agentic RAG System](docs/production-grade-rag.md)** | Long-form article on what production readiness actually costs: ingestion, chunking, hybrid retrieval + reranking, agent orchestration, fault tolerance, semantic caching, and the evaluation loop. Diagrams throughout, plus an honest list of what isn't production-ready yet. |
+| **[Anatomy of a Production-Grade Agentic RAG System](docs/ARTICLE.md)** | Long-form article on what production readiness actually costs: ingestion, chunking, hybrid retrieval + reranking, agent orchestration, fault tolerance, semantic caching, and the evaluation loop. Diagrams throughout, plus an honest list of what isn't production-ready yet. |
 | [Senior Engineer Onboarding Guide](docs/onboarding.md) | Setup, service access, project layout, and troubleshooting. |
 | [How OpenSearch Powers Retrieval](docs/opensearch-search.md) | Deep dive on the search layer: index mapping, BM25 query construction, kNN, and RRF fusion. |
 
@@ -217,7 +217,7 @@ uv run pytest                 # Run tests
 
 <div align="center">
   <h3>🎉 Ready to Start Your AI Engineering Journey?</h3>
-  <p><strong>Start with the <a href="docs/production-grade-rag.md">architecture deep dive</a>, then run the stack and explore the code.</strong></p>
+  <p><strong>Start with the <a href="docs/ARTICLE.md">architecture deep dive</a>, then run the stack and explore the code.</strong></p>
   
   <p><em>For learners who want to master modern AI engineering</em></p>
   <p><strong>Built with love by <a href="https://www.linkedin.com/in/shirin-khosravi-jam/">Shirin Khosravi Jam</a> & <a href="https://www.linkedin.com/in/shantanuladhwe/">Shantanu Ladhwe</a></strong></p>
@@ -225,7 +225,13 @@ uv run pytest                 # Run tests
 
 ---
 
+## TODOs
+- [ ] Use virtual keys for bifrost
+- [ ] Add governance with bifrost plugins
+
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+

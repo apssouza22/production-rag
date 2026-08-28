@@ -2,7 +2,7 @@
 
 This guide gets you set up and productive in the codebase: how to run the stack, where the services live, how to inspect them, and what breaks first. The design philosophy is deliberate: **keyword search first, vectors second, LLM last, observability and agents on top**. That ordering mirrors how strong production retrieval systems are actually built.
 
-For the architectural reasoning behind each layer, read [Anatomy of a Production-Grade Agentic RAG System](production-grade-rag.md).
+For the architectural reasoning behind each layer, read [Anatomy of a Production-Grade Agentic RAG System](ARTICLE.md).
 
 ---
 
@@ -74,11 +74,6 @@ docker compose up --build -d
 
 The `api` service in `compose.yml` is commented out — the API runs on the host, not in Docker. From the project root:
 
-```bash
-uv run python src/main.py
-```
-
-Or with auto-reload during development:
 
 ```bash
 uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
@@ -184,7 +179,7 @@ curl http://localhost:9200/arxiv-papers-chunks/_count
 # Sample chunks
 curl -X POST "http://localhost:9200/arxiv-papers-chunks/_search?pretty" \
   -H "Content-Type: application/json" \
-  -d '{"size": 3, "query": {"match_all": {}}}'
+  -d '{"size": 3, "query": {"match_all": {}}, "_source": { "excludes": ["embedding"] }}'
 
 # Chunks for a specific paper
 curl -X POST "http://localhost:9200/arxiv-papers-chunks/_search?pretty" \
@@ -570,7 +565,7 @@ All defaults work for local dev except external API keys. See [.env.example](../
 
 ## 7. Recommended Onboarding Path
 
-0. **Read first:** [Anatomy of a Production-Grade Agentic RAG System](production-grade-rag.md) for the architectural reasoning
+0. **Read first:** [Anatomy of a Production-Grade Agentic RAG System](ARTICLE.md) for the architectural reasoning
 1. **Day 1:** `docker compose up`, then explore `compose.yml` and the `src/main.py` lifespan
 2. **Day 2:** Trace ingestion: Airflow DAG → `MetadataFetcher` → PostgreSQL. Trigger the DAG manually
 3. **Day 3:** Search layer: read `OpenSearchClient.search_unified()`, test all three modes via API
@@ -649,7 +644,7 @@ docker compose down -v && docker compose up --build -d
 
 ### In-repo deep dives
 
-- [Anatomy of a Production-Grade Agentic RAG System](production-grade-rag.md) — architecture, trade-offs, and failure design
+- [Anatomy of a Production-Grade Agentic RAG System](ARTICLE.md) — architecture, trade-offs, and failure design
 - [How OpenSearch Powers Retrieval](opensearch-search.md) — index mapping, query construction, RRF fusion
 
 ### Blog series

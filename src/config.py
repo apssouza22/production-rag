@@ -174,7 +174,9 @@ class Settings(BaseConfigSettings):
     llm_provider: Literal["ollama", "bifrost"] = "ollama"
     ollama_host: str = "http://localhost:11434"
     bifrost_host: str = "http://localhost:8090"
-    bifrost_api_key: str = "dummy-key"
+    bifrost_api_key: str = "sk-bf-agent-1-dev"
+    bifrost_api_key_agent_1: str = "sk-bf-agent-1-dev"
+    bifrost_api_key_agent_2: str = "sk-bf-agent-2-dev"
     # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-4o-mini,ollama/llama3.2:1b)
     bifrost_fallback_models: str = "openai/gpt-4o-mini,ollama/llama3.2:1b"
     ollama_model: str = "llama3.2:1b"

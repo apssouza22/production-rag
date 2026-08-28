@@ -2,7 +2,7 @@ from typing import Optional
 
 from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
-from src.domain.llm.factory import make_llm_client
+from src.domain.llm.factory import make_agent_llm_client, make_llm_client
 from src.domain.opensearch.factory import make_opensearch_client_fresh
 
 from .chunk_contextualizer import ChunkContextualizer
@@ -44,7 +44,11 @@ def make_hybrid_indexing_service(
     contextualizer = None
     if settings.chunking.contextualization_enabled:
         contextualizer = ChunkContextualizer(
-            llm_client=make_llm_client(settings),
+            llm_client=(
+                make_agent_llm_client("agent_1", settings)
+                if settings.llm_provider == "bifrost"
+                else make_llm_client(settings)
+            ),
             model=_resolve_contextualization_model(settings),
             max_document_chars=settings.chunking.max_document_chars,
             max_concurrent_requests=settings.chunking.max_concurrent_context_requests,

@@ -22,7 +22,7 @@ from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.factory import make_llm_client
+from src.domain.llm.factory import make_agent_llm_client, make_llm_client
 from src.domain.llm.protocol import LLMClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.pdf_parser.parser import PDFParserService
@@ -112,16 +112,15 @@ CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 
 def get_agentic_rag_service(
     opensearch: OpenSearchDep,
-    llm: LLMDep,
     embeddings: EmbeddingsDep,
     reranker: RerankerDep,
     langfuse: LangfuseDep,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AgenticRAGService:
-    """Get agentic RAG service."""
+    """Get agentic RAG service (Bifrost virtual key: agent-1)."""
     return make_agentic_rag_service(
         opensearch_client=opensearch,
-        llm_client=llm,
+        llm_client=make_agent_llm_client("agent_1", settings),
         embeddings_client=embeddings,
         reranker_client=reranker,
         langfuse_tracer=langfuse,
@@ -132,13 +131,12 @@ AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]
 
 
 def get_text_to_sql_service(
-    llm: LLMDep,
     langfuse: LangfuseDep,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TextToSQLService:
-    """Get text-to-SQL service."""
+    """Get text-to-SQL service (Bifrost virtual key: agent-2)."""
     return make_text_to_sql_service(
-        llm_client=llm,
+        llm_client=make_agent_llm_client("agent_2", settings),
         langfuse_tracer=langfuse,
         model=settings.agent_model,
     )
@@ -150,15 +148,14 @@ TextToSQLDep = Annotated[TextToSQLService, Depends(get_text_to_sql_service)]
 def get_knowledge_router_service(
     agentic_rag: AgenticRAGDep,
     text_to_sql: TextToSQLDep,
-    llm: LLMDep,
     langfuse: LangfuseDep,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> KnowledgeRouterService:
-    """Get knowledge router service."""
+    """Get knowledge router service (Bifrost virtual key: agent-2)."""
     return make_knowledge_router_service(
         agentic_rag_service=agentic_rag,
         text_to_sql_service=text_to_sql,
-        llm_client=llm,
+        llm_client=make_agent_llm_client("agent_2", settings),
         langfuse_tracer=langfuse,
         model=settings.agent_model,
     )
