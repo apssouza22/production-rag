@@ -4,37 +4,17 @@ from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
 from langfuse.langchain import CallbackHandler
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.agent_fault_tolerance import (
-    build_llm_timeout,
-    build_retry_policy,
-    build_tool_retry_policy,
-    build_tool_timeout,
-)
-from src.agents.fusionsearch.handlers import route_agentic_rag_failure
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
 from src.domain.opensearch.client import OpenSearchClient
 
 from .config import GraphConfig
 from .context import Context
-from src.agents.fusionsearch.nodes import (
-    ainvoke_generate_answer_step,
-    ainvoke_grade_documents_step,
-    ainvoke_guardrail_step,
-    ainvoke_handle_failure_step,
-    ainvoke_out_of_scope_step,
-    ainvoke_retrieve_step,
-    ainvoke_rewrite_query_step,
-    continue_after_guardrail,
-)
-from .state import AgentState
+from .graph import build_agentic_rag_graph
 from .retrieval_settings import RetrievalSettings
-from .tools import create_retriever_tool
 
 logger = logging.getLogger(__name__)
 
@@ -89,117 +69,14 @@ class AgenticRAGService:
         logger.info(f"  Max retrieval attempts: {self.graph_config.max_retrieval_attempts}")
         logger.info(f"  Guardrail threshold: {self.graph_config.guardrail_threshold}")
 
-        # Build graph once (no runnables needed!)
-        self.graph = self._build_graph()
-        logger.info("✓ AgenticRAGService initialized successfully")
-
-    def _build_graph(self):
-        """Build and compile the LangGraph workflow.
-
-        Uses context_schema for type-safe dependency injection.
-        Nodes are lightweight functions that receive Runtime[Context].
-
-        :returns: Compiled graph ready for invocation
-        """
-        logger.info("Building LangGraph workflow with context_schema")
-
-        # Create workflow with AgentState and Context schema
-        workflow = StateGraph(AgentState, context_schema=Context)
-
-        # Create tools (these still need to be created upfront for ToolNode)
-        retriever_tool = create_retriever_tool(
+        self.graph = build_agentic_rag_graph(
             opensearch_client=self.opensearch,
             embeddings_client=self.embeddings,
             retrieval_settings=self.retrieval_settings,
+            config=self.graph_config,
             reranker_client=self.reranker,
         )
-        tool_retrieve = [retriever_tool]
-        ft = self.graph_config.fault_tolerance
-
-        if ft.enabled:
-            workflow.set_node_defaults(
-                retry_policy=build_retry_policy(ft),
-                timeout=build_llm_timeout(ft),
-                error_handler=route_agentic_rag_failure,
-            )
-
-        logger.info("Adding nodes to workflow graph")
-        no_fault_tolerance = {
-            "retry_policy": None,
-            "error_handler": None,
-            "timeout": None,
-        } if ft.enabled else {}
-        fault_tolerance = {
-            "retry_policy": build_tool_retry_policy(ft),
-            "timeout": build_tool_timeout(ft),
-        } if ft.enabled else {}
-
-        workflow.add_node("guardrail", ainvoke_guardrail_step)
-        workflow.add_node("out_of_scope", ainvoke_out_of_scope_step, **no_fault_tolerance)
-        workflow.add_node("retrieve", ainvoke_retrieve_step)
-        workflow.add_node("tool_retrieve", ToolNode(tool_retrieve), **fault_tolerance)
-        workflow.add_node("grade_documents", ainvoke_grade_documents_step)
-        workflow.add_node("rewrite_query", ainvoke_rewrite_query_step)
-        workflow.add_node("generate_answer", ainvoke_generate_answer_step)
-        workflow.add_node("handle_failure", ainvoke_handle_failure_step, **no_fault_tolerance)
-
-        # Add edges
-        logger.info("Configuring graph edges and routing logic")
-
-        # Start → guardrail validation
-        workflow.add_edge(START, "guardrail")
-
-        # Guardrail → route based on score
-        workflow.add_conditional_edges(
-            "guardrail",
-            continue_after_guardrail,
-            {
-                "continue": "retrieve",
-                "out_of_scope": "out_of_scope",
-            },
-        )
-
-        # Out of scope → END
-        workflow.add_edge("out_of_scope", END)
-
-        # Retrieve node creates tool call
-        workflow.add_conditional_edges(
-            "retrieve",
-            tools_condition,
-            {
-                "tools": "tool_retrieve",
-                END: END,
-            },
-        )
-
-        # After tool retrieval → grade documents
-        workflow.add_edge("tool_retrieve", "grade_documents")
-
-        # After grading → route based on relevance
-        workflow.add_conditional_edges(
-            "grade_documents",
-            lambda state: state.get("routing_decision", "generate_answer"),
-            {
-                "generate_answer": "generate_answer",
-                "rewrite_query": "rewrite_query",
-            },
-        )
-
-        # After rewriting → try retrieve again
-        workflow.add_edge("rewrite_query", "retrieve")
-
-        # After answer generation → done
-        workflow.add_edge("generate_answer", END)
-
-        # Graceful fallback after retry exhaustion
-        workflow.add_edge("handle_failure", END)
-
-        # Compile graph
-        logger.info("Compiling LangGraph workflow")
-        compiled_graph = workflow.compile()
-        logger.info("✓ Graph compilation successful")
-
-        return compiled_graph
+        logger.info("✓ AgenticRAGService initialized successfully")
 
     async def ask(
         self,
