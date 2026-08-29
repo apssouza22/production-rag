@@ -188,11 +188,22 @@ class TestAgenticRagGraphCompilation:
         from unittest.mock import MagicMock
 
         from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+        from src.agents.fusionsearch.config import GraphConfig
+        from src.agents.fusionsearch.factory import make_agentic_rag_graph
 
+        config = GraphConfig()
+        agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
+            opensearch_client=MagicMock(),
+            embeddings_client=MagicMock(),
+            graph_config=config,
+        )
         service = AgenticRAGService(
             opensearch_client=MagicMock(),
             llm_client=MagicMock(),
             embeddings_client=MagicMock(),
+            graph=agentic_rag_graph.compile(),
+            retrieval_settings=retrieval_settings,
+            graph_config=config,
         )
 
         assert service.graph is not None

@@ -13,7 +13,6 @@ from src.domain.opensearch.client import OpenSearchClient
 
 from .config import GraphConfig
 from .context import Context
-from .graph import build_agentic_rag_graph
 from .retrieval_settings import RetrievalSettings
 
 logger = logging.getLogger(__name__)
@@ -34,6 +33,8 @@ class AgenticRAGService:
         opensearch_client: OpenSearchClient,
         llm_client: LLMClient,
         embeddings_client: JinaEmbeddingsClient,
+        graph,
+        retrieval_settings: RetrievalSettings,
         reranker_client: JinaRerankerClient | None = None,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         graph_config: Optional[GraphConfig] = None,
@@ -43,6 +44,8 @@ class AgenticRAGService:
         :param opensearch_client: Client for document search
         :param llm_client: Client for LLM generation
         :param embeddings_client: Client for embeddings
+        :param graph: Compiled LangGraph workflow (from AgenticRAGGraph.compile())
+        :param retrieval_settings: Mutable retrieval settings shared with the graph
         :param reranker_client: Optional client for Jina reranking
         :param langfuse_tracer: Optional Langfuse tracer
         :param graph_config: Configuration for graph execution
@@ -50,16 +53,11 @@ class AgenticRAGService:
         self.opensearch = opensearch_client
         self.llm = llm_client
         self.embeddings = embeddings_client
+        self.graph = graph
+        self.retrieval_settings = retrieval_settings
         self.reranker = reranker_client
         self.langfuse_tracer = langfuse_tracer
         self.graph_config = graph_config or GraphConfig()
-        self.retrieval_settings = RetrievalSettings(
-            top_k=self.graph_config.top_k,
-            use_hybrid=self.graph_config.use_hybrid,
-            rerank_enabled=self.graph_config.rerank_enabled,
-            rerank_candidate_multiplier=self.graph_config.rerank_candidate_multiplier,
-            rerank_model=self.graph_config.rerank_model,
-        )
 
         logger.info("Initializing AgenticRAGService with configuration:")
         logger.info(f"  Model: {self.graph_config.model}")
@@ -68,14 +66,6 @@ class AgenticRAGService:
         logger.info(f"  Reranking: {self.graph_config.rerank_enabled}")
         logger.info(f"  Max retrieval attempts: {self.graph_config.max_retrieval_attempts}")
         logger.info(f"  Guardrail threshold: {self.graph_config.guardrail_threshold}")
-
-        self.graph = build_agentic_rag_graph(
-            opensearch_client=self.opensearch,
-            embeddings_client=self.embeddings,
-            retrieval_settings=self.retrieval_settings,
-            config=self.graph_config,
-            reranker_client=self.reranker,
-        )
         logger.info("✓ AgenticRAGService initialized successfully")
 
     async def ask(
@@ -305,81 +295,3 @@ class AgenticRAGService:
         steps.append("Generated answer from context")
 
         return steps
-
-    def get_graph_visualization(self) -> bytes:
-        """Get the LangGraph workflow visualization as PNG.
-
-        This method generates a visual representation of the graph workflow
-        using mermaid diagram format, then converts it to PNG.
-
-        :returns: PNG image bytes
-        :raises ImportError: If required dependencies (pygraphviz/graphviz) are not installed
-        :raises Exception: If graph visualization generation fails
-
-        Example:
-            >>> service = AgenticRAGService(...)
-            >>> png_bytes = service.get_graph_visualization()
-            >>> with open("graph.png", "wb") as f:
-            ...     f.write(png_bytes)
-        """
-        try:
-            logger.info("Generating graph visualization as PNG")
-            png_bytes = self.graph.get_graph().draw_mermaid_png()
-            logger.info(f"✓ Generated PNG visualization ({len(png_bytes)} bytes)")
-            return png_bytes
-        except ImportError as e:
-            logger.error(f"Failed to generate visualization - missing dependencies: {e}")
-            logger.error("Install with: pip install pygraphviz or apt-get install graphviz")
-            raise ImportError(
-                "Graph visualization requires pygraphviz. "
-                "Install with: pip install pygraphviz (requires graphviz system package)"
-            ) from e
-        except Exception as e:
-            logger.error(f"Failed to generate graph visualization: {e}")
-            raise
-
-    def get_graph_mermaid(self) -> str:
-        """Get the LangGraph workflow as a mermaid diagram string.
-
-        This method generates the graph workflow representation in mermaid
-        diagram syntax, which can be rendered in markdown or mermaid viewers.
-
-        :returns: Mermaid diagram syntax as string
-
-        Example:
-            >>> service = AgenticRAGService(...)
-            >>> mermaid = service.get_graph_mermaid()
-            >>> print(mermaid)
-            graph TD
-                __start__ --> guardrail
-                ...
-        """
-        try:
-            logger.info("Generating graph as mermaid diagram")
-            mermaid_str = self.graph.get_graph().draw_mermaid()
-            logger.info(f"✓ Generated mermaid diagram ({len(mermaid_str)} characters)")
-            return mermaid_str
-        except Exception as e:
-            logger.error(f"Failed to generate mermaid diagram: {e}")
-            raise
-
-    def get_graph_ascii(self) -> str:
-        """Get ASCII representation of the graph.
-
-        This method generates a simple ASCII art representation of the
-        graph structure, useful for quick inspection in terminals.
-
-        :returns: ASCII art representation of the graph
-
-        Example:
-            >>> service = AgenticRAGService(...)
-            >>> print(service.get_graph_ascii())
-        """
-        try:
-            logger.info("Generating ASCII graph representation")
-            ascii_str = self.graph.get_graph().print_ascii()
-            logger.info("✓ Generated ASCII graph representation")
-            return ascii_str
-        except Exception as e:
-            logger.error(f"Failed to generate ASCII graph: {e}")
-            raise
