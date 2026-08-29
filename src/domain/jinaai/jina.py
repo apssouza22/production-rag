@@ -39,7 +39,7 @@ class JinaRerankResult(BaseModel):
 
     index: int
     relevance_score: float = Field(validation_alias=AliasChoices("relevance_score", "score"))
-    document: Dict[str, str] | None = None
+    document: str | Dict[str, str] | None = None
 
 
 class JinaRerankResponse(BaseModel):

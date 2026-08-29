@@ -117,7 +117,16 @@ def create_retriever_tool(
                 )
                 logger.info("Reranking complete, returning top %d documents", len(hits))
             except Exception as e:
-                logger.warning("Reranking failed, using original search order: %s", e)
+                logger.warning(
+                    "Reranking failed, using original search order: query_preview=%r, "
+                    "candidate_count=%d, top_k=%d, model=%s, error_type=%s, error=%s",
+                    query[:100],
+                    len(hits),
+                    top_k,
+                    retrieval_settings.rerank_model,
+                    type(e).__name__,
+                    e,
+                )
                 hits = hits[:top_k]
         else:
             hits = hits[:top_k]

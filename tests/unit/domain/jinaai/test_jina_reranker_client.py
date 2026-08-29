@@ -72,6 +72,22 @@ async def test_rerank_accepts_score_alias(reranker_client):
 
 
 @pytest.mark.asyncio
+async def test_rerank_accepts_string_document(reranker_client):
+    """Test rerank accepts Jina API document field as plain text."""
+    mock_response = Mock()
+    mock_response.json.return_value = {
+        "model": "jina-reranker-v2-base-multilingual",
+        "results": [{"index": 0, "relevance_score": 0.75, "document": "doc text"}],
+    }
+    mock_response.raise_for_status = Mock()
+
+    with patch.object(reranker_client.client, "post", new_callable=AsyncMock, return_value=mock_response):
+        results = await reranker_client.rerank(query="test", documents=["doc text"], top_n=1)
+
+    assert results[0].document == "doc text"
+
+
+@pytest.mark.asyncio
 async def test_rerank_http_error_propagates(reranker_client):
     """Test HTTP errors from Jina API are propagated."""
     with patch.object(
