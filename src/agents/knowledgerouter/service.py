@@ -12,13 +12,13 @@ from src.domain.middleware import (
     AgentContext,
     AgentPipeline,
     ErrorHandlingMiddleware,
-    LangfuseTracingMiddleware,
     LoggingMiddleware,
 )
 
 from .config import KnowledgeRouterConfig
 from .graph import build_knowledge_router_graph
 from .schemas import AgentResultItem, ClassificationItem, classification_to_schema
+from ...domain.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 

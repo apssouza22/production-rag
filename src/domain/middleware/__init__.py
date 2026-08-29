@@ -17,7 +17,6 @@ Usage::
 """
 
 from .error_handling_middleware import ErrorHandlingMiddleware
-from .langfuse_tracing_middleware import LangfuseTracingMiddleware
 from .logging_middleware import LoggingMiddleware
 from .pipeline import AgentPipeline, MiddlewareManager
 from .types import AgentContext, AgentMiddleware, InvokeResult, NextFn, build_invoke_config
@@ -28,7 +27,6 @@ __all__ = [
     "AgentPipeline",
     "ErrorHandlingMiddleware",
     "InvokeResult",
-    "LangfuseTracingMiddleware",
     "LoggingMiddleware",
     "MiddlewareManager",
     "NextFn",

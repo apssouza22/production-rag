@@ -10,7 +10,6 @@ from src.domain.middleware import (
     AgentContext,
     AgentPipeline,
     ErrorHandlingMiddleware,
-    LangfuseTracingMiddleware,
     LoggingMiddleware,
 )
 
@@ -19,6 +18,7 @@ from .context import Context
 from .graph import AgenticRAGGraph
 from .middleware import GuardrailMiddleware
 from .retrieval_settings import RetrievalSettings
+from ...domain.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 

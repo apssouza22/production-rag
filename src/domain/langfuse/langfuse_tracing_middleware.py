@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 
 from src.domain.langfuse.client import LangfuseTracer
 
-from .types import AgentContext, AgentMiddleware, InvokeResult
+from src.domain.middleware.types import AgentContext, AgentMiddleware, InvokeResult
 
 logger = logging.getLogger(__name__)
 
