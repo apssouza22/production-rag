@@ -74,7 +74,7 @@ Explain that this question is outside your domain of expertise (arXiv research p
 
 Answer:"""
 
-# Guardrail validation prompt (used in guardrail_node)
+# Guardrail validation prompt (used by GuardrailMiddleware)
 GUARDRAIL_PROMPT = """You are a guardrail evaluator assessing whether a user query is within the scope of academic research papers from arXiv in Computer Science, AI, and Machine Learning.
 
 User Query: {question}

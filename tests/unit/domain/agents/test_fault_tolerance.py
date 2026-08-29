@@ -63,7 +63,7 @@ class TestAgenticRagFailureFlow:
             config=GraphConfig(),
         )
 
-        async def failing_guardrail(state, runtime=None):
+        async def failing_retrieve(state, runtime=None):
             raise ConnectionError("llm unavailable")
 
         workflow = StateGraph(AgentState, context_schema=Context)
@@ -73,14 +73,14 @@ class TestAgenticRagFailureFlow:
             retry_policy=build_retry_policy(ft),
             error_handler=route_agentic_rag_failure,
         )
-        workflow.add_node("guardrail", failing_guardrail)
+        workflow.add_node("retrieve", failing_retrieve)
         workflow.add_node(
             "handle_failure",
             graph.handle_failure,
             retry_policy=None,
             error_handler=None,
         )
-        workflow.add_edge(START, "guardrail")
+        workflow.add_edge(START, "retrieve")
         workflow.add_edge("handle_failure", END)
 
         result = await workflow.compile().ainvoke(
@@ -100,7 +100,7 @@ class TestAgenticRagFailureFlow:
             context=Context(trace_id=None),
         )
 
-        assert result["metadata"]["fault_tolerance"]["failed_node"] == "guardrail"
+        assert result["metadata"]["fault_tolerance"]["failed_node"] == "retrieve"
         assert "temporary issue" in result["messages"][-1].content.lower()
 
 

@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -19,12 +19,11 @@ from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
-from src.agents.fusionsearch.models import GradeDocuments, GradingResult, GuardrailScoring
+from src.agents.fusionsearch.models import GradeDocuments, GradingResult
 from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
 from src.agents.fusionsearch.prompts import (
     GENERATE_ANSWER_PROMPT,
     GRADE_DOCUMENTS_PROMPT,
-    GUARDRAIL_PROMPT,
     REWRITE_PROMPT,
 )
 
@@ -121,86 +120,6 @@ class AgenticRAGGraph:
             self.langfuse_tracer.end_span(span)
             return
         self.langfuse_tracer.end_span(span, output=output, metadata=metadata)
-
-    def continue_after_guardrail(self, state: AgentState) -> Literal["continue", "out_of_scope"]:
-        """Route based on guardrail score."""
-        guardrail_result = state.get("guardrail_result")
-        if not guardrail_result:
-            logger.warning("No guardrail result found, defaulting to continue")
-            return "continue"
-
-        score = guardrail_result.score
-        threshold = self.config.guardrail_threshold
-        logger.info("Guardrail score: %s, threshold: %s", score, threshold)
-        return "continue" if score >= threshold else "out_of_scope"
-
-    async def guardrail(self, state: AgentState) -> Dict[str, GuardrailScoring]:
-        """Evaluate whether the user query is within scope."""
-        logger.info("NODE: guardrail_validation")
-        start_time = time.time()
-        query = get_latest_query(state["messages"])
-
-        span = self._create_node_span(
-            "guardrail_validation",
-            {"query": query, "threshold": self.config.guardrail_threshold},
-            {"node": "guardrail", "model": self.model_name},
-        )
-
-        try:
-            guardrail_prompt = GUARDRAIL_PROMPT.format(question=query)
-            llm = self.llm_client.get_langchain_model(model=self.model_name, temperature=0.0)
-            structured_llm = llm.with_structured_output(GuardrailScoring)
-            response = await structured_llm.ainvoke(guardrail_prompt)
-            logger.info("Guardrail result - Score: %s, Reason: %s", response.score, response.reason)
-
-            if span:
-                self._end_node_span(
-                    span,
-                    {
-                        "score": response.score,
-                        "reason": response.reason,
-                        "decision": (
-                            "continue"
-                            if response.score >= self.config.guardrail_threshold
-                            else "out_of_scope"
-                        ),
-                    },
-                    {
-                        "execution_time_ms": (time.time() - start_time) * 1000,
-                        "threshold": self.config.guardrail_threshold,
-                    },
-                )
-        except Exception as exc:
-            logger.error("LLM guardrail validation failed: %s, falling back to default", exc)
-            response = GuardrailScoring(
-                score=50,
-                reason=f"LLM validation failed, using conservative default: {exc}",
-            )
-            if span:
-                self._end_node_span(
-                    span,
-                    {"score": response.score, "reason": response.reason, "error": str(exc)},
-                    {"execution_time_ms": (time.time() - start_time) * 1000, "fallback": True},
-                    level="WARNING",
-                )
-
-        return {"guardrail_result": response}
-
-    async def out_of_scope(self, state: AgentState) -> Dict[str, List[AIMessage]]:
-        """Respond to queries outside the CS/AI/ML research domain."""
-        logger.info("NODE: out_of_scope")
-        question = get_latest_query(state["messages"])
-        response_text = (
-            "I apologize, but I can only help with questions about academic research papers "
-            "in Computer Science, Artificial Intelligence, and Machine Learning from arXiv.\n\n"
-            f"Your question: '{question}'\n\n"
-            "This appears to be outside my domain of expertise. For questions like this, you might want to try:\n"
-            "- General-purpose AI assistants for broad knowledge questions\n"
-            "- Domain-specific resources for topics outside CS/AI/ML\n"
-            "- Technical documentation if asking about specific software/tools\n\n"
-            "If you have a question about AI/ML research papers, I'd be happy to help!"
-        )
-        return {"messages": [AIMessage(content=response_text)]}
 
     async def retrieve(self, state: AgentState) -> Dict[str, Union[int, str, list]]:
         """Initiate retrieval or return fallback if max attempts reached."""
@@ -509,8 +428,6 @@ class AgenticRAGGraph:
         )
         no_fault_tolerance, fault_tolerance = self._configure_fault_tolerance(workflow)
 
-        workflow.add_node("guardrail", self.guardrail)
-        workflow.add_node("out_of_scope", self.out_of_scope, **no_fault_tolerance)
         workflow.add_node("retrieve", self.retrieve)
         workflow.add_node("tool_retrieve", ToolNode([retriever_tool]), **fault_tolerance)
         workflow.add_node("grade_documents", self.grade_documents)
@@ -518,16 +435,7 @@ class AgenticRAGGraph:
         workflow.add_node("generate_answer", self.generate_answer)
         workflow.add_node("handle_failure", self.handle_failure, **no_fault_tolerance)
 
-        workflow.add_edge(START, "guardrail")
-        workflow.add_conditional_edges(
-            "guardrail",
-            self.continue_after_guardrail,
-            {
-                "continue": "retrieve",
-                "out_of_scope": "out_of_scope",
-            },
-        )
-        workflow.add_edge("out_of_scope", END)
+        workflow.add_edge(START, "retrieve")
         workflow.add_conditional_edges(
             "retrieve",
             tools_condition,

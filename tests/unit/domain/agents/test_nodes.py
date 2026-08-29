@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.graph import AgenticRAGGraph
 from src.agents.fusionsearch.utils import get_latest_query, get_latest_context
-from src.agents.fusionsearch.models import GuardrailScoring, GradeDocuments
+from src.agents.fusionsearch.models import GradeDocuments
 from src.agents.fusionsearch.state import AgentState
 
 
@@ -29,26 +29,6 @@ def graph(mock_ollama_client, mock_opensearch_client, mock_jina_embeddings_clien
         retrieval_settings=RetrievalSettings(),
         config=config,
     )
-
-
-class TestGuardrailNode:
-    def test_continue_after_guardrail_pass(self, graph):
-        state: AgentState = {
-            "messages": [],
-            "retrieval_attempts": 0,
-            "guardrail_result": GuardrailScoring(score=75, reason="Pass"),
-        }
-
-        assert graph.continue_after_guardrail(state) == "continue"
-
-    def test_continue_after_guardrail_fail(self, graph):
-        state: AgentState = {
-            "messages": [],
-            "retrieval_attempts": 0,
-            "guardrail_result": GuardrailScoring(score=30, reason="Fail"),
-        }
-
-        assert graph.continue_after_guardrail(state) == "out_of_scope"
 
 
 class TestRetrieveNode:
@@ -162,20 +142,6 @@ class TestGenerateAnswerNode:
 
         assert isinstance(result["messages"][0], AIMessage)
         assert len(result["messages"][0].content) > 0
-
-
-class TestOutOfScopeNode:
-    @pytest.mark.asyncio
-    async def test_out_of_scope_response(self, graph, sample_human_message):
-        state: AgentState = {
-            "messages": [sample_human_message],
-            "retrieval_attempts": 0,
-        }
-
-        result = await graph.out_of_scope(state)
-
-        assert isinstance(result["messages"][0], AIMessage)
-
 
 class TestNodeUtils:
     def test_get_latest_query(self, sample_human_message, sample_ai_message):

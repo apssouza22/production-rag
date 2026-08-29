@@ -36,6 +36,15 @@ def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embedding
     )
 
 
+@pytest.fixture(autouse=True)
+def mock_guardrail_pass(monkeypatch):
+    """Default guardrail to pass so graph-level tests reach the workflow."""
+    monkeypatch.setattr(
+        "src.agents.fusionsearch.middleware.guardrail_middleware.evaluate_guardrail",
+        AsyncMock(return_value=GuardrailScoring(score=85, reason="Relevant")),
+    )
+
+
 class TestAgenticRAGServiceInitialization:
     """Tests for service initialization."""
 
@@ -113,8 +122,23 @@ class TestAgenticRAGErrorHandling:
     @pytest.mark.asyncio
     async def test_ask_with_graph_execution_error(self, test_service):
         """Test error handling when graph execution fails."""
-        # Mock graph to raise an exception
         test_service.graph.ainvoke = AsyncMock(side_effect=Exception("Graph execution failed"))
 
-        with pytest.raises(Exception, match="Graph execution failed"):
-            await test_service.ask(query="Test query")
+        result = await test_service.ask(query="Test query")
+
+        assert result["answer"] == "No answer generated."
+
+    @pytest.mark.asyncio
+    async def test_ask_short_circuits_on_guardrail_rejection(self, test_service, monkeypatch):
+        """Test that out-of-scope queries skip the graph via middleware."""
+        monkeypatch.setattr(
+            "src.agents.fusionsearch.middleware.guardrail_middleware.evaluate_guardrail",
+            AsyncMock(return_value=GuardrailScoring(score=20, reason="Off topic")),
+        )
+        test_service.graph.ainvoke = AsyncMock()
+
+        result = await test_service.ask(query="What is a dog?")
+
+        test_service.graph.ainvoke.assert_not_called()
+        assert result["guardrail_score"] == 20
+        assert "outside my domain" in result["answer"].lower()

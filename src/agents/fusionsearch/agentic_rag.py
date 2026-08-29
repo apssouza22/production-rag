@@ -8,10 +8,12 @@ from langfuse.langchain import CallbackHandler
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
+from src.domain.middleware import AgentContext, AgentPipeline, ErrorHandlingMiddleware, LoggingMiddleware
 
 from .config import GraphConfig
 from .context import Context
 from .graph import AgenticRAGGraph
+from .middleware import GuardrailMiddleware
 from .retrieval_settings import RetrievalSettings
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,19 @@ class AgenticRAGService:
         self.reranker = reranker_client
         self.langfuse_tracer = langfuse_tracer
         self.graph_config = graph_config or GraphConfig()
+
+        self.middleware_pipeline = AgentPipeline(
+            middlewares=[
+                GuardrailMiddleware(
+                    llm_client=llm_client,
+                    config=self.graph_config,
+                    langfuse_tracer=langfuse_tracer,
+                ),
+                LoggingMiddleware(),
+                ErrorHandlingMiddleware(),
+            ],
+            invoke_fn=self._core_invoke,
+        )
 
         logger.info("Initializing AgenticRAGService with configuration:")
         logger.info(f"  Model: {self.graph_config.model}")
@@ -125,57 +140,85 @@ class AgenticRAGService:
             logger.exception("Full traceback:")
             raise
 
+    async def _core_invoke(self, ctx: AgentContext) -> list:
+        """Run the LangGraph workflow; graph result is stored on ctx.metadata."""
+        query = ctx.metadata["query"]
+        model_to_use = ctx.config["model"]
+        user_id = ctx.metadata["user_id"]
+        trace = ctx.metadata.get("trace")
+
+        state_input = {
+            "messages": list(ctx.messages),
+            "retrieval_attempts": 0,
+            "guardrail_result": ctx.metadata.get("guardrail_result"),
+            "routing_decision": None,
+            "sources": None,
+            "relevant_sources": [],
+            "relevant_tool_artefacts": None,
+            "grading_results": [],
+            "metadata": {},
+            "original_query": None,
+            "rewritten_query": None,
+        }
+
+        trace_id = getattr(trace, "trace_id", None) if trace else None
+        self.graph_builder.prepare_request(model=model_to_use, trace=trace)
+        runtime_context = Context(trace_id=trace_id)
+
+        config = dict(ctx.config.get("graph_config", {}))
+
+        result = await self.graph.ainvoke(
+            state_input,
+            config=config,
+            context=runtime_context,
+        )
+        ctx.metadata["graph_result"] = result
+        return result.get("messages", [])
+
     async def _run_workflow(self, query: str, model_to_use: str, user_id: str, trace) -> dict:
-        """Execute the workflow with the given trace context."""
+        """Execute the middleware pipeline and build the API response."""
         try:
             start_time = time.time()
+            session_id = f"user_{user_id}_session_{int(time.time())}"
 
-            logger.info("Invoking LangGraph workflow")
+            logger.info("Invoking agent pipeline (guardrail → LangGraph)")
 
-            # State initialization
-            state_input = {
-                "messages": [HumanMessage(content=query)],
-                "retrieval_attempts": 0,
-                "guardrail_result": None,
-                "routing_decision": None,
-                "sources": None,
-                "relevant_sources": [],
-                "relevant_tool_artefacts": None,
-                "grading_results": [],
-                "metadata": {},
-                "original_query": None,
-                "rewritten_query": None,
-            }
-
-            # Runtime context (trace correlation only)
-            trace_id = getattr(trace, "trace_id", None) if trace else None
-            self.graph_builder.prepare_request(model=model_to_use, trace=trace)
-            runtime_context = Context(trace_id=trace_id)
-
-            config = {"thread_id": f"user_{user_id}_session_{int(time.time())}"}
-
+            graph_config: dict = {"thread_id": session_id}
             if self.langfuse_tracer and trace:
                 try:
-                    callback_handler = CallbackHandler()
-                    config["callbacks"] = [callback_handler]
+                    graph_config["callbacks"] = [CallbackHandler()]
                     logger.info("CallbackHandler added for LangGraph LLM tracing")
                 except Exception as e:
                     logger.warning(f"Failed to create CallbackHandler: {e}")
 
-            result = await self.graph.ainvoke(
-                state_input,
-                config=config,
-                context=runtime_context,
+            ctx = AgentContext(
+                messages=[HumanMessage(content=query)],
+                session_id=session_id,
+                user_id=None,
+                config={"model": model_to_use, "graph_config": graph_config},
+                agent_name="fusionsearch",
+                metadata={"query": query, "user_id": user_id, "trace": trace},
             )
 
-            execution_time = time.time() - start_time
-            logger.info(f"✓ Graph execution completed in {execution_time:.2f}s")
+            pipeline_result = await self.middleware_pipeline.run(ctx)
+            ctx.metadata["pipeline_result"] = pipeline_result
 
-            # Extract results
-            answer = self._extract_answer(result)
-            sources = self._extract_sources(result)
-            retrieval_attempts = result.get("retrieval_attempts", 0)
-            reasoning_steps = self._extract_reasoning_steps(result)
+            execution_time = time.time() - start_time
+            guardrail_result = ctx.metadata.get("guardrail_result")
+            graph_result = ctx.metadata.get("graph_result")
+
+            if graph_result is not None:
+                answer = self._extract_answer(graph_result)
+                sources = self._extract_sources(graph_result)
+                retrieval_attempts = graph_result.get("retrieval_attempts", 0)
+                reasoning_steps = self._extract_reasoning_steps(graph_result, guardrail_result)
+                fault_tolerance = graph_result.get("metadata", {}).get("fault_tolerance")
+            else:
+                answer = self._extract_answer({"messages": pipeline_result})
+                sources = []
+                retrieval_attempts = 0
+                reasoning_steps = self._extract_reasoning_steps({}, guardrail_result)
+                fault_tolerance = None
 
             trace_id = None
             if trace:
@@ -207,11 +250,11 @@ class AgenticRAGService:
                 "sources": sources,
                 "reasoning_steps": reasoning_steps,
                 "retrieval_attempts": retrieval_attempts,
-                "rewritten_query": result.get("rewritten_query"),
+                "rewritten_query": graph_result.get("rewritten_query") if graph_result else None,
                 "execution_time": execution_time,
-                "guardrail_score": result.get("guardrail_result").score if result.get("guardrail_result") else None,
+                "guardrail_score": guardrail_result.score if guardrail_result else None,
                 "trace_id": trace_id,
-                "fault_tolerance": result.get("metadata", {}).get("fault_tolerance"),
+                "fault_tolerance": fault_tolerance,
             }
 
         except Exception as e:
@@ -246,15 +289,17 @@ class AgenticRAGService:
 
         return sources
 
-    def _extract_reasoning_steps(self, result: dict) -> List[str]:
+    def _extract_reasoning_steps(self, result: dict, guardrail_result=None) -> List[str]:
         """Extract reasoning steps from graph result."""
         steps = []
         retrieval_attempts = result.get("retrieval_attempts", 0)
-        guardrail_result = result.get("guardrail_result")
         grading_results = result.get("grading_results", [])
 
         if guardrail_result:
             steps.append(f"Validated query scope (score: {guardrail_result.score}/100)")
+            if guardrail_result.score < self.graph_config.guardrail_threshold:
+                steps.append("Query rejected as out of scope")
+                return steps
 
         if retrieval_attempts > 0:
             if self.retrieval_settings.rerank_enabled and self.reranker and self.reranker.is_configured:
@@ -269,7 +314,8 @@ class AgenticRAGService:
         if result.get("rewritten_query"):
             steps.append("Rewritten query for better results")
 
-        steps.append("Generated answer from context")
+        if result.get("messages"):
+            steps.append("Generated answer from context")
 
         return steps
 
