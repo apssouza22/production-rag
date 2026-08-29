@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.errors import NodeError
 from langgraph.graph import END, START, StateGraph
 
-from src.domain.agents.agent_fault_tolerance import (
+from src.domain.agent_fault_tolerance import (
     FaultToleranceConfig,
     build_llm_timeout,
     build_retry_policy,
