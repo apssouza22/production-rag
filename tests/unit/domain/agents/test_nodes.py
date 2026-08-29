@@ -1,252 +1,198 @@
-"""Tests for agentic RAG node functions using Runtime[Context] pattern."""
+"""Tests for AgenticRAGGraph node methods."""
 
 import pytest
 from unittest.mock import AsyncMock, Mock
-from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.runtime import Runtime
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from src.agents.fusionsearch.nodes import (
-    ainvoke_retrieve_step,
-    ainvoke_grade_documents_step,
-    ainvoke_rewrite_query_step,
-    ainvoke_generate_answer_step,
-    ainvoke_out_of_scope_step,
-    continue_after_guardrail,
-)
+from src.agents.fusionsearch.config import GraphConfig
+from src.agents.fusionsearch.graph import AgenticRAGGraph
 from src.agents.fusionsearch.nodes.utils import get_latest_query, get_latest_context
 from src.agents.fusionsearch.models import GuardrailScoring, GradeDocuments
 from src.agents.fusionsearch.state import AgentState
 
 
-class TestGuardrailNode:
-    """Tests for guardrail validation node."""
+@pytest.fixture
+def graph(mock_ollama_client, mock_opensearch_client, mock_jina_embeddings_client):
+    """AgenticRAGGraph with mocked dependencies."""
+    from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 
-    def test_continue_after_guardrail_pass(self, test_context):
-        """Test routing decision after guardrail pass."""
+    config = GraphConfig(
+        model="gpt-4o-mini",
+        temperature=0.0,
+        max_retrieval_attempts=2,
+        guardrail_threshold=60,
+    )
+    return AgenticRAGGraph(
+        llm_client=mock_ollama_client,
+        opensearch_client=mock_opensearch_client,
+        embeddings_client=mock_jina_embeddings_client,
+        retrieval_settings=RetrievalSettings(),
+        config=config,
+    )
+
+
+class TestGuardrailNode:
+    def test_continue_after_guardrail_pass(self, graph):
         state: AgentState = {
             "messages": [],
             "retrieval_attempts": 0,
             "guardrail_result": GuardrailScoring(score=75, reason="Pass"),
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = continue_after_guardrail(state, runtime)
+        assert graph.continue_after_guardrail(state) == "continue"
 
-        assert result == "continue"
-
-    def test_continue_after_guardrail_fail(self, test_context):
-        """Test routing decision after guardrail fail."""
+    def test_continue_after_guardrail_fail(self, graph):
         state: AgentState = {
             "messages": [],
             "retrieval_attempts": 0,
             "guardrail_result": GuardrailScoring(score=30, reason="Fail"),
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = continue_after_guardrail(state, runtime)
-
-        assert result == "out_of_scope"
+        assert graph.continue_after_guardrail(state) == "out_of_scope"
 
 
 class TestRetrieveNode:
-    """Tests for document retrieval node."""
-
     @pytest.mark.asyncio
-    async def test_retrieve_creates_tool_call(self, test_context, sample_human_message):
-        """Test retrieve node creates tool call."""
+    async def test_retrieve_creates_tool_call(self, graph, sample_human_message):
         state: AgentState = {
             "messages": [sample_human_message],
             "retrieval_attempts": 0,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_retrieve_step(state, runtime)
+        result = await graph.retrieve(state)
 
-        assert "retrieval_attempts" in result
         assert result["retrieval_attempts"] == 1
-        assert "messages" in result
         assert isinstance(result["messages"][0], AIMessage)
-        assert len(result["messages"][0].tool_calls) > 0
         assert result["messages"][0].tool_calls[0]["name"] == "retrieve_papers"
 
     @pytest.mark.asyncio
-    async def test_retrieve_max_attempts_reached(self, test_context, sample_human_message):
-        """Test retrieve node when max attempts reached."""
+    async def test_retrieve_max_attempts_reached(self, graph, sample_human_message):
         state: AgentState = {
             "messages": [sample_human_message],
-            "retrieval_attempts": 2,  # Already at max
+            "retrieval_attempts": 2,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_retrieve_step(state, runtime)
+        result = await graph.retrieve(state)
 
-        assert "messages" in result
-        assert isinstance(result["messages"][0], AIMessage)
-        # Check that message indicates failure to find papers
         content_lower = result["messages"][0].content.lower()
-        assert "apologize" in content_lower or "unable" in content_lower or "couldn't find" in content_lower
+        assert "apologize" in content_lower or "couldn't find" in content_lower
 
 
 class TestGradeDocumentsNode:
-    """Tests for document grading node."""
-
     @pytest.mark.asyncio
-    async def test_grade_documents_relevant(self, test_context, sample_human_message, sample_tool_message):
-        """Test grading node with relevant documents."""
+    async def test_grade_documents_relevant(self, graph, sample_human_message, sample_tool_message):
         mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(return_value=GradeDocuments(
-            binary_score="yes",
-            reasoning="Document discusses transformers which is relevant"
-        ))
-        test_context.llm_client.get_langchain_model = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(
+            return_value=GradeDocuments(
+                binary_score="yes",
+                reasoning="Document discusses transformers which is relevant",
+            )
+        )
+        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
 
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_grade_documents_step(state, runtime)
+        result = await graph.grade_documents(state)
 
         assert "grading_results" in result
 
     @pytest.mark.asyncio
-    async def test_grade_documents_not_relevant(self, test_context, sample_human_message, sample_tool_message):
-        """Test grading node with irrelevant documents."""
+    async def test_grade_documents_not_relevant(self, graph, sample_human_message, sample_tool_message):
         mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(return_value=GradeDocuments(
-            binary_score="no",
-            reasoning="Document is not relevant to the query"
-        ))
-        test_context.llm_client.get_langchain_model = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(
+            return_value=GradeDocuments(
+                binary_score="no",
+                reasoning="Document is not relevant to the query",
+            )
+        )
+        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
 
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_grade_documents_step(state, runtime)
+        result = await graph.grade_documents(state)
 
         assert "grading_results" in result
 
 
 class TestRewriteQueryNode:
-    """Tests for query rewriting node."""
-
     @pytest.mark.asyncio
-    async def test_rewrite_query_success(self, test_context, sample_human_message):
-        """Test query rewriting with LLM."""
+    async def test_rewrite_query_success(self, graph, sample_human_message):
         mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(return_value=Mock(
-            content="What are the key concepts in transformer neural network architectures?"
-        ))
-        test_context.llm_client.get_langchain_model = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(
+            return_value=Mock(
+                rewritten_query="What are transformer neural network architectures?",
+                reasoning="Expanded technical terms",
+            )
+        )
+        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
 
         state: AgentState = {
             "messages": [sample_human_message],
             "retrieval_attempts": 1,
+            "original_query": sample_human_message.content,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_rewrite_query_step(state, runtime)
+        result = await graph.rewrite_query(state)
 
-        assert "messages" in result
         assert isinstance(result["messages"][0], HumanMessage)
-        assert len(result["messages"][0].content) > 0
-        assert "rewritten_query" in result
+        assert result["rewritten_query"]
 
 
 class TestGenerateAnswerNode:
-    """Tests for answer generation node."""
-
     @pytest.mark.asyncio
-    async def test_generate_answer_success(self, test_context, sample_human_message, sample_tool_message):
-        """Test answer generation with context."""
+    async def test_generate_answer_success(self, graph, sample_human_message, sample_tool_message):
         mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(return_value=Mock(
-            content="Based on the papers, transformers are neural network architectures."
-        ))
-        test_context.llm_client.get_langchain_model = Mock(return_value=mock_llm)
+        mock_llm.ainvoke = AsyncMock(
+            return_value=Mock(content="Based on the papers, transformers are neural network architectures.")
+        )
+        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
 
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_generate_answer_step(state, runtime)
+        result = await graph.generate_answer(state)
 
-        assert "messages" in result
         assert isinstance(result["messages"][0], AIMessage)
         assert len(result["messages"][0].content) > 0
 
 
 class TestOutOfScopeNode:
-    """Tests for out-of-scope handling node."""
-
     @pytest.mark.asyncio
-    async def test_out_of_scope_response(self, test_context, sample_human_message):
-        """Test out-of-scope helpful rejection."""
-        mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(return_value=Mock(
-            content="I'm designed to help with AI research papers."
-        ))
-        test_context.llm_client.get_langchain_model = Mock(return_value=mock_llm)
-
+    async def test_out_of_scope_response(self, graph, sample_human_message):
         state: AgentState = {
             "messages": [sample_human_message],
             "retrieval_attempts": 0,
         }
-        runtime = Mock(spec=Runtime)
-        runtime.context = test_context
 
-        result = await ainvoke_out_of_scope_step(state, runtime)
+        result = await graph.out_of_scope(state)
 
-        assert "messages" in result
         assert isinstance(result["messages"][0], AIMessage)
 
 
 class TestNodeUtils:
-    """Tests for node utility functions."""
-
     def test_get_latest_query(self, sample_human_message, sample_ai_message):
-        """Test extracting latest query from messages."""
-        messages = [sample_human_message, sample_ai_message]
-        query = get_latest_query(messages)
-
-        assert query == "What is machine learning?"
+        query = get_latest_query([sample_human_message, sample_ai_message])
+        assert query == "What are attention mechanisms in transformers?"
 
     def test_get_latest_query_with_multiple_human_messages(self):
-        """Test extracting latest query with multiple human messages."""
         messages = [
             HumanMessage(content="First query"),
             AIMessage(content="First response"),
             HumanMessage(content="Second query"),
         ]
-        query = get_latest_query(messages)
-
-        assert query == "Second query"
+        assert get_latest_query(messages) == "Second query"
 
     def test_get_latest_context(self, sample_tool_message):
-        """Test extracting tool message context."""
-        messages = [HumanMessage(content="Query"), sample_tool_message]
-        context = get_latest_context(messages)
-
-        assert context is not None
+        context = get_latest_context([HumanMessage(content="Query"), sample_tool_message])
         assert "Transformers" in context
 
     def test_get_latest_context_no_tool_messages(self, sample_human_message):
-        """Test extracting context when no tool messages exist."""
-        messages = [sample_human_message]
-        context = get_latest_context(messages)
-
-        assert context == ""
+        assert get_latest_context([sample_human_message]) == ""

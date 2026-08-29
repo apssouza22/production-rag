@@ -22,13 +22,14 @@ def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embedding
         guardrail_threshold=60,
     )
     agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
+        llm_client=mock_ollama_client,
         opensearch_client=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         graph_config=config,
     )
     return AgenticRAGService(
         llm_client=mock_ollama_client,
-        graph=agentic_rag_graph.compile(),
+        graph_builder=agentic_rag_graph,
         retrieval_settings=retrieval_settings,
         langfuse_tracer=None,
         graph_config=config,

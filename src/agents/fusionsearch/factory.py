@@ -14,11 +14,13 @@ from .retrieval_settings import RetrievalSettings
 
 
 def make_agentic_rag_graph(
+    llm_client: LLMClient,
     opensearch_client: OpenSearchClient,
     embeddings_client: JinaEmbeddingsClient,
     graph_config: GraphConfig,
     reranker_client: JinaRerankerClient | None = None,
     retrieval_settings: RetrievalSettings | None = None,
+    langfuse_tracer: Optional[LangfuseTracer] = None,
 ) -> tuple[AgenticRAGGraph, RetrievalSettings]:
     """Build AgenticRAGGraph and its shared retrieval settings."""
     settings = retrieval_settings or RetrievalSettings(
@@ -29,11 +31,13 @@ def make_agentic_rag_graph(
         rerank_model=graph_config.rerank_model,
     )
     graph_builder = AgenticRAGGraph(
+        llm_client=llm_client,
         opensearch_client=opensearch_client,
         embeddings_client=embeddings_client,
         retrieval_settings=settings,
         config=graph_config,
         reranker_client=reranker_client,
+        langfuse_tracer=langfuse_tracer,
     )
     return graph_builder, settings
 
@@ -47,20 +51,7 @@ def make_agentic_rag_service(
     top_k: int = 3,
     use_hybrid: bool = True,
 ) -> AgenticRAGService:
-    """
-    Create AgenticRAGService with dependency injection.
-
-    Args:
-        opensearch_client: Client for document search
-        llm_client: Client for LLM generation
-        embeddings_client: Client for embeddings
-        langfuse_tracer: Optional Langfuse tracer for observability
-        top_k: Number of documents to retrieve (default: 3)
-        use_hybrid: Use hybrid search (default: True)
-
-    Returns:
-        Configured AgenticRAGService instance
-    """
+    """Create AgenticRAGService with dependency injection."""
     settings = get_settings()
     graph_config = GraphConfig(
         top_k=top_k,
@@ -68,16 +59,18 @@ def make_agentic_rag_service(
         model=settings.agent_model,
         rerank_candidate_multiplier=settings.opensearch.hybrid_search_size_multiplier,
     )
-    agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
+    graph_builder, retrieval_settings = make_agentic_rag_graph(
+        llm_client=llm_client,
         opensearch_client=opensearch_client,
         embeddings_client=embeddings_client,
         graph_config=graph_config,
         reranker_client=reranker_client,
+        langfuse_tracer=langfuse_tracer,
     )
 
     return AgenticRAGService(
         llm_client=llm_client,
-        graph=agentic_rag_graph.compile(),
+        graph_builder=graph_builder,
         retrieval_settings=retrieval_settings,
         reranker_client=reranker_client,
         langfuse_tracer=langfuse_tracer,

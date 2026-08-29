@@ -11,26 +11,20 @@ from src.domain.llm.protocol import LLMClient
 
 from .config import GraphConfig
 from .context import Context
+from .graph import AgenticRAGGraph
 from .retrieval_settings import RetrievalSettings
 
 logger = logging.getLogger(__name__)
 
 
 class AgenticRAGService:
-    """Agentic RAG service 
-
-    This implementation uses:
-    - context_schema for dependency injection
-    - Runtime[Context] for type-safe access in nodes
-    - Direct client invocation (no pre-built runnables)
-    - Lightweight nodes as pure functions
-    """
+    """Agentic RAG service backed by a compiled LangGraph workflow."""
 
     def __init__(
         self,
         llm_client: LLMClient,
-        graph,
         retrieval_settings: RetrievalSettings,
+        graph_builder: AgenticRAGGraph,
         reranker_client: JinaRerankerClient | None = None,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         graph_config: Optional[GraphConfig] = None,
@@ -38,14 +32,15 @@ class AgenticRAGService:
         """Initialize agentic RAG service.
 
         :param llm_client: Client for LLM generation
-        :param graph: Compiled LangGraph workflow (from AgenticRAGGraph.compile())
         :param retrieval_settings: Mutable retrieval settings shared with the graph
+        :param graph_builder: Graph builder used for per-request overrides
         :param reranker_client: Optional client for Jina reranking
         :param langfuse_tracer: Optional Langfuse tracer
         :param graph_config: Configuration for graph execution
         """
         self.llm = llm_client
-        self.graph = graph
+        self.graph = graph_builder.compile()
+        self.graph_builder = graph_builder
         self.retrieval_settings = retrieval_settings
         self.reranker = reranker_client
         self.langfuse_tracer = langfuse_tracer
@@ -152,16 +147,10 @@ class AgenticRAGService:
                 "rewritten_query": None,
             }
 
-            # Runtime context (dependencies)
-            runtime_context = Context(
-                llm_client=self.llm,
-                langfuse_tracer=self.langfuse_tracer,
-                trace=trace,
-                model_name=model_to_use,
-                temperature=self.graph_config.temperature,
-                max_retrieval_attempts=self.graph_config.max_retrieval_attempts,
-                guardrail_threshold=self.graph_config.guardrail_threshold,
-            )
+            # Runtime context (trace correlation only)
+            trace_id = getattr(trace, "trace_id", None) if trace else None
+            self.graph_builder.prepare_request(model=model_to_use, trace=trace)
+            runtime_context = Context(trace_id=trace_id)
 
             config = {"thread_id": f"user_{user_id}_session_{int(time.time())}"}
 
@@ -283,3 +272,7 @@ class AgenticRAGService:
         steps.append("Generated answer from context")
 
         return steps
+
+    def get_graph_mermaid(self) -> str:
+        """Return a Mermaid diagram of the compiled graph."""
+        return self.graph.get_graph().draw_mermaid()

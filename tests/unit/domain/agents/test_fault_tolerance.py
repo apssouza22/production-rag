@@ -18,7 +18,8 @@ from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
 from src.agents.texttosql.handlers import text_to_sql_error_handler
 from src.agents.texttosql.config import TextToSQLConfig
 from src.agents.fusionsearch.context import Context
-from src.agents.fusionsearch.nodes.handle_failure_node import ainvoke_handle_failure_step
+from src.agents.fusionsearch.config import GraphConfig
+from src.agents.fusionsearch.graph import AgenticRAGGraph
 from src.agents.fusionsearch.state import AgentState
 from src.agents.knowledgerouter.state import RouterState
 from src.domain.llm.exceptions import LLMConnectionError, LLMTimeoutError
@@ -54,7 +55,15 @@ class TestPolicyBuilders:
 class TestAgenticRagFailureFlow:
     @pytest.mark.asyncio
     async def test_retry_then_route_to_handle_failure(self):
-        async def failing_guardrail(state, runtime):
+        graph = AgenticRAGGraph(
+            llm_client=MagicMock(),
+            opensearch_client=MagicMock(),
+            embeddings_client=MagicMock(),
+            retrieval_settings=MagicMock(),
+            config=GraphConfig(),
+        )
+
+        async def failing_guardrail(state, runtime=None):
             raise ConnectionError("llm unavailable")
 
         workflow = StateGraph(AgentState, context_schema=Context)
@@ -67,17 +76,13 @@ class TestAgenticRagFailureFlow:
         workflow.add_node("guardrail", failing_guardrail)
         workflow.add_node(
             "handle_failure",
-            ainvoke_handle_failure_step,
+            graph.handle_failure,
             retry_policy=None,
             error_handler=None,
         )
         workflow.add_edge(START, "guardrail")
         workflow.add_edge("handle_failure", END)
 
-        runtime_context = Context(
-            llm_client=MagicMock(),
-            langfuse_tracer=None,
-        )
         result = await workflow.compile().ainvoke(
             {
                 "messages": [HumanMessage(content="test")],
@@ -92,7 +97,7 @@ class TestAgenticRagFailureFlow:
                 "original_query": None,
                 "rewritten_query": None,
             },
-            context=runtime_context,
+            context=Context(trace_id=None),
         )
 
         assert result["metadata"]["fault_tolerance"]["failed_node"] == "guardrail"
@@ -191,13 +196,14 @@ class TestAgenticRagGraphCompilation:
 
         config = GraphConfig()
         agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
+            llm_client=MagicMock(),
             opensearch_client=MagicMock(),
             embeddings_client=MagicMock(),
             graph_config=config,
         )
         service = AgenticRAGService(
             llm_client=MagicMock(),
-            graph=agentic_rag_graph.compile(),
+            graph_builder=agentic_rag_graph,
             retrieval_settings=retrieval_settings,
             graph_config=config,
         )

@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.agents.fusionsearch.context import Context
 from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 from src.domain.jinaai.jina import JinaRerankResult
 
@@ -76,22 +75,28 @@ def retrieval_settings():
 
 
 @pytest.fixture
-def test_context(mock_ollama_client):
-    """Runtime context for node tests."""
-    return Context(
-        llm_client=mock_ollama_client,
-        langfuse_tracer=None,
-        trace=None,
-        model_name="gpt-4o-mini",
-        temperature=0.0,
-        max_retrieval_attempts=2,
-        guardrail_threshold=60,
-    )
-
-
-@pytest.fixture
 def sample_human_message():
     """Sample human message for node tests."""
     from langchain_core.messages import HumanMessage
 
     return HumanMessage(content="What are attention mechanisms in transformers?")
+
+
+@pytest.fixture
+def sample_ai_message():
+    """Sample AI message for node tests."""
+    from langchain_core.messages import AIMessage
+
+    return AIMessage(content="What is machine learning?")
+
+
+@pytest.fixture
+def sample_tool_message():
+    """Sample tool message for node tests."""
+    from langchain_core.messages import ToolMessage
+
+    return ToolMessage(
+        content="Transformers are neural network architectures based on self-attention.",
+        tool_call_id="retrieve_1",
+        name="retrieve_papers",
+    )
