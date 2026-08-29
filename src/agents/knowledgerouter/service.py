@@ -55,30 +55,14 @@ class KnowledgeRouterService:
         self,
         query: str,
         user_id: str = "api_user",
-        model: Optional[str] = None,
     ) -> dict:
         """Route a question to the appropriate knowledge sources and synthesize the answer."""
         if not query or not query.strip():
             raise ValueError("Query cannot be empty")
 
-        model_to_use = model or self.agent_config.model
-        if model_to_use != self.agent_config.model:
-            self.agent_config = self.agent_config.model_copy(update={"model": model_to_use})
-            self.synthesis_model = self.llm.get_langchain_model(
-                model=model_to_use,
-                temperature=self.agent_config.temperature,
-            )
-            self.graph = build_knowledge_router_graph(
-                router_model=self.router_model,
-                synthesis_model=self.synthesis_model,
-                agentic_rag_service=self.agentic_rag,
-                text_to_sql_service=self.text_to_sql,
-                config=self.agent_config,
-            )
-
         metadata = {
             "service": "knowledge_router",
-            "model": model_to_use,
+            "model": self.agent_config.model,
         }
 
         async def _execute_with_trace():

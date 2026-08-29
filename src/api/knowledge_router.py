@@ -24,10 +24,7 @@ async def ask_router(
     - database: Text-to-SQL over PostgreSQL metadata (counts, listings, filters)
     """
     try:
-        result = await knowledge_router.ask(
-            query=request.query,
-            model=request.model,
-        )
+        result = await knowledge_router.ask(query=request.query)
 
         return KnowledgeRouterResponse(
             query=result["query"],

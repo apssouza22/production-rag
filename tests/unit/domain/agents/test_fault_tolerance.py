@@ -76,8 +76,6 @@ class TestAgenticRagFailureFlow:
 
         runtime_context = Context(
             llm_client=MagicMock(),
-            opensearch_client=MagicMock(),
-            embeddings_client=MagicMock(),
             langfuse_tracer=None,
         )
         result = await workflow.compile().ainvoke(
@@ -198,9 +196,7 @@ class TestAgenticRagGraphCompilation:
             graph_config=config,
         )
         service = AgenticRAGService(
-            opensearch_client=MagicMock(),
             llm_client=MagicMock(),
-            embeddings_client=MagicMock(),
             graph=agentic_rag_graph.compile(),
             retrieval_settings=retrieval_settings,
             graph_config=config,

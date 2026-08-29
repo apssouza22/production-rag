@@ -5,11 +5,9 @@ from typing import List, Optional
 from langchain_core.messages import HumanMessage
 from langfuse.langchain import CallbackHandler
 
-from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
-from src.domain.opensearch.client import OpenSearchClient
 
 from .config import GraphConfig
 from .context import Context
@@ -30,9 +28,7 @@ class AgenticRAGService:
 
     def __init__(
         self,
-        opensearch_client: OpenSearchClient,
         llm_client: LLMClient,
-        embeddings_client: JinaEmbeddingsClient,
         graph,
         retrieval_settings: RetrievalSettings,
         reranker_client: JinaRerankerClient | None = None,
@@ -41,18 +37,14 @@ class AgenticRAGService:
     ):
         """Initialize agentic RAG service.
 
-        :param opensearch_client: Client for document search
         :param llm_client: Client for LLM generation
-        :param embeddings_client: Client for embeddings
         :param graph: Compiled LangGraph workflow (from AgenticRAGGraph.compile())
         :param retrieval_settings: Mutable retrieval settings shared with the graph
         :param reranker_client: Optional client for Jina reranking
         :param langfuse_tracer: Optional Langfuse tracer
         :param graph_config: Configuration for graph execution
         """
-        self.opensearch = opensearch_client
         self.llm = llm_client
-        self.embeddings = embeddings_client
         self.graph = graph
         self.retrieval_settings = retrieval_settings
         self.reranker = reranker_client
@@ -163,14 +155,10 @@ class AgenticRAGService:
             # Runtime context (dependencies)
             runtime_context = Context(
                 llm_client=self.llm,
-                opensearch_client=self.opensearch,
-                embeddings_client=self.embeddings,
                 langfuse_tracer=self.langfuse_tracer,
                 trace=trace,
-                langfuse_enabled=self.langfuse_tracer is not None and self.langfuse_tracer.client is not None,
                 model_name=model_to_use,
                 temperature=self.graph_config.temperature,
-                top_k=self.graph_config.top_k,
                 max_retrieval_attempts=self.graph_config.max_retrieval_attempts,
                 guardrail_threshold=self.graph_config.guardrail_threshold,
             )

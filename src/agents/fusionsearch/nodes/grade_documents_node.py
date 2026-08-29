@@ -44,7 +44,7 @@ async def ainvoke_grade_documents_step(
 
     # Create span for document grading
     span = None
-    if runtime.context.langfuse_enabled and runtime.context.trace:
+    if runtime.context.tracing_enabled:
         try:
             span = runtime.context.langfuse_tracer.create_span(
                 trace=runtime.context.trace,

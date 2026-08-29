@@ -51,7 +51,7 @@ async def ainvoke_generate_answer_step(
 
     # Create span for answer generation
     span = None
-    if runtime.context.langfuse_enabled and runtime.context.trace:
+    if runtime.context.tracing_enabled:
         try:
             span = runtime.context.langfuse_tracer.create_span(
                 trace=runtime.context.trace,

@@ -61,7 +61,6 @@ class TestKnowledgeRouterEndpoint:
             "/api/v1/ask-router",
             json={
                 "query": "How many transformer papers exist and what do they explain?",
-                "model": "gpt-4o-mini",
             },
         )
 

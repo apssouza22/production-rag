@@ -43,7 +43,7 @@ async def ainvoke_retrieve_step(
 
     # Create span for retrieval initiation
     span = None
-    if runtime.context.langfuse_enabled and runtime.context.trace:
+    if runtime.context.tracing_enabled:
         try:
             span = runtime.context.langfuse_tracer.create_span(
                 trace=runtime.context.trace,
@@ -53,10 +53,7 @@ async def ainvoke_retrieve_step(
                     "attempt": current_attempts + 1,
                     "max_attempts": max_attempts,
                 },
-                metadata={
-                    "node": "retrieve",
-                    "top_k": runtime.context.top_k,
-                },
+                metadata={"node": "retrieve"},
             )
             logger.debug(f"Created Langfuse span for retrieval attempt {current_attempts + 1}")
         except Exception as e:

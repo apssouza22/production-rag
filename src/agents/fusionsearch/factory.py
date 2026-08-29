@@ -76,9 +76,7 @@ def make_agentic_rag_service(
     )
 
     return AgenticRAGService(
-        opensearch_client=opensearch_client,
         llm_client=llm_client,
-        embeddings_client=embeddings_client,
         graph=agentic_rag_graph.compile(),
         retrieval_settings=retrieval_settings,
         reranker_client=reranker_client,

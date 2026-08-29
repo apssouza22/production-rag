@@ -24,13 +24,11 @@ class KnowledgeRouterRequest(BaseModel):
     """Request model for the knowledge router."""
 
     query: str = Field(..., description="Natural-language question", min_length=1, max_length=1000)
-    model: str = Field("gpt-4o-mini", description="LLM model for routing and synthesis")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "query": "How many transformer papers are in the database and what do they explain?",
-                "model": "gpt-4o-mini",
             }
         }
 

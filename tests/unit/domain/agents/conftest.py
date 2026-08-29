@@ -76,18 +76,14 @@ def retrieval_settings():
 
 
 @pytest.fixture
-def test_context(mock_ollama_client, mock_opensearch_client, mock_jina_embeddings_client):
+def test_context(mock_ollama_client):
     """Runtime context for node tests."""
     return Context(
         llm_client=mock_ollama_client,
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
         langfuse_tracer=None,
         trace=None,
-        langfuse_enabled=False,
         model_name="gpt-4o-mini",
         temperature=0.0,
-        top_k=3,
         max_retrieval_attempts=2,
         guardrail_threshold=60,
     )

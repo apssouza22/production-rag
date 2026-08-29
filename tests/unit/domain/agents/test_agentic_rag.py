@@ -27,9 +27,7 @@ def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embedding
         graph_config=config,
     )
     return AgenticRAGService(
-        opensearch_client=mock_opensearch_client,
         llm_client=mock_ollama_client,
-        embeddings_client=mock_jina_embeddings_client,
         graph=agentic_rag_graph.compile(),
         retrieval_settings=retrieval_settings,
         langfuse_tracer=None,
@@ -42,9 +40,7 @@ class TestAgenticRAGServiceInitialization:
 
     def test_service_initialization(self, test_service):
         """Test that service initializes correctly."""
-        assert test_service.opensearch is not None
         assert test_service.llm is not None
-        assert test_service.embeddings is not None
         assert test_service.graph is not None
         assert test_service.graph_config is not None
 
