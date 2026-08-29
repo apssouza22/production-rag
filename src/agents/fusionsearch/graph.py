@@ -20,7 +20,7 @@ from src.domain.llm.protocol import LLMClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
 from src.agents.fusionsearch.models import GradeDocuments, GradingResult, GuardrailScoring
-from src.agents.fusionsearch.nodes.utils import get_latest_context, get_latest_query
+from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
 from src.agents.fusionsearch.prompts import (
     GENERATE_ANSWER_PROMPT,
     GRADE_DOCUMENTS_PROMPT,

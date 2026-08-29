@@ -2,11 +2,11 @@
 
 import pytest
 from unittest.mock import AsyncMock, Mock
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.graph import AgenticRAGGraph
-from src.agents.fusionsearch.nodes.utils import get_latest_query, get_latest_context
+from src.agents.fusionsearch.utils import get_latest_query, get_latest_context
 from src.agents.fusionsearch.models import GuardrailScoring, GradeDocuments
 from src.agents.fusionsearch.state import AgentState
 
