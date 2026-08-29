@@ -123,29 +123,21 @@ class AgenticRAGService:
                 error_handler=route_agentic_rag_failure,
             )
 
-        # Add nodes (just function references - no closures needed!)
         logger.info("Adding nodes to workflow graph")
         no_fault_tolerance = {
             "retry_policy": None,
             "error_handler": None,
             "timeout": None,
         } if ft.enabled else {}
+        fault_tolerance = {
+            "retry_policy": build_tool_retry_policy(ft),
+            "timeout": build_tool_timeout(ft),
+        } if ft.enabled else {}
 
         workflow.add_node("guardrail", ainvoke_guardrail_step)
         workflow.add_node("out_of_scope", ainvoke_out_of_scope_step, **no_fault_tolerance)
         workflow.add_node("retrieve", ainvoke_retrieve_step)
-        workflow.add_node(
-            "tool_retrieve",
-            ToolNode(tool_retrieve),
-            **(
-                {
-                    "retry_policy": build_tool_retry_policy(ft),
-                    "timeout": build_tool_timeout(ft),
-                }
-                if ft.enabled
-                else {}
-            ),
-        )
+        workflow.add_node("tool_retrieve", ToolNode(tool_retrieve), **fault_tolerance)
         workflow.add_node("grade_documents", ainvoke_grade_documents_step)
         workflow.add_node("rewrite_query", ainvoke_rewrite_query_step)
         workflow.add_node("generate_answer", ainvoke_generate_answer_step)

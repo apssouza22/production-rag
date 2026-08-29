@@ -29,18 +29,26 @@ class ClassificationResult(BaseModel):
     )
 
 
-def build_knowledge_router_graph(
-    router_model: BaseChatModel,
-    synthesis_model: BaseChatModel,
-    agentic_rag_service: AgenticRAGService,
-    text_to_sql_service: TextToSQLService,
-    config: KnowledgeRouterConfig,
-):
-    """Build the LangGraph knowledge router workflow."""
+class KnowledgeRouterGraph:
+    """Builds and compiles the LangGraph knowledge router workflow."""
 
-    async def classify_query(state: RouterState) -> dict:
+    def __init__(
+        self,
+        router_model: BaseChatModel,
+        synthesis_model: BaseChatModel,
+        agentic_rag_service: AgenticRAGService,
+        text_to_sql_service: TextToSQLService,
+        config: KnowledgeRouterConfig,
+    ):
+        self.router_model = router_model
+        self.synthesis_model = synthesis_model
+        self.agentic_rag_service = agentic_rag_service
+        self.text_to_sql_service = text_to_sql_service
+        self.config = config
+
+    async def classify_query(self, state: RouterState) -> dict:
         """Classify query and determine which agents to invoke."""
-        structured_llm = router_model.with_structured_output(ClassificationResult)
+        structured_llm = self.router_model.with_structured_output(ClassificationResult)
 
         result = await structured_llm.ainvoke(
             [
@@ -64,17 +72,17 @@ def build_knowledge_router_graph(
         )
         return {"classifications": classifications}
 
-    def route_to_agents(state: RouterState) -> list[Send]:
+    def route_to_agents(self, state: RouterState) -> list[Send]:
         """Fan out to agents based on classifications."""
         return [
             Send(item["source"], {"query": item["query"]})
             for item in state["classifications"]
         ]
 
-    async def query_documents(state: AgentInput) -> dict:
+    async def query_documents(self, state: AgentInput) -> dict:
         """Query the agentic RAG service for paper content."""
         logger.info("Querying documents agent: %s", state["query"][:100])
-        result = await agentic_rag_service.ask(query=state["query"])
+        result = await self.agentic_rag_service.ask(query=state["query"])
         sources = result.get("sources", [])
         source_urls = [
             source.get("url", source) if isinstance(source, dict) else str(source)
@@ -94,10 +102,10 @@ def build_knowledge_router_graph(
             ]
         }
 
-    async def query_database(state: AgentInput) -> dict:
+    async def query_database(self, state: AgentInput) -> dict:
         """Query the text-to-SQL service for structured metadata."""
         logger.info("Querying database agent: %s", state["query"][:100])
-        result = await text_to_sql_service.ask(query=state["query"])
+        result = await self.text_to_sql_service.ask(query=state["query"])
         return {
             "results": [
                 {
@@ -111,7 +119,7 @@ def build_knowledge_router_graph(
             ]
         }
 
-    async def synthesize_results(state: RouterState) -> dict:
+    async def synthesize_results(self, state: RouterState) -> dict:
         """Combine results from all agents into a coherent answer."""
         if not state["results"]:
             return {"final_answer": "No results found from any knowledge source."}
@@ -124,7 +132,7 @@ def build_knowledge_router_graph(
             for item in state["results"]
         ]
 
-        synthesis_response = await synthesis_model.ainvoke(
+        synthesis_response = await self.synthesis_model.ainvoke(
             [
                 {
                     "role": "system",
@@ -134,31 +142,58 @@ def build_knowledge_router_graph(
             ]
         )
 
-        content = synthesis_response.content if hasattr(synthesis_response, "content") else str(synthesis_response)
+        content = (
+            synthesis_response.content
+            if hasattr(synthesis_response, "content")
+            else str(synthesis_response)
+        )
         return {"final_answer": content}
 
-    workflow = StateGraph(RouterState)
-    ft = config.fault_tolerance
+    def _configure_fault_tolerance(self, workflow: StateGraph) -> None:
+        ft = self.config.fault_tolerance
+        if ft.enabled:
+            workflow.set_node_defaults(
+                retry_policy=build_retry_policy(ft),
+                timeout=build_llm_timeout(ft),
+                error_handler=knowledge_router_error_handler,
+            )
 
-    if ft.enabled:
-        workflow.set_node_defaults(
-            retry_policy=build_retry_policy(ft),
-            timeout=build_llm_timeout(ft),
-            error_handler=knowledge_router_error_handler,
+    def compile(self):
+        workflow = StateGraph(RouterState)
+        self._configure_fault_tolerance(workflow)
+
+        (
+            workflow
+            .add_node("classify", self.classify_query)
+            .add_node("documents", self.query_documents)
+            .add_node("database", self.query_database)
+            .add_node("synthesize", self.synthesize_results)
+            .add_edge(START, "classify")
+            .add_conditional_edges("classify", self.route_to_agents, ["documents", "database"])
+            .add_edge("documents", "synthesize")
+            .add_edge("database", "synthesize")
+            .add_edge("synthesize", END)
         )
 
-    (
-        workflow
-        .add_node("classify", classify_query)
-        .add_node("documents", query_documents)
-        .add_node("database", query_database)
-        .add_node("synthesize", synthesize_results)
-        .add_edge(START, "classify")
-        .add_conditional_edges("classify", route_to_agents, ["documents", "database"])
-        .add_edge("documents", "synthesize")
-        .add_edge("database", "synthesize")
-        .add_edge("synthesize", END)
-    )
+        logger.info(
+            "Knowledge router graph compiled successfully (model=%s)",
+            self.config.model,
+        )
+        return workflow.compile()
 
-    logger.info("Knowledge router graph compiled successfully (model=%s)", config.model)
-    return workflow.compile()
+
+def build_knowledge_router_graph(
+    router_model: BaseChatModel,
+    synthesis_model: BaseChatModel,
+    agentic_rag_service: AgenticRAGService,
+    text_to_sql_service: TextToSQLService,
+    config: KnowledgeRouterConfig,
+):
+    """Build the LangGraph knowledge router workflow."""
+    return KnowledgeRouterGraph(
+        router_model=router_model,
+        synthesis_model=synthesis_model,
+        agentic_rag_service=agentic_rag_service,
+        text_to_sql_service=text_to_sql_service,
+        config=config,
+    ).compile()
