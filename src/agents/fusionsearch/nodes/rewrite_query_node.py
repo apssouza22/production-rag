@@ -6,9 +6,9 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field
 
-from src.domain.agents.fusionsearch.context import Context
-from src.domain.agents.fusionsearch.prompts import REWRITE_PROMPT
-from src.domain.agents.fusionsearch.state import AgentState
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.prompts import REWRITE_PROMPT
+from src.agents.fusionsearch.state import AgentState
 
 logger = logging.getLogger(__name__)
 

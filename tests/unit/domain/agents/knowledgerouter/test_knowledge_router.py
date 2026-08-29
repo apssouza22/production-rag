@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.domain.agents.knowledgerouter.config import KnowledgeRouterConfig
-from src.domain.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
-from src.domain.agents.knowledgerouter.service import KnowledgeRouterService
+from src.agents.knowledgerouter.config import KnowledgeRouterConfig
+from src.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
+from src.agents.knowledgerouter.service import KnowledgeRouterService
 
 
 @pytest.fixture

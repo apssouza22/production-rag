@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.domain.agents.fusionsearch.models import (
+from src.agents.fusionsearch.models import (
     GuardrailScoring,
     GradeDocuments,
     SourceItem,

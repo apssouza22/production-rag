@@ -6,7 +6,7 @@ from typing import Literal, Optional
 
 import redis
 from src.config import RedisSettings
-from src.domain.agents.fusionsearch.schemas import AskRequest, AskResponse
+from src.agents.fusionsearch.schemas import AskRequest, AskResponse
 from src.domain.cache.keys import build_exact_cache_key
 from src.domain.cache.scoring import CacheConfidenceBreakdown
 from src.domain.cache.semantic import SemanticCacheClient

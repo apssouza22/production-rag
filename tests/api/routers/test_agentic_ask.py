@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
 from src.main import app
-from src.domain.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src import dependencies
 
 

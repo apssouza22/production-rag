@@ -11,7 +11,7 @@ from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.exceptions import ResponseError
 from src.config import RedisSettings
-from src.domain.agents.fusionsearch.schemas import AskRequest, AskResponse
+from src.agents.fusionsearch.schemas import AskRequest, AskResponse
 from src.domain.cache.keys import build_params_hash
 from src.domain.cache.scoring import CacheConfidenceBreakdown, compute_confidence
 

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from src.domain.agents.fusionsearch.models import ReasoningStep, SourceItem, ToolArtefact
+from src.agents.fusionsearch.models import ReasoningStep, SourceItem, ToolArtefact
 
 logger = logging.getLogger(__name__)
 

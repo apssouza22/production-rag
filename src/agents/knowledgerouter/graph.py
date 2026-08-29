@@ -9,9 +9,9 @@ from src.domain.agent_fault_tolerance import (
     build_llm_timeout,
     build_retry_policy,
 )
-from src.domain.agents.knowledgerouter.handlers import knowledge_router_error_handler
-from src.domain.agents.fusionsearch.agentic_rag import AgenticRAGService
-from src.domain.agents.texttosql.service import TextToSQLService
+from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.agents.texttosql.service import TextToSQLService
 
 from .config import KnowledgeRouterConfig
 from .prompts import CLASSIFY_SYSTEM_PROMPT, SYNTHESIZE_SYSTEM_PROMPT

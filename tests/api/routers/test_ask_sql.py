@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src import dependencies
-from src.domain.agents.texttosql.service import TextToSQLService
+from src.agents.texttosql.service import TextToSQLService
 from src.main import app
 
 

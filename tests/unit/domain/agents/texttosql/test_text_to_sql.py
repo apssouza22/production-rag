@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from src.domain.agents.texttosql.config import TextToSQLConfig
-from src.domain.agents.texttosql.service import TextToSQLService
-from src.domain.agents.texttosql.tools import _validate_read_only_query
+from src.agents.texttosql.config import TextToSQLConfig
+from src.agents.texttosql.service import TextToSQLService
+from src.agents.texttosql.tools import _validate_read_only_query
 
 
 @pytest.fixture

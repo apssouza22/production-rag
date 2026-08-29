@@ -12,17 +12,17 @@ else:
         pass
 
 from src.config import Settings
-from src.domain.agents.fusionsearch.agentic_rag import AgenticRAGService
-from src.domain.agents.fusionsearch.factory import make_agentic_rag_service
-from src.domain.agents.knowledgerouter import KnowledgeRouterService, make_knowledge_router_service
-from src.domain.agents.texttosql import TextToSQLService, make_text_to_sql_service
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.agents.fusionsearch.factory import make_agentic_rag_service
+from src.agents.knowledgerouter import KnowledgeRouterService, make_knowledge_router_service
+from src.agents.texttosql import TextToSQLService, make_text_to_sql_service
 from src.domain.arxiv.client import ArxivClient
 from src.domain.cache.client import CacheClient
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.factory import make_agent_llm_client, make_llm_client
+from src.domain.llm.factory import make_agent_llm_client
 from src.domain.llm.protocol import LLMClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.pdf_parser.parser import PDFParserService

@@ -3,8 +3,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
 from src.main import app
-from src.domain.agents.knowledgerouter.service import KnowledgeRouterService
-from src.domain.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
+from src.agents.knowledgerouter.service import KnowledgeRouterService
+from src.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
 from src import dependencies
 
 

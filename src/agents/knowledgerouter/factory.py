@@ -1,8 +1,8 @@
 from typing import Optional
 
 from src.config import get_settings
-from src.domain.agents.fusionsearch.agentic_rag import AgenticRAGService
-from src.domain.agents.texttosql.service import TextToSQLService
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.agents.texttosql.service import TextToSQLService
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
 

@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from src.domain.agents.fusionsearch.schemas import AskRequest
+from src.agents.fusionsearch.schemas import AskRequest
 
 
 def build_params_data(request: AskRequest) -> dict:

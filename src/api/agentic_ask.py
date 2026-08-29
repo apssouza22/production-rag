@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from src.dependencies import AgenticRAGDep, LangfuseDep
-from src.domain.agents.fusionsearch.schemas import AgenticAskResponse, AskRequest, FeedbackRequest, FeedbackResponse
+from src.agents.fusionsearch.schemas import AgenticAskResponse, AskRequest, FeedbackRequest, FeedbackResponse
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-rag"])
 

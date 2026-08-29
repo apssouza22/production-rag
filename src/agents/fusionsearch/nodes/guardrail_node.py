@@ -4,10 +4,10 @@ from typing import Dict, Literal
 
 from langgraph.runtime import Runtime
 
-from src.domain.agents.fusionsearch.context import Context
-from src.domain.agents.fusionsearch.models import GuardrailScoring
-from src.domain.agents.fusionsearch.prompts import GUARDRAIL_PROMPT
-from src.domain.agents.fusionsearch.state import AgentState
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.models import GuardrailScoring
+from src.agents.fusionsearch.prompts import GUARDRAIL_PROMPT
+from src.agents.fusionsearch.state import AgentState
 from .utils import get_latest_query
 
 logger = logging.getLogger(__name__)

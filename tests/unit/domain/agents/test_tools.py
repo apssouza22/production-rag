@@ -2,9 +2,8 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 from langchain_core.documents import Document
 
-from src.domain.agents.fusionsearch.retrieval_settings import RetrievalSettings
-from src.domain.agents.fusionsearch.tools import create_retriever_tool
-from src.domain.jinaai.jina import JinaRerankResult
+from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
+from src.agents.fusionsearch.tools import create_retriever_tool
 
 
 @pytest.mark.asyncio

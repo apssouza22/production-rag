@@ -4,9 +4,9 @@ import pytest
 from unittest.mock import AsyncMock
 from langchain_core.messages import AIMessage, HumanMessage
 
-from src.domain.agents.fusionsearch.agentic_rag import AgenticRAGService
-from src.domain.agents.fusionsearch.config import GraphConfig
-from src.domain.agents.fusionsearch.models import GuardrailScoring
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.agents.fusionsearch.config import GraphConfig
+from src.agents.fusionsearch.models import GuardrailScoring
 
 
 @pytest.fixture

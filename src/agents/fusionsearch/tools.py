@@ -3,7 +3,7 @@ import logging
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 
-from src.domain.agents.fusionsearch.retrieval_settings import RetrievalSettings
+from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.opensearch.client import OpenSearchClient

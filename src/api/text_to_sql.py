@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from src.dependencies import TextToSQLDep
-from src.domain.agents.texttosql.schemas import TextToSQLRequest, TextToSQLResponse
+from src.agents.texttosql.schemas import TextToSQLRequest, TextToSQLResponse
 
 router = APIRouter(prefix="/api/v1", tags=["text-to-sql"])
 

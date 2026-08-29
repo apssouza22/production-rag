@@ -13,7 +13,7 @@ from src.domain.agent_fault_tolerance import (
     build_tool_retry_policy,
     build_tool_timeout,
 )
-from src.domain.agents.texttosql.handlers import text_to_sql_error_handler
+from src.agents.texttosql.handlers import text_to_sql_error_handler
 
 from .config import TextToSQLConfig
 from .prompts import CHECK_QUERY_SYSTEM_PROMPT, GENERATE_QUERY_SYSTEM_PROMPT

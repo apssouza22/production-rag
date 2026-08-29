@@ -4,8 +4,8 @@ from typing import Dict, List
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime
 
-from src.domain.agents.fusionsearch.context import Context
-from src.domain.agents.fusionsearch.state import AgentState
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.state import AgentState
 from .utils import get_latest_query
 
 logger = logging.getLogger(__name__)

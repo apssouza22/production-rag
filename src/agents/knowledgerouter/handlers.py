@@ -8,7 +8,7 @@ from langgraph.types import Command
 from src.domain.agent_fault_tolerance.metadata import fault_metadata
 
 if TYPE_CHECKING:
-    from src.domain.agents.knowledgerouter.state import RouterState
+    from src.agents.knowledgerouter.state import RouterState
 
 logger = logging.getLogger(__name__)
 

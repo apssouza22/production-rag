@@ -13,14 +13,14 @@ from src.domain.agent_fault_tolerance import (
     build_retry_policy,
     is_transient_error,
 )
-from src.domain.agents.fusionsearch.handlers import route_agentic_rag_failure
-from src.domain.agents.knowledgerouter.handlers import knowledge_router_error_handler
-from src.domain.agents.texttosql.handlers import text_to_sql_error_handler
-from src.domain.agents.texttosql.config import TextToSQLConfig
-from src.domain.agents.fusionsearch.context import Context
-from src.domain.agents.fusionsearch.nodes.handle_failure_node import ainvoke_handle_failure_step
-from src.domain.agents.fusionsearch.state import AgentState
-from src.domain.agents.knowledgerouter.state import RouterState
+from src.agents.fusionsearch.handlers import route_agentic_rag_failure
+from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
+from src.agents.texttosql.handlers import text_to_sql_error_handler
+from src.agents.texttosql.config import TextToSQLConfig
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.nodes.handle_failure_node import ainvoke_handle_failure_step
+from src.agents.fusionsearch.state import AgentState
+from src.agents.knowledgerouter.state import RouterState
 from src.domain.llm.exceptions import LLMConnectionError, LLMTimeoutError
 
 
@@ -152,7 +152,7 @@ class TestTextToSqlGraphCompilation:
 
         from langchain.tools import tool
 
-        from src.domain.agents.texttosql.graph import build_text_to_sql_graph
+        from src.agents.texttosql.graph import build_text_to_sql_graph
 
         @tool("sql_db_list_tables")
         async def sql_db_list_tables() -> str:
@@ -187,7 +187,7 @@ class TestAgenticRagGraphCompilation:
     def test_service_compiles_with_fault_tolerance_enabled(self):
         from unittest.mock import MagicMock
 
-        from src.domain.agents.fusionsearch.agentic_rag import AgenticRAGService
+        from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 
         service = AgenticRAGService(
             opensearch_client=MagicMock(),

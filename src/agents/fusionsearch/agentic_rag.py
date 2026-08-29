@@ -15,14 +15,14 @@ from src.domain.agent_fault_tolerance import (
     build_tool_retry_policy,
     build_tool_timeout,
 )
-from src.domain.agents.fusionsearch.handlers import route_agentic_rag_failure
+from src.agents.fusionsearch.handlers import route_agentic_rag_failure
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
 from src.domain.opensearch.client import OpenSearchClient
 
 from .config import GraphConfig
 from .context import Context
-from src.domain.agents.fusionsearch.nodes import (
+from src.agents.fusionsearch.nodes import (
     ainvoke_generate_answer_step,
     ainvoke_grade_documents_step,
     ainvoke_guardrail_step,

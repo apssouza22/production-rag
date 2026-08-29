@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from src.dependencies import CacheDep, EmbeddingsDep, LangfuseDep, LLMDep, OpenSearchDep
-from src.domain.agents.fusionsearch.schemas import AskRequest, AskResponse
+from src.agents.fusionsearch.schemas import AskRequest, AskResponse
 from src.domain.langfuse.tracer import RAGTracer
 
 logger = logging.getLogger(__name__)

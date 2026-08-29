@@ -1,6 +1,5 @@
 import pytest
 from src.config import RedisSettings
-from src.domain.agents.fusionsearch.schemas import AskRequest
 from src.domain.cache.semantic import SemanticCacheClient
 
 

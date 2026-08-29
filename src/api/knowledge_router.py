@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from src.dependencies import KnowledgeRouterDep
-from src.domain.agents.knowledgerouter.schemas import KnowledgeRouterRequest, KnowledgeRouterResponse
+from src.agents.knowledgerouter.schemas import KnowledgeRouterRequest, KnowledgeRouterResponse
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge-router"])
 

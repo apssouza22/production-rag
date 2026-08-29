@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
-from src.domain.agents.fusionsearch.nodes import (
+from src.agents.fusionsearch.nodes import (
     ainvoke_retrieve_step,
     ainvoke_grade_documents_step,
     ainvoke_rewrite_query_step,
@@ -13,9 +13,9 @@ from src.domain.agents.fusionsearch.nodes import (
     ainvoke_out_of_scope_step,
     continue_after_guardrail,
 )
-from src.domain.agents.fusionsearch.nodes.utils import get_latest_query, get_latest_context
-from src.domain.agents.fusionsearch.models import GuardrailScoring, GradeDocuments
-from src.domain.agents.fusionsearch.state import AgentState
+from src.agents.fusionsearch.nodes.utils import get_latest_query, get_latest_context
+from src.agents.fusionsearch.models import GuardrailScoring, GradeDocuments
+from src.agents.fusionsearch.state import AgentState
 
 
 class TestGuardrailNode:

@@ -7,7 +7,7 @@ from langgraph.types import Command
 from src.domain.agent_fault_tolerance.metadata import fault_metadata
 
 if TYPE_CHECKING:
-    from src.domain.agents.fusionsearch.state import AgentState
+    from src.agents.fusionsearch.state import AgentState
 
 logger = logging.getLogger(__name__)
 

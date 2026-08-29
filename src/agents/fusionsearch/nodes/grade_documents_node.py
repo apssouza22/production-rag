@@ -4,10 +4,10 @@ from typing import Dict
 
 from langgraph.runtime import Runtime
 
-from src.domain.agents.fusionsearch.context import Context
-from src.domain.agents.fusionsearch.models import GradeDocuments, GradingResult
-from src.domain.agents.fusionsearch.prompts import GRADE_DOCUMENTS_PROMPT
-from src.domain.agents.fusionsearch.state import AgentState
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.models import GradeDocuments, GradingResult
+from src.agents.fusionsearch.prompts import GRADE_DOCUMENTS_PROMPT
+from src.agents.fusionsearch.state import AgentState
 from .utils import get_latest_context, get_latest_query
 
 logger = logging.getLogger(__name__)

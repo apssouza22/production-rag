@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.domain.agents.fusionsearch.context import Context
-from src.domain.agents.fusionsearch.retrieval_settings import RetrievalSettings
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 from src.domain.jinaai.jina import JinaRerankResult
 
 
