@@ -3,10 +3,16 @@ import time
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
-from langfuse.langchain import CallbackHandler
 
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
+from src.domain.middleware import (
+    AgentContext,
+    AgentPipeline,
+    ErrorHandlingMiddleware,
+    LangfuseTracingMiddleware,
+    LoggingMiddleware,
+)
 
 from .config import TextToSQLConfig
 from .graph import build_text_to_sql_graph
@@ -43,7 +49,26 @@ class TextToSQLService:
             config=self.agent_config,
         )
 
-        logger.info("TextToSQLService initialized (dialect=%s, tables=%s)", self.agent_config.dialect, self.agent_config.include_tables)
+        self.middleware_pipeline = AgentPipeline(
+            middlewares=[
+                LangfuseTracingMiddleware(
+                    langfuse_tracer=langfuse_tracer,
+                    trace_name="text_to_sql_request",
+                    environment=self.agent_config.settings.environment,
+                    build_trace_metadata=self._build_trace_metadata,
+                    build_trace_output=self._build_trace_output,
+                ),
+                LoggingMiddleware(),
+                ErrorHandlingMiddleware(),
+            ],
+            invoke_fn=self._core_invoke,
+        )
+
+        logger.info(
+            "TextToSQLService initialized (dialect=%s, tables=%s)",
+            self.agent_config.dialect,
+            self.agent_config.include_tables,
+        )
 
     async def ask(
         self,
@@ -67,63 +92,63 @@ class TextToSQLService:
                 config=self.agent_config,
             )
 
-        metadata = {
-            "service": "text_to_sql",
-            "model": model_to_use,
-            "dialect": self.agent_config.dialect,
-        }
-
-        async def _execute_with_trace():
-            if self.langfuse_tracer and self.langfuse_tracer.client:
-                with self.langfuse_tracer.trace_agent_request(
-                    name="text_to_sql_request",
-                    input_data={"query": query},
-                    user_id=user_id,
-                    session_id=f"session_{user_id}",
-                    environment=self.agent_config.settings.environment,
-                    metadata=metadata,
-                ) as trace_obj:
-                    return await self._run_workflow(query, user_id, trace_obj)
-            return await self._run_workflow(query, user_id, None)
-
         try:
-            return await _execute_with_trace()
+            return await self._run_workflow(query, model_to_use, user_id)
         except Exception:
             logger.exception("Text-to-SQL execution failed")
             raise
 
-    async def _run_workflow(self, query: str, user_id: str, trace) -> dict:
+    async def _core_invoke(self, ctx: AgentContext) -> list:
+        """Run the LangGraph workflow; graph result is stored on ctx.metadata."""
+        config = dict(ctx.config.get("graph_config", {}))
+        result = await self.graph.ainvoke({"messages": list(ctx.messages)}, config=config)
+        ctx.metadata["graph_result"] = result
+        return result.get("messages", [])
+
+    def _build_trace_metadata(self, ctx: AgentContext) -> dict:
+        return dict(ctx.metadata.get("trace_metadata", {}))
+
+    def _build_trace_output(self, ctx: AgentContext, result: list) -> dict:
+        execution_time = time.time() - ctx.metadata.get("_trace_start_time", time.time())
+        graph_result = ctx.metadata.get("graph_result") or {"messages": result}
+        answer = self._extract_answer(graph_result)
+        sql_queries = self._extract_sql_queries(graph_result)
+        reasoning_steps = self._extract_reasoning_steps(graph_result, sql_queries)
+        return {
+            "answer": answer,
+            "sql_queries": sql_queries,
+            "reasoning_steps": reasoning_steps,
+            "execution_time": execution_time,
+        }
+
+    async def _run_workflow(self, query: str, model_to_use: str, user_id: str) -> dict:
         start_time = time.time()
-        config = {"thread_id": f"user_{user_id}_session_{int(time.time())}"}
+        session_id = f"user_{user_id}_session_{int(time.time())}"
 
-        if self.langfuse_tracer and trace:
-            try:
-                config["callbacks"] = [CallbackHandler()]
-            except Exception as exc:
-                logger.warning("Failed to create Langfuse callback handler: %s", exc)
-
-        result = await self.graph.ainvoke(
-            {"messages": [HumanMessage(content=query)]},
-            config=config,
+        ctx = AgentContext(
+            messages=[HumanMessage(content=query)],
+            session_id=session_id,
+            user_id=None,
+            config={"model": model_to_use, "graph_config": {"thread_id": session_id}},
+            agent_name="texttosql",
+            metadata={
+                "query": query,
+                "user_id": user_id,
+                "trace_metadata": {
+                    "service": "text_to_sql",
+                    "model": model_to_use,
+                    "dialect": self.agent_config.dialect,
+                },
+            },
         )
 
-        execution_time = time.time() - start_time
-        answer = self._extract_answer(result)
-        sql_queries = self._extract_sql_queries(result)
-        reasoning_steps = self._extract_reasoning_steps(result, sql_queries)
+        await self.middleware_pipeline.run(ctx)
 
-        trace_id = None
-        if trace:
-            trace_id = getattr(trace, "trace_id", None) or self.langfuse_tracer.get_trace_id()
-            trace.update(
-                output={
-                    "answer": answer,
-                    "sql_queries": sql_queries,
-                    "reasoning_steps": reasoning_steps,
-                    "execution_time": execution_time,
-                }
-            )
-            self.langfuse_tracer.flush()
+        execution_time = time.time() - start_time
+        graph_result = ctx.metadata.get("graph_result") or {}
+        answer = self._extract_answer(graph_result)
+        sql_queries = self._extract_sql_queries(graph_result)
+        reasoning_steps = self._extract_reasoning_steps(graph_result, sql_queries)
 
         return {
             "query": query,
@@ -131,7 +156,7 @@ class TextToSQLService:
             "sql_queries": sql_queries,
             "reasoning_steps": reasoning_steps,
             "execution_time": execution_time,
-            "trace_id": trace_id,
+            "trace_id": ctx.metadata.get("trace_id"),
         }
 
     def _extract_answer(self, result: dict) -> str:

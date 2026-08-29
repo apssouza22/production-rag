@@ -48,7 +48,7 @@ def mock_ollama_client():
 @pytest.fixture
 def router_service(mock_agentic_rag, mock_text_to_sql, mock_ollama_client, monkeypatch):
     monkeypatch.setattr(
-        "src.domain.agents.knowledgerouter.service.build_knowledge_router_graph",
+        "src.agents.knowledgerouter.service.build_knowledge_router_graph",
         lambda **kwargs: AsyncMock(),
     )
 

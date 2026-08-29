@@ -2,12 +2,19 @@ import logging
 import time
 from typing import List, Optional
 
-from langfuse.langchain import CallbackHandler
+from langchain_core.messages import HumanMessage
 
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.texttosql.service import TextToSQLService
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
+from src.domain.middleware import (
+    AgentContext,
+    AgentPipeline,
+    ErrorHandlingMiddleware,
+    LangfuseTracingMiddleware,
+    LoggingMiddleware,
+)
 
 from .config import KnowledgeRouterConfig
 from .graph import build_knowledge_router_graph
@@ -49,6 +56,21 @@ class KnowledgeRouterService:
             config=self.agent_config,
         )
 
+        self.middleware_pipeline = AgentPipeline(
+            middlewares=[
+                LangfuseTracingMiddleware(
+                    langfuse_tracer=langfuse_tracer,
+                    trace_name="knowledge_router_request",
+                    environment=self.agent_config.settings.environment,
+                    build_trace_metadata=self._build_trace_metadata,
+                    build_trace_output=self._build_trace_output,
+                ),
+                LoggingMiddleware(),
+                ErrorHandlingMiddleware(),
+            ],
+            invoke_fn=self._core_invoke,
+        )
+
         logger.info("KnowledgeRouterService initialized")
 
     async def ask(
@@ -60,71 +82,77 @@ class KnowledgeRouterService:
         if not query or not query.strip():
             raise ValueError("Query cannot be empty")
 
-        metadata = {
-            "service": "knowledge_router",
-            "model": self.agent_config.model,
-        }
-
-        async def _execute_with_trace():
-            if self.langfuse_tracer and self.langfuse_tracer.client:
-                with self.langfuse_tracer.trace_agent_request(
-                    name="knowledge_router_request",
-                    input_data={"query": query},
-                    user_id=user_id,
-                    session_id=f"session_{user_id}",
-                    environment=self.agent_config.settings.environment,
-                    metadata=metadata,
-                ) as trace_obj:
-                    return await self._run_workflow(query, user_id, trace_obj)
-            return await self._run_workflow(query, user_id, None)
-
         try:
-            return await _execute_with_trace()
+            return await self._run_workflow(query, user_id)
         except Exception:
             logger.exception("Knowledge router execution failed")
             raise
 
-    async def _run_workflow(self, query: str, user_id: str, trace) -> dict:
-        start_time = time.time()
-        config = {"thread_id": f"user_{user_id}_session_{int(time.time())}"}
-
-        if self.langfuse_tracer and trace:
-            try:
-                config["callbacks"] = [CallbackHandler()]
-            except Exception as exc:
-                logger.warning("Failed to create Langfuse callback handler: %s", exc)
-
+    async def _core_invoke(self, ctx: AgentContext) -> list:
+        """Run the LangGraph workflow; graph result is stored on ctx.metadata."""
+        query = ctx.metadata["query"]
+        config = dict(ctx.config.get("graph_config", {}))
         result = await self.graph.ainvoke({"query": query}, config=config)
+        ctx.metadata["graph_result"] = result
+        return []
+
+    def _build_trace_metadata(self, ctx: AgentContext) -> dict:
+        return dict(ctx.metadata.get("trace_metadata", {}))
+
+    def _build_trace_output(self, ctx: AgentContext, result: list) -> dict:
+        execution_time = time.time() - ctx.metadata.get("_trace_start_time", time.time())
+        graph_result = ctx.metadata.get("graph_result", {})
+        classifications = [
+            classification_to_schema(item) for item in graph_result.get("classifications", [])
+        ]
+        agent_results = self._build_agent_results(graph_result.get("results", []))
+        reasoning_steps = self._extract_reasoning_steps(classifications, agent_results)
+        return {
+            "answer": graph_result.get("final_answer", ""),
+            "classifications": [item.model_dump() for item in classifications],
+            "agent_results": [item.model_dump() for item in agent_results],
+            "reasoning_steps": reasoning_steps,
+            "execution_time": execution_time,
+        }
+
+    async def _run_workflow(self, query: str, user_id: str) -> dict:
+        start_time = time.time()
+        session_id = f"user_{user_id}_session_{int(time.time())}"
+
+        ctx = AgentContext(
+            messages=[HumanMessage(content=query)],
+            session_id=session_id,
+            user_id=None,
+            config={"graph_config": {"thread_id": session_id}},
+            agent_name="knowledgerouter",
+            metadata={
+                "query": query,
+                "user_id": user_id,
+                "trace_metadata": {
+                    "service": "knowledge_router",
+                    "model": self.agent_config.model,
+                },
+            },
+        )
+
+        await self.middleware_pipeline.run(ctx)
 
         execution_time = time.time() - start_time
+        graph_result = ctx.metadata.get("graph_result") or {}
         classifications = [
-            classification_to_schema(item) for item in result.get("classifications", [])
+            classification_to_schema(item) for item in graph_result.get("classifications", [])
         ]
-        agent_results = self._build_agent_results(result.get("results", []))
+        agent_results = self._build_agent_results(graph_result.get("results", []))
         reasoning_steps = self._extract_reasoning_steps(classifications, agent_results)
-
-        trace_id = None
-        if trace:
-            trace_id = getattr(trace, "trace_id", None) or self.langfuse_tracer.get_trace_id()
-            trace.update(
-                output={
-                    "answer": result.get("final_answer", ""),
-                    "classifications": [item.model_dump() for item in classifications],
-                    "agent_results": [item.model_dump() for item in agent_results],
-                    "reasoning_steps": reasoning_steps,
-                    "execution_time": execution_time,
-                }
-            )
-            self.langfuse_tracer.flush()
 
         return {
             "query": query,
-            "answer": result.get("final_answer", ""),
+            "answer": graph_result.get("final_answer", ""),
             "classifications": classifications,
             "agent_results": agent_results,
             "reasoning_steps": reasoning_steps,
             "execution_time": execution_time,
-            "trace_id": trace_id,
+            "trace_id": ctx.metadata.get("trace_id"),
         }
 
     def _build_agent_results(self, results: list) -> List[AgentResultItem]:

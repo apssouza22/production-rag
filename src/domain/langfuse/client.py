@@ -33,6 +33,10 @@ class LangfuseTracer:
                     flush_interval=self.settings.flush_interval,
                     debug=self.settings.debug,
                 )
+                langfuse_logger = logging.getLogger("langfuse")
+                langfuse_logger.setLevel(
+                    logging.DEBUG if self.settings.debug else logging.INFO
+                )
                 logger.info("Langfuse v4 tracing initialized (host: %s)", self.settings.host)
             except Exception as e:
                 logger.error("Failed to initialize Langfuse: %s", e)

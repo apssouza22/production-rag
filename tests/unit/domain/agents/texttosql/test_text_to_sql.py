@@ -19,11 +19,11 @@ def mock_ollama_client():
 @pytest.fixture
 def test_service(mock_ollama_client, monkeypatch):
     monkeypatch.setattr(
-        "src.domain.agents.texttosql.service.create_sql_tools",
+        "src.agents.texttosql.service.create_sql_tools",
         lambda **kwargs: ([Mock(name="sql_db_list_tables"), Mock(name="sql_db_schema"), Mock(name="sql_db_query")], Mock()),
     )
     monkeypatch.setattr(
-        "src.domain.agents.texttosql.service.build_text_to_sql_graph",
+        "src.agents.texttosql.service.build_text_to_sql_graph",
         lambda **kwargs: AsyncMock(),
     )
 

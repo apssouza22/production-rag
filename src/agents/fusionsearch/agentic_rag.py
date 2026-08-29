@@ -3,12 +3,16 @@ import time
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
-from langfuse.langchain import CallbackHandler
-
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
-from src.domain.middleware import AgentContext, AgentPipeline, ErrorHandlingMiddleware, LoggingMiddleware
+from src.domain.middleware import (
+    AgentContext,
+    AgentPipeline,
+    ErrorHandlingMiddleware,
+    LangfuseTracingMiddleware,
+    LoggingMiddleware,
+)
 
 from .config import GraphConfig
 from .context import Context
@@ -50,6 +54,13 @@ class AgenticRAGService:
 
         self.middleware_pipeline = AgentPipeline(
             middlewares=[
+                LangfuseTracingMiddleware(
+                    langfuse_tracer=langfuse_tracer,
+                    trace_name="agentic_rag_request",
+                    environment=self.graph_config.settings.environment,
+                    build_trace_metadata=self._build_trace_metadata,
+                    build_trace_output=self._build_trace_output,
+                ),
                 GuardrailMiddleware(
                     llm_client=llm_client,
                     config=self.graph_config,
@@ -112,29 +123,8 @@ class AgenticRAGService:
             logger.error("Empty query received")
             raise ValueError("Query cannot be empty")
 
-        metadata = {
-            "service": "agentic_rag",
-            "top_k": self.graph_config.top_k,
-            "use_hybrid": self.graph_config.use_hybrid,
-            "model": model_to_use,
-        }
-
-        async def _execute_with_trace():
-            """Execute the workflow with or without tracing context."""
-            if self.langfuse_tracer and self.langfuse_tracer.client:
-                with self.langfuse_tracer.trace_agent_request(
-                    name="agentic_rag_request",
-                    input_data={"query": query},
-                    user_id=user_id,
-                    session_id=f"session_{user_id}",
-                    environment=self.graph_config.settings.environment,
-                    metadata=metadata,
-                ) as trace_obj:
-                    return await self._run_workflow(query, model_to_use, user_id, trace_obj)
-            return await self._run_workflow(query, model_to_use, user_id, None)
-
         try:
-            return await _execute_with_trace()
+            return await self._run_workflow(query, model_to_use, user_id)
         except Exception as e:
             logger.error(f"Error in Agentic RAG execution: {str(e)}")
             logger.exception("Full traceback:")
@@ -175,97 +165,103 @@ class AgenticRAGService:
         ctx.metadata["graph_result"] = result
         return result.get("messages", [])
 
-    async def _run_workflow(self, query: str, model_to_use: str, user_id: str, trace) -> dict:
+    def _build_trace_metadata(self, ctx: AgentContext) -> dict:
+        """Build Langfuse metadata from the current request context."""
+        return dict(ctx.metadata.get("trace_metadata", {}))
+
+    def _build_trace_output(self, ctx: AgentContext, result: list) -> dict:
+        """Build Langfuse trace output after pipeline execution."""
+        execution_time = time.time() - ctx.metadata.get("_trace_start_time", time.time())
+        guardrail_result = ctx.metadata.get("guardrail_result")
+        graph_result = ctx.metadata.get("graph_result")
+
+        if graph_result is not None:
+            answer = self._extract_answer(graph_result)
+            sources = self._extract_sources(graph_result)
+            retrieval_attempts = graph_result.get("retrieval_attempts", 0)
+            reasoning_steps = self._extract_reasoning_steps(graph_result, guardrail_result)
+        else:
+            answer = self._extract_answer({"messages": result})
+            sources = []
+            retrieval_attempts = 0
+            reasoning_steps = self._extract_reasoning_steps({}, guardrail_result)
+
+        return {
+            "answer": answer,
+            "sources_count": len(sources),
+            "retrieval_attempts": retrieval_attempts,
+            "reasoning_steps": reasoning_steps,
+            "execution_time": execution_time,
+        }
+
+    async def _run_workflow(self, query: str, model_to_use: str, user_id: str) -> dict:
         """Execute the middleware pipeline and build the API response."""
-        try:
-            start_time = time.time()
-            session_id = f"user_{user_id}_session_{int(time.time())}"
+        start_time = time.time()
+        session_id = f"user_{user_id}_session_{int(time.time())}"
 
-            logger.info("Invoking agent pipeline (guardrail → LangGraph)")
+        logger.info("Invoking agent pipeline (tracing → guardrail → LangGraph)")
 
-            graph_config: dict = {"thread_id": session_id}
-            if self.langfuse_tracer and trace:
-                try:
-                    graph_config["callbacks"] = [CallbackHandler()]
-                    logger.info("CallbackHandler added for LangGraph LLM tracing")
-                except Exception as e:
-                    logger.warning(f"Failed to create CallbackHandler: {e}")
-
-            ctx = AgentContext(
-                messages=[HumanMessage(content=query)],
-                session_id=session_id,
-                user_id=None,
-                config={"model": model_to_use, "graph_config": graph_config},
-                agent_name="fusionsearch",
-                metadata={"query": query, "user_id": user_id, "trace": trace},
-            )
-
-            pipeline_result = await self.middleware_pipeline.run(ctx)
-            ctx.metadata["pipeline_result"] = pipeline_result
-
-            execution_time = time.time() - start_time
-            guardrail_result = ctx.metadata.get("guardrail_result")
-            graph_result = ctx.metadata.get("graph_result")
-
-            if graph_result is not None:
-                answer = self._extract_answer(graph_result)
-                sources = self._extract_sources(graph_result)
-                retrieval_attempts = graph_result.get("retrieval_attempts", 0)
-                reasoning_steps = self._extract_reasoning_steps(graph_result, guardrail_result)
-                fault_tolerance = graph_result.get("metadata", {}).get("fault_tolerance")
-            else:
-                answer = self._extract_answer({"messages": pipeline_result})
-                sources = []
-                retrieval_attempts = 0
-                reasoning_steps = self._extract_reasoning_steps({}, guardrail_result)
-                fault_tolerance = None
-
-            trace_id = None
-            if trace:
-                trace_id = getattr(trace, "trace_id", None) or self.langfuse_tracer.get_trace_id()
-                trace.update(
-                    output={
-                        "answer": answer,
-                        "sources_count": len(sources),
-                        "retrieval_attempts": retrieval_attempts,
-                        "reasoning_steps": reasoning_steps,
-                        "execution_time": execution_time,
-                    }
-                )
-                self.langfuse_tracer.flush()
-
-            logger.info("=" * 80)
-            logger.info("Agentic RAG Request Completed Successfully")
-            logger.info(f"Answer length: {len(answer)} characters")
-            logger.info(f"Sources found: {len(sources)}")
-            logger.info(f"Retrieval attempts: {retrieval_attempts}")
-            logger.info(f"Execution time: {execution_time:.2f}s")
-            if trace_id:
-                logger.info(f"Langfuse trace ID: {trace_id}")
-            logger.info("=" * 80)
-
-            return {
+        ctx = AgentContext(
+            messages=[HumanMessage(content=query)],
+            session_id=session_id,
+            user_id=None,
+            config={"model": model_to_use, "graph_config": {"thread_id": session_id}},
+            agent_name="fusionsearch",
+            metadata={
                 "query": query,
-                "answer": answer,
-                "sources": sources,
-                "reasoning_steps": reasoning_steps,
-                "retrieval_attempts": retrieval_attempts,
-                "rewritten_query": graph_result.get("rewritten_query") if graph_result else None,
-                "execution_time": execution_time,
-                "guardrail_score": guardrail_result.score if guardrail_result else None,
-                "trace_id": trace_id,
-                "fault_tolerance": fault_tolerance,
-            }
+                "user_id": user_id,
+                "trace_metadata": {
+                    "service": "agentic_rag",
+                    "top_k": self.graph_config.top_k,
+                    "use_hybrid": self.graph_config.use_hybrid,
+                    "model": model_to_use,
+                },
+            },
+        )
 
-        except Exception as e:
-            logger.error(f"Error in workflow execution: {str(e)}")
-            logger.exception("Full traceback:")
+        pipeline_result = await self.middleware_pipeline.run(ctx)
 
-            if trace:
-                trace.update(output={"error": str(e)}, level="ERROR")
-                self.langfuse_tracer.flush()
+        execution_time = time.time() - start_time
+        guardrail_result = ctx.metadata.get("guardrail_result")
+        graph_result = ctx.metadata.get("graph_result")
 
-            raise
+        if graph_result is not None:
+            answer = self._extract_answer(graph_result)
+            sources = self._extract_sources(graph_result)
+            retrieval_attempts = graph_result.get("retrieval_attempts", 0)
+            reasoning_steps = self._extract_reasoning_steps(graph_result, guardrail_result)
+            fault_tolerance = graph_result.get("metadata", {}).get("fault_tolerance")
+        else:
+            answer = self._extract_answer({"messages": pipeline_result})
+            sources = []
+            retrieval_attempts = 0
+            reasoning_steps = self._extract_reasoning_steps({}, guardrail_result)
+            fault_tolerance = None
+
+        trace_id = ctx.metadata.get("trace_id")
+
+        logger.info("=" * 80)
+        logger.info("Agentic RAG Request Completed Successfully")
+        logger.info(f"Answer length: {len(answer)} characters")
+        logger.info(f"Sources found: {len(sources)}")
+        logger.info(f"Retrieval attempts: {retrieval_attempts}")
+        logger.info(f"Execution time: {execution_time:.2f}s")
+        if trace_id:
+            logger.info(f"Langfuse trace ID: {trace_id}")
+        logger.info("=" * 80)
+
+        return {
+            "query": query,
+            "answer": answer,
+            "sources": sources,
+            "reasoning_steps": reasoning_steps,
+            "retrieval_attempts": retrieval_attempts,
+            "rewritten_query": graph_result.get("rewritten_query") if graph_result else None,
+            "execution_time": execution_time,
+            "guardrail_score": guardrail_result.score if guardrail_result else None,
+            "trace_id": trace_id,
+            "fault_tolerance": fault_tolerance,
+        }
 
     def _extract_answer(self, result: dict) -> str:
         """Extract final answer from graph result."""
