@@ -9,7 +9,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.agents.fault_tolerance import (
+from src.domain.agents.agent_fault_tolerance import (
     build_llm_timeout,
     build_retry_policy,
     build_tool_retry_policy,

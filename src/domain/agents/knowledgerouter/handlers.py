@@ -5,7 +5,7 @@ from langgraph.errors import NodeError
 from langgraph.graph import END
 from langgraph.types import Command
 
-from src.domain.agents.fault_tolerance.metadata import fault_metadata
+from src.domain.agents.agent_fault_tolerance.metadata import fault_metadata
 
 if TYPE_CHECKING:
     from src.domain.agents.knowledgerouter.state import RouterState

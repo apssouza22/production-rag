@@ -5,7 +5,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 from pydantic import BaseModel, Field
 
-from src.domain.agents.fault_tolerance import (
+from src.domain.agents.agent_fault_tolerance import (
     build_llm_timeout,
     build_retry_policy,
 )
