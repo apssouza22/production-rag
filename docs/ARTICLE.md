@@ -79,7 +79,7 @@ Three things about this topology are worth noticing before we go deeper.
 
 The write path and the read path are separate. Airflow owns ingestion and never serves traffic; the API owns serving and never fetches PDFs. They share PostgreSQL and OpenSearch but nothing else. This means a slow parse of a 200-page paper cannot add latency to a user's question.
 
-Every model call goes through a gateway. The application does not know whether it is talking to a local Llama or to OpenAI, which is what makes provider fallback possible at all.
+Every model call goes through a gateway or a provider client that knows how to fail over. The application does not know whether it is talking to a local Llama or to OpenAI, and when the primary model errors it walks a configured fallback chain before giving up. That is what makes provider and model fallback possible at all.
 
 Observability is not a sidecar you bolt on at the end. Traces come from both the API and the agent layer, and the evaluation job feeds scores back onto the same traces, which turns the tracing system into the system of record for quality.
 
@@ -165,7 +165,7 @@ Retrieval searches the enriched version; generation reads the original. That spl
 
 Both retrieval signals are wired to the enriched field. The embedding is computed over `contextualized_text`, and the BM25 leg boosts it hardest at `contextualized_text^4` against `chunk_text^2`. Reranking, notably, is fed the raw `chunk_text`: a cross-encoder reading the query and the passage together does not need the situating sentence, and giving it one would let a well-written context sentence score higher than the passage it describes.
 
-Failure is per-chunk, not per-paper. Context generation runs concurrently under a semaphore of 3; if one chunk's LLM call fails, its `chunk_context` stays `None`, `get_contextualized_text()` falls back to the raw text, and the paper still indexes. You get a document with a mix of contextualized and plain chunks rather than a failed DAG task. The log line reports the ratio (`Contextualized 47/52 chunks`), which is the number to alert on if it starts drifting.
+Failure is per-chunk, not per-paper. Context generation runs concurrently under a semaphore of 3; if one chunk's LLM call fails on the primary model, the client walks `BIFROST_FALLBACK_MODELS` or `OLLAMA_FALLBACK_MODELS` before giving up. Only if every model in the chain fails does `chunk_context` stay `None`, `get_contextualized_text()` fall back to the raw text, and the paper still index. You get a document with a mix of contextualized and plain chunks rather than a failed DAG task. The log line reports the ratio (`Contextualized 47/52 chunks`), which is the number to alert on if it starts drifting.
 
 It is off by default (`contextualization_enabled: false`) and that is the honest trade: one LLM call per chunk at index time, times roughly 20-50 chunks per paper. For a few thousand papers that is a real bill and a much longer DAG run. It is also the reason the whole thing is worth building as a *pipeline stage with a flag* rather than a rewrite: turn it on for the corpus where precision is your bottleneck, leave it off for the rest, and the retrieval code does not change either way, because the field is always there and merely equals `chunk_text` when contextualization is off.
 
@@ -220,7 +220,39 @@ One structural benefit: the HTTP search endpoint and the agent's retrieval tool 
 
 The application talks to LLMs through a `LLMClient` protocol with two implementations: direct Ollama, and Bifrost (an OpenAI-compatible gateway). One environment variable switches between them.
 
-The abstraction earns its keep through the fallback chain. Bifrost is configured with an ordered list of models, `openai/gpt-4o-mini,ollama/llama3.2:1b`. On failure the client walks the chain, logging each hop. Note what this buys you: when OpenAI has an incident, requests land on a local model. Answers get worse; the service stays up. Whether that trade is right depends entirely on your product, and it should be a deliberate decision rather than an accident of whichever SDK you imported first.
+The abstraction earns its keep through **model fallback**. This is not a nice-to-have resilience feature; it is the difference between a brief outage at your cloud provider and a wall of 500s across every agent node. Guardrail, grading, query rewriting, answer generation, SQL synthesis, chunk contextualization at index time — all of them call the same client. When the primary model is down, rate-limited, or returns a hard error, the service should degrade to a cheaper or local model and keep answering, not surface a stack trace to the user.
+
+### 6.0 Model fallback (both providers)
+
+Fallback is implemented in the LLM clients themselves, not scattered through agent nodes. Shared logic in `src/domain/llm/fallback.py` parses a comma-separated chain, skips duplicates, and excludes the primary model. Both `OllamaClient` and `BifrostClient` use it.
+
+**What gets covered.** Every path that actually invokes a model:
+
+| Call path | Mechanism |
+|---|---|
+| `generate()` / `generate_stream()` | Client loops the chain; on failure it logs a warning and tries the next model |
+| `get_langchain_model()` | LangChain `with_fallbacks()` — used by guardrail, grading, rewriting, answer generation, router, SQL |
+| Chunk contextualization at index time | `ChunkContextualizer` calls `generate()`, so it inherits the same chain |
+
+Agent graphs do not implement their own model retry loops for inference failures. They get failover from the client they were injected with.
+
+**Two configuration knobs**, one per provider:
+
+```bash
+# Bifrost (LLM_PROVIDER=bifrost) — provider/model IDs as Bifrost expects
+BIFROST_FALLBACK_MODELS=openai/gpt-5.6-luna,ollama/llama3.2:1b
+
+# Direct Ollama (LLM_PROVIDER=ollama) — local model names only
+OLLAMA_FALLBACK_MODELS=llama3.2:3b,llama3.2:1b
+```
+
+On Bifrost, entries without a `provider/` prefix are normalized (`gpt-5.6-luna` → `openai/gpt-5.6-luna`, `llama3.2:1b` → `ollama/llama3.2:1b`). The primary model from the call (`AGENT_MODEL`, `OLLAMA_MODEL`, or the model passed into `generate()`) is always tried first; the chain only runs when that call fails.
+
+**What this buys you in production.** When OpenAI has an incident, requests land on a local Ollama model. Answers get worse; the service stays up. When you run `LLM_PROVIDER=ollama` in dev and your 3B model is not pulled yet, the client can fall back to the 1B model you actually have. Whether that trade is right depends on your product, but it should be a deliberate env-var decision rather than an accident of whichever SDK you imported first.
+
+**What does not retry.** Connection errors and timeouts fail fast — retrying the same dead host three times with three different model names does not help. Fallback is for model-level failures: provider errors, model not found, structured-output parse failures, transient API faults. That distinction matters when you read the logs: a `Bifrost model X failed; trying fallback model Y` line is model failover working; a `Cannot connect to Bifrost gateway` line is infrastructure down and no chain will save you.
+
+**Visibility.** Each hop is logged at warning level with the failing model and the next candidate. If you are not counting fallback invocations in metrics, you will not notice that half your traffic quietly shifted to a 1B local model during an outage — same class of silent degradation as a misconfigured reranker key.
 
 The gateway also gives you one place for request logging, per-provider metrics, and key management, instead of provider-specific code sprinkled through the domain layer. In this codebase that management is not aspirational: `bifrost/config.json` seeds **governance** on startup — virtual keys, budgets, and rate limits — into a SQLite config store so policy travels with the repo.
 
@@ -250,6 +282,8 @@ BIFROST_HOST=http://localhost:8090          # http://bifrost:8080 inside compose
 BIFROST_API_KEY=sk-bf-agent-1-dev           # default for /ask, ping
 BIFROST_API_KEY_AGENT_1=sk-bf-agent-1-dev   # Agentic RAG
 BIFROST_API_KEY_AGENT_2=sk-bf-agent-2-dev   # router + SQL
+BIFROST_FALLBACK_MODELS=openai/gpt-5.6-luna,ollama/llama3.2:1b
+OLLAMA_FALLBACK_MODELS=llama3.2:3b,llama3.2:1b   # when LLM_PROVIDER=ollama
 ```
 
 Provider routing still lives in `bifrost/config.json`. OpenAI and Ollama are both registered; Ollama points at the Docker network (`allow_private_network: true`). Each virtual key's `provider_configs` set weights and `allowed_models` — agent-1 can reach `gpt-4o-mini`, `gpt-4o`, and two Ollama sizes; agent-2 is restricted to `gpt-4o-mini` and `llama3.2:1b`.
@@ -510,7 +544,8 @@ Here is the full degradation ladder, which is the artefact I'd want on the wall:
 |---|---|---|
 | Embedding API down | BM25-only search | Slightly worse recall |
 | Reranker down or unkeyed | Original fusion order | Slightly worse precision |
-| Primary LLM down | Fallback chain to local model | Lower answer quality |
+| Primary LLM / model fails | Fallback chain to next configured model (Bifrost or Ollama) | Lower answer quality, service stays up |
+| LLM gateway unreachable | Hard failure (no model chain retry) | Error until host is back |
 | Redis down | Cache bypassed | Slower, still correct |
 | Langfuse down | Tracing skipped | No user impact, blind debugging |
 | Guardrail LLM fails | Score 50, refuse | False refusal, fails safe |
@@ -602,7 +637,7 @@ Configuration is Pydantic Settings with per-domain classes and a nested `__` del
 
 Service construction goes through `make_*` factory functions, cached where a singleton is appropriate. The FastAPI lifespan builds everything once, attaches it to `app.state`, and routes receive dependencies through `Annotated[..., Depends(...)]` aliases. One place to see what the system depends on, and injection points everywhere a test needs to substitute a fake.
 
-The LLM layer is a `Protocol`, not a base class. Ollama and Bifrost clients satisfy it structurally, tests substitute trivial fakes, and no domain code imports a provider SDK. This is what makes the "switch providers with one env var" claim true rather than aspirational.
+The LLM layer is a `Protocol`, not a base class. Ollama and Bifrost clients satisfy it structurally, tests substitute trivial fakes, and no domain code imports a provider SDK. This is what makes the "switch providers with one env var" claim true rather than aspirational. Both clients implement the same fallback contract: `BIFROST_FALLBACK_MODELS` and `OLLAMA_FALLBACK_MODELS` drive a shared chain parser, and failover is centralized in `generate()` and `get_langchain_model()` so agent nodes never reimplement it.
 
 When `LLM_PROVIDER=bifrost`, each LangGraph agent gets its own virtual key via `make_agent_llm_client`, so governance budgets and rate limits attach to workloads rather than to a single shared API token.
 
@@ -655,7 +690,7 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Reason | Query decomposition and source routing | "How many X and what do they say?" gets a SQL answer and a retrieval answer | One classification call, parallel branches | Yes |
 | Reason | SQL review node before execution | Generated SQL is checked by a second model before it touches the database | One LLM call per query attempt | Yes |
 | Generate | Bifrost virtual keys per agent workload | Spend and throughput caps at the gateway; model allow-lists per agent | Two keys to manage; `enforce_auth` breaks `dummy-key` dev shortcuts | Yes, when `LLM_PROVIDER=bifrost` |
-| Generate | Provider fallback chain via Bifrost | Primary model outage lands on local Ollama instead of a 500 | Lower answer quality on fallback | Yes |
+| Generate | Model fallback chain (`BIFROST_FALLBACK_MODELS` / `OLLAMA_FALLBACK_MODELS`) | Primary model outage lands on the next model instead of a 500; covers `generate()` and LangGraph nodes | Lower answer quality on fallback; must be visible in metrics | Yes |
 | Generate | Prompt trimmed to `arxiv_id` + `chunk_text` | ~80% smaller prompts, less distraction | None | Yes |
 | Generate | Grounding instructions + citation requirement | Answers cite papers and admit insufficient context | Longer system prompt | Yes |
 | Generate | Structured output for judgement nodes | Guardrail and grader return parseable scores, not prose | None | Yes |
@@ -700,7 +735,7 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Chunking:** respect document structure, and match your embedding model's asymmetric tasks. This is where quality is won.
 - **Contextual retrieval:** give the retriever an enriched chunk and the generator the original one. A chunk that says "the second variant improves recall by 12%" is unfindable until something puts the paper back around it.
 - **Retrieval:** keyword and vector are peers, fuse them by rank not score, then rerank with a cross-encoder. Cheap recall, expensive precision, in that order.
-- **Generation:** put a gateway in front of providers so fallback is possible, seed virtual keys with budgets and rate limits per agent workload, and stop paying tokens for metadata the model doesn't need.
+- **Generation:** put a gateway in front of providers, configure an explicit model fallback chain per provider (`BIFROST_FALLBACK_MODELS`, `OLLAMA_FALLBACK_MODELS`), seed virtual keys with budgets and rate limits per agent workload, and stop paying tokens for metadata the model doesn't need.
 - **Orchestration:** a state machine with explicit guardrail, grading and bounded retry beats a straight pipeline, and costs you extra LLM calls.
 - **Failure:** decide the direction each fallback fails in, and make sure your failure handler cannot fail.
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.

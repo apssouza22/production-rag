@@ -6,7 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import Generation, LLMResult
 
-from src.domain.callbacks import TrajectoryCallback, extend_graph_callbacks
+from src.domain.trajectory_report import TrajectoryCallback, extend_graph_callbacks
 from src.domain.middleware.pipeline import AgentPipeline
 from src.domain.middleware.trajectory_middleware import TrajectoryMiddleware
 from src.domain.middleware.types import AgentContext

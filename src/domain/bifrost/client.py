@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI
 
 from src.config import Settings
 from src.domain.bifrost.exceptions import BifrostConnectionError, BifrostException, BifrostTimeoutError
-from src.domain.llm.fallback import build_fallback_models, build_model_chain
+from src.domain.llm.fallback import build_fallback_models
 from src.domain.llm.protocol import LlmProviderClient
 
 logger = logging.getLogger(__name__)

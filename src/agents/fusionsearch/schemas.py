@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from src.domain.callbacks.schemas import GraphTrajectoryResponse
+from src.domain.trajectory_report.schemas import GraphTrajectoryResponse
 
 
 class AskRequest(BaseModel):

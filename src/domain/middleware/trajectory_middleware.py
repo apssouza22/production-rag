@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from src.domain.callbacks.callback_utils import extend_graph_callbacks
-from src.domain.callbacks.trajectory import TrajectoryCallback
+from src.domain.graph.callback_utils import extend_graph_callbacks
+from src.domain.trajectory_report import TrajectoryCallback
 
 from .types import AgentContext, AgentMiddleware, InvokeResult
 
@@ -33,7 +33,7 @@ class TrajectoryMiddleware(AgentMiddleware):
 
     async def on_error(self, ctx: AgentContext, error: Exception) -> Optional[InvokeResult]:
         if self._callback is not None:
-            from src.domain.callbacks.trajectory import TrajectoryEvent
+            from src.domain.trajectory_report.trajectory import TrajectoryEvent
 
             trajectory = self._callback.finalize()
             trajectory.events.append(
