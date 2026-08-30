@@ -5,7 +5,7 @@ from typing import List, Optional
 from langchain_core.messages import HumanMessage
 
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import RagClient
+from src.domain.llm.protocol import LlmProviderClient
 from src.domain.middleware import (
     AgentContext,
     AgentPipeline,
@@ -26,7 +26,7 @@ class TextToSQLService:
 
     def __init__(
         self,
-        llm_client: RagClient,
+        llm_client: LlmProviderClient,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         agent_config: Optional[TextToSQLConfig] = None,
     ):

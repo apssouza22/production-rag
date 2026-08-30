@@ -32,7 +32,7 @@ class LlmProviderClient(ABC):
         """Stream text generation chunks from a prompt."""
 
 
-class RagClient(LlmProviderClient, ABC):
+class RagService(LlmProviderClient, ABC):
     """Full LLM client interface, including RAG generation."""
 
     @abstractmethod

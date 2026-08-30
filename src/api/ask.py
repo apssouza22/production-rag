@@ -6,7 +6,7 @@ from typing import Dict, List
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from src.dependencies import CacheDep, EmbeddingsDep, LangfuseDep, LLMDep, OpenSearchDep
+from src.dependencies import CacheDep, EmbeddingsDep, LangfuseDep, OpenSearchDep, RagClientDep
 from src.agents.fusionsearch.schemas import AskRequest, AskResponse
 from src.domain.langfuse.tracer import RAGTracer
 
@@ -81,7 +81,7 @@ async def ask_question(
     request: AskRequest,
     opensearch_client: OpenSearchDep,
     embeddings_service: EmbeddingsDep,
-    llm_client: LLMDep,
+    rag_client: RagClientDep,
     langfuse_tracer: LangfuseDep,
     cache_client: CacheDep,
 ) -> AskResponse:
@@ -137,7 +137,7 @@ async def ask_question(
 
             # Generate answer
             with rag_tracer.trace_generation(trace, request.model, final_prompt) as gen_span:
-                rag_response = await llm_client.generate_rag_answer(query=request.query, chunks=chunks, model=request.model)
+                rag_response = await rag_client.generate_rag_answer(query=request.query, chunks=chunks, model=request.model)
                 answer = rag_response.get("answer", "Unable to generate answer")
                 rag_tracer.end_generation(gen_span, answer, request.model)
 
@@ -171,7 +171,7 @@ async def ask_question_stream(
     request: AskRequest,
     opensearch_client: OpenSearchDep,
     embeddings_service: EmbeddingsDep,
-    llm_client: LLMDep,
+    rag_client: RagClientDep,
     langfuse_tracer: LangfuseDep,
     cache_client: CacheDep,
 ) -> StreamingResponse:
@@ -236,7 +236,7 @@ async def ask_question_stream(
                 # Stream generation
                 with rag_tracer.trace_generation(trace, request.model, final_prompt) as gen_span:
                     full_response = ""
-                    async for chunk in llm_client.generate_rag_answer_stream(
+                    async for chunk in rag_client.generate_rag_answer_stream(
                         query=request.query, chunks=chunks, model=request.model
                     ):
                         if chunk.get("response"):

@@ -2,13 +2,13 @@ import logging
 from typing import Any, AsyncIterator, Dict, List
 
 from src.domain.llm.exceptions import LLMException
-from src.domain.llm.protocol import RagClient, LlmProviderClient
+from src.domain.llm.protocol import RagService, LlmProviderClient
 from src.domain.ollama.prompts import RAGPromptBuilder, ResponseParser
 
 logger = logging.getLogger(__name__)
 
 
-class RAGGenerationMixin(RagClient):
+class RagServiceSimple(RagService):
     """LLM client that delegates generation to a provider and adds RAG helpers."""
 
     def __init__(self, provider: LlmProviderClient):

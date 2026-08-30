@@ -5,7 +5,7 @@ import time
 from typing import Optional
 
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import RagClient
+from src.domain.llm.protocol import LlmProviderClient
 
 from .models import GuardrailScoring
 from .prompts import GUARDRAIL_PROMPT
@@ -31,7 +31,7 @@ def build_out_of_scope_message(question: str) -> str:
 
 async def evaluate_guardrail(
     query: str,
-    llm_client: RagClient,
+    llm_client: LlmProviderClient,
     model_name: str,
     threshold: int,
     *,

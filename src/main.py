@@ -13,7 +13,7 @@ from src.domain.cache.factory import make_cache_client
 from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
 from src.domain.langfuse.factory import make_langfuse_tracer
-from src.domain.llm.factory import make_llm_client
+from src.domain.llm.factory import make_llm_client, make_rag_client
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
 
@@ -69,6 +69,7 @@ async def lifespan(app: FastAPI):
     app.state.embeddings_service = make_embeddings_service()
     app.state.reranker_service = make_reranker_client()
     app.state.llm_client = make_llm_client()
+    app.state.rag_client = make_rag_client()
     app.state.langfuse_tracer = make_langfuse_tracer()
     app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
     logger.info(
