@@ -1,9 +1,9 @@
 import logging
 
 from langchain_core.language_models import BaseChatModel
-from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
 from pydantic import BaseModel, Field
+
+from src.domain.graph import END, GraphBuilder, Send, START
 
 from src.domain.agent_fault_tolerance import (
     build_llm_timeout,
@@ -149,7 +149,7 @@ class KnowledgeRouterGraph:
         )
         return {"final_answer": content}
 
-    def _configure_fault_tolerance(self, workflow: StateGraph) -> None:
+    def _configure_fault_tolerance(self, workflow: GraphBuilder) -> None:
         ft = self.config.fault_tolerance
         if ft.enabled:
             workflow.set_node_defaults(
@@ -159,7 +159,7 @@ class KnowledgeRouterGraph:
             )
 
     def compile(self):
-        workflow = StateGraph(RouterState)
+        workflow = GraphBuilder(RouterState)
         self._configure_fault_tolerance(workflow)
 
         (

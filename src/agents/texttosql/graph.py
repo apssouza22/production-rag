@@ -4,8 +4,8 @@ from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
-from langgraph.graph import END, START, MessagesState, StateGraph
-from langgraph.prebuilt import ToolNode
+
+from src.domain.graph import END, GraphBuilder, MessagesState, START, ToolNode
 
 from src.domain.agent_fault_tolerance import (
     build_llm_timeout,
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class TextToSQLGraph:
-    """Builds and compiles the LangGraph text-to-SQL agent workflow."""
+    """Builds and compiles the text-to-SQL agent workflow."""
 
     def __init__(
         self,
@@ -109,7 +109,7 @@ class TextToSQLGraph:
             return END
         return "check_query"
 
-    def _configure_tool_fault_tolerance(self, builder: StateGraph) -> dict:
+    def _configure_tool_fault_tolerance(self, builder: GraphBuilder) -> dict:
         ft = self.config.fault_tolerance
         tool_node_kwargs: dict = {}
 
@@ -127,24 +127,26 @@ class TextToSQLGraph:
         return tool_node_kwargs
 
     def compile(self, middleware_manager: MiddlewareManager | None = None):
-        builder = StateGraph(MessagesState)
+        builder = GraphBuilder(MessagesState)
         tool_node_kwargs = self._configure_tool_fault_tolerance(builder)
         get_schema_node, run_query_node = self._build_tool_nodes(middleware_manager)
 
-        builder.add_node("list_tables", self.list_tables)
-        builder.add_node("call_get_schema", self.call_get_schema)
-        builder.add_node("get_schema", get_schema_node, **tool_node_kwargs)
-        builder.add_node("generate_query", self.generate_query)
-        builder.add_node("check_query", self.check_query)
-        builder.add_node("run_query", run_query_node, **tool_node_kwargs)
-
-        builder.add_edge(START, "list_tables")
-        builder.add_edge("list_tables", "call_get_schema")
-        builder.add_edge("call_get_schema", "get_schema")
-        builder.add_edge("get_schema", "generate_query")
-        builder.add_conditional_edges("generate_query", self.should_continue)
-        builder.add_edge("check_query", "run_query")
-        builder.add_edge("run_query", "generate_query")
+        (
+            builder
+            .add_node("list_tables", self.list_tables)
+            .add_node("call_get_schema", self.call_get_schema)
+            .add_node("get_schema", get_schema_node, **tool_node_kwargs)
+            .add_node("generate_query", self.generate_query)
+            .add_node("check_query", self.check_query)
+            .add_node("run_query", run_query_node, **tool_node_kwargs)
+            .add_edge(START, "list_tables")
+            .add_edge("list_tables", "call_get_schema")
+            .add_edge("call_get_schema", "get_schema")
+            .add_edge("get_schema", "generate_query")
+            .add_conditional_edges("generate_query", self.should_continue)
+            .add_edge("check_query", "run_query")
+            .add_edge("run_query", "generate_query")
+        )
 
         logger.info("Text-to-SQL graph compiled successfully")
         return builder.compile()

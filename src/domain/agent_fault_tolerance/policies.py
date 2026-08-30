@@ -1,4 +1,4 @@
-from langgraph.types import RetryPolicy, TimeoutPolicy
+from src.domain.graph import RetryPolicy, TimeoutPolicy
 
 from src.domain.bifrost.exceptions import BifrostConnectionError, BifrostTimeoutError
 from src.domain.llm.exceptions import LLMConnectionError, LLMTimeoutError

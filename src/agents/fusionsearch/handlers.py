@@ -1,8 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from langgraph.errors import NodeError
-from langgraph.types import Command
+from src.domain.graph import Command, NodeError
 
 from src.domain.agent_fault_tolerance.metadata import fault_metadata
 

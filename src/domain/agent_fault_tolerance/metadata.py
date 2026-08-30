@@ -1,4 +1,4 @@
-from langgraph.errors import NodeError
+from src.domain.graph import NodeError
 
 
 def fault_metadata(error: NodeError) -> dict:

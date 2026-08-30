@@ -3,9 +3,9 @@ import time
 from typing import Dict, List, Optional, Union
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field
+
+from src.domain.graph import END, GraphBuilder, START, ToolNode, tools_condition
 
 from src.domain.agent_fault_tolerance import (
     build_llm_timeout,
@@ -49,7 +49,7 @@ class QueryRewriteOutput(BaseModel):
 
 
 class AgenticRAGGraph:
-    """Builds and compiles the LangGraph agentic RAG workflow."""
+    """Builds and compiles the agentic RAG workflow."""
 
     def __init__(
         self,
@@ -392,7 +392,7 @@ class AgenticRAGGraph:
         )
         return {"messages": [AIMessage(content=response_text)]}
 
-    def _configure_fault_tolerance(self, workflow: StateGraph) -> tuple[dict, dict]:
+    def _configure_fault_tolerance(self, workflow: GraphBuilder) -> tuple[dict, dict]:
         ft = self.config.fault_tolerance
         no_fault_tolerance: dict = {}
         fault_tolerance: dict = {}
@@ -416,10 +416,10 @@ class AgenticRAGGraph:
         return no_fault_tolerance, fault_tolerance
 
     def compile(self, middleware_manager: Optional[MiddlewareManager] = None):
-        """Build and compile the LangGraph workflow."""
-        logger.info("Building LangGraph workflow with context_schema")
+        """Build and compile the agentic RAG workflow."""
+        logger.info("Building agentic RAG workflow with context_schema")
 
-        workflow = StateGraph(AgentState, context_schema=Context)
+        workflow = GraphBuilder(AgentState, context_schema=Context)
 
         retriever_tool = create_retriever_tool(
             opensearch_client=self.opensearch_client,
@@ -429,41 +429,43 @@ class AgenticRAGGraph:
         )
         no_fault_tolerance, fault_tolerance = self._configure_fault_tolerance(workflow)
 
-        workflow.add_node("retrieve", self.retrieve)
-        workflow.add_node(
-            "tool_retrieve",
-            ToolNode(
-                [retriever_tool],
-                **middleware_tool_wrappers(middleware_manager),
-            ),
-            **fault_tolerance,
+        (
+            workflow
+            .add_node("retrieve", self.retrieve)
+            .add_node(
+                "tool_retrieve",
+                ToolNode(
+                    [retriever_tool],
+                    **middleware_tool_wrappers(middleware_manager),
+                ),
+                **fault_tolerance,
+            )
+            .add_node("grade_documents", self.grade_documents)
+            .add_node("rewrite_query", self.rewrite_query)
+            .add_node("generate_answer", self.generate_answer)
+            .add_node("handle_failure", self.handle_failure, **no_fault_tolerance)
+            .add_edge(START, "retrieve")
+            .add_conditional_edges(
+                "retrieve",
+                tools_condition,
+                {
+                    "tools": "tool_retrieve",
+                    END: END,
+                },
+            )
+            .add_edge("tool_retrieve", "grade_documents")
+            .add_conditional_edges(
+                "grade_documents",
+                lambda state: state.get("routing_decision", "generate_answer"),
+                {
+                    "generate_answer": "generate_answer",
+                    "rewrite_query": "rewrite_query",
+                },
+            )
+            .add_edge("rewrite_query", "retrieve")
+            .add_edge("generate_answer", END)
+            .add_edge("handle_failure", END)
         )
-        workflow.add_node("grade_documents", self.grade_documents)
-        workflow.add_node("rewrite_query", self.rewrite_query)
-        workflow.add_node("generate_answer", self.generate_answer)
-        workflow.add_node("handle_failure", self.handle_failure, **no_fault_tolerance)
-
-        workflow.add_edge(START, "retrieve")
-        workflow.add_conditional_edges(
-            "retrieve",
-            tools_condition,
-            {
-                "tools": "tool_retrieve",
-                END: END,
-            },
-        )
-        workflow.add_edge("tool_retrieve", "grade_documents")
-        workflow.add_conditional_edges(
-            "grade_documents",
-            lambda state: state.get("routing_decision", "generate_answer"),
-            {
-                "generate_answer": "generate_answer",
-                "rewrite_query": "rewrite_query",
-            },
-        )
-        workflow.add_edge("rewrite_query", "retrieve")
-        workflow.add_edge("generate_answer", END)
-        workflow.add_edge("handle_failure", END)
 
         compiled_graph = workflow.compile()
         logger.info("Graph compilation successful")

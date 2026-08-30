@@ -4,9 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.errors import NodeError
-from langgraph.graph import END, START, StateGraph
 
+from src.domain.graph import END, GraphBuilder, NodeError, START
 from src.domain.agent_fault_tolerance import (
     FaultToleranceConfig,
     build_llm_timeout,
@@ -66,22 +65,25 @@ class TestAgenticRagFailureFlow:
         async def failing_retrieve(state, runtime=None):
             raise ConnectionError("llm unavailable")
 
-        workflow = StateGraph(AgentState, context_schema=Context)
+        workflow = GraphBuilder(AgentState, context_schema=Context)
         ft = FaultToleranceConfig(max_attempts=2, initial_interval=0.01)
 
-        workflow.set_node_defaults(
-            retry_policy=build_retry_policy(ft),
-            error_handler=route_agentic_rag_failure,
+        (
+            workflow
+            .set_node_defaults(
+                retry_policy=build_retry_policy(ft),
+                error_handler=route_agentic_rag_failure,
+            )
+            .add_node("retrieve", failing_retrieve)
+            .add_node(
+                "handle_failure",
+                graph.handle_failure,
+                retry_policy=None,
+                error_handler=None,
+            )
+            .add_edge(START, "retrieve")
+            .add_edge("handle_failure", END)
         )
-        workflow.add_node("retrieve", failing_retrieve)
-        workflow.add_node(
-            "handle_failure",
-            graph.handle_failure,
-            retry_policy=None,
-            error_handler=None,
-        )
-        workflow.add_edge(START, "retrieve")
-        workflow.add_edge("handle_failure", END)
 
         result = await workflow.compile().ainvoke(
             {
