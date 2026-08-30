@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 
 from src.config import Settings
 from src.domain.bifrost.exceptions import BifrostConnectionError, BifrostException, BifrostTimeoutError
+from src.domain.llm.fallback import build_fallback_models, build_model_chain
 from src.domain.llm.protocol import LlmProviderClient
 
 logger = logging.getLogger(__name__)
@@ -44,26 +45,18 @@ class BifrostClient(LlmProviderClient):
         return model_name.startswith(cls._REASONING_MODEL_PREFIXES)
 
     def _build_fallbacks(self, model: str) -> List[str]:
-        """Build the Bifrost fallback chain, excluding the primary model."""
-        if not self.fallback_models.strip():
-            return []
-
-        normalized_primary = self._normalize_model(model)
-        fallbacks: List[str] = []
-        for fallback in self.fallback_models.split(","):
-            candidate = fallback.strip()
-            if not candidate:
-                continue
-
-            normalized = self._normalize_model(candidate)
-            if normalized != normalized_primary and normalized not in fallbacks:
-                fallbacks.append(normalized)
-
-        return fallbacks
+        """Build normalized Bifrost fallback models, excluding the primary model."""
+        return [
+            self._normalize_model(fallback)
+            for fallback in build_fallback_models(model, self.fallback_models, self._normalize_model)
+        ]
 
     def _build_model_chain(self, model: str) -> List[str]:
         """Return the primary model followed by configured fallbacks."""
-        return [model, *self._build_fallbacks(model)]
+        fallbacks = self._build_fallbacks(model)
+        if not fallbacks:
+            return [model]
+        return [model, *fallbacks]
 
     @staticmethod
     def _message_content(content: Any) -> str:
@@ -103,8 +96,16 @@ class BifrostClient(LlmProviderClient):
         return ChatOpenAI(**chat_kwargs)
 
     def get_langchain_model(self, model: str, temperature: float = 0.7) -> ChatOpenAI:
-        """Return a LangChain ChatOpenAI instance configured for Bifrost."""
-        return self._create_chat_model(model=model, temperature=temperature)
+        """Return a LangChain ChatOpenAI instance configured for Bifrost with optional fallbacks."""
+        primary = self._create_chat_model(model=model, temperature=temperature)
+        fallbacks = self._build_fallbacks(model)
+        if not fallbacks:
+            return primary
+
+        fallback_models = [
+            self._create_chat_model(model=fallback, temperature=temperature) for fallback in fallbacks
+        ]
+        return primary.with_fallbacks(fallback_models)
 
     async def health_check(self) -> Dict[str, Any]:
         """Check whether the Bifrost gateway is healthy."""

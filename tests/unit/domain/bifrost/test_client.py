@@ -95,6 +95,36 @@ def test_create_chat_model_does_not_pass_fallbacks_to_openai_sdk():
     assert "fallbacks" not in llm.model_kwargs
 
 
+def test_get_langchain_model_uses_with_fallbacks_when_configured():
+    client = BifrostClient(
+        Settings(
+            bifrost_fallback_models="openai/gpt-4o-mini,ollama/llama3.2:1b",
+        )
+    )
+    primary = MagicMock()
+    fallback = MagicMock()
+    primary.with_fallbacks.return_value = MagicMock(name="runnable_with_fallbacks")
+
+    with patch.object(client, "_create_chat_model", side_effect=[primary, fallback]) as create_chat_model:
+        result = client.get_langchain_model(model="llama3.2:1b", temperature=0.2)
+
+    assert result is primary.with_fallbacks.return_value
+    create_chat_model.assert_any_call(model="llama3.2:1b", temperature=0.2)
+    create_chat_model.assert_any_call(model="openai/gpt-4o-mini", temperature=0.2)
+    primary.with_fallbacks.assert_called_once_with([fallback])
+
+
+def test_get_langchain_model_returns_primary_when_no_fallbacks():
+    client = BifrostClient(Settings(bifrost_fallback_models=""))
+    primary = MagicMock()
+
+    with patch.object(client, "_create_chat_model", return_value=primary) as create_chat_model:
+        result = client.get_langchain_model(model="llama3.2:1b")
+
+    assert result is primary
+    create_chat_model.assert_called_once_with(model="llama3.2:1b", temperature=0.7)
+
+
 @pytest.mark.asyncio
 async def test_generate_tries_configured_fallback_models():
     client = BifrostClient(

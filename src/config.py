@@ -179,6 +179,8 @@ class Settings(BaseConfigSettings):
     bifrost_api_key_agent_2: str = "sk-bf-agent-2-dev"
     # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-5.6-luna,ollama/llama3.2:1b)
     bifrost_fallback_models: str = "openai/gpt-5.6-luna,ollama/llama3.2:1b"
+    # Comma-separated fallback models for direct Ollama (e.g. llama3.2:3b,llama3.2:1b)
+    ollama_fallback_models: str = ""
     ollama_model: str = "llama3.2:1b"
     agent_model: str = "gpt-5.6-luna"
     reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
