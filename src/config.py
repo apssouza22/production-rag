@@ -149,7 +149,7 @@ class RedisSettings(BaseConfigSettings):
     socket_connect_timeout: int = 30
 
     # Cache settings
-    ttl_hours: int = 6  # Cache TTL in hours
+    ttl_hours: int = 6
     semantic_cache_enabled: bool = True
     semantic_search_top_k: int = 5
     semantic_similarity_threshold: float = 0.7

@@ -30,26 +30,3 @@ class LlmProviderClient(ABC):
     @abstractmethod
     async def generate_stream(self, model: str, prompt: str, **kwargs) -> AsyncIterator[Dict[str, Any]]:
         """Stream text generation chunks from a prompt."""
-
-
-class RagService(LlmProviderClient, ABC):
-    """Full LLM client interface, including RAG generation."""
-
-    @abstractmethod
-    async def generate_rag_answer(
-        self,
-        query: str,
-        chunks: List[Dict[str, Any]],
-        model: str = "llama3.2",
-        use_structured_output: bool = False,
-    ) -> Dict[str, Any]:
-        """Generate a RAG answer using retrieved chunks."""
-
-    @abstractmethod
-    async def generate_rag_answer_stream(
-        self,
-        query: str,
-        chunks: List[Dict[str, Any]],
-        model: str = "llama3.2",
-    ) -> AsyncIterator[Dict[str, Any]]:
-        """Stream a RAG answer using retrieved chunks."""

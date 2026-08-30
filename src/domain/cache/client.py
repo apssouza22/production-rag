@@ -5,12 +5,13 @@ from datetime import timedelta
 from typing import Literal, Optional
 
 import redis
+
 from src.config import RedisSettings
-from src.agents.fusionsearch.schemas import AskRequest, AskResponse
 from src.domain.cache.keys import build_exact_cache_key
 from src.domain.cache.scoring import CacheConfidenceBreakdown
 from src.domain.cache.semantic import SemanticCacheClient
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
+from src.domain.opensearch.schemas import HybridSearchRequest, SearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +20,21 @@ logger = logging.getLogger(__name__)
 class CacheLookupResult:
     """Result of a layered cache lookup."""
 
-    response: Optional[AskResponse] = None
+    response: Optional[SearchResponse] = None
     query_embedding: Optional[list[float]] = None
     hit_type: Optional[Literal["exact", "confidence"]] = None
     confidence: Optional[CacheConfidenceBreakdown] = None
 
 
 class ExactCacheClient:
-    """Redis-based exact match cache for RAG queries."""
+    """Redis-based exact match cache for hybrid search requests."""
 
     def __init__(self, redis_client: redis.Redis, settings: RedisSettings):
         self.redis = redis_client
         self.settings = settings
         self.ttl = timedelta(hours=settings.ttl_hours)
 
-    async def find_cached_response(self, request: AskRequest) -> Optional[AskResponse]:
+    async def find_cached_response(self, request: HybridSearchRequest) -> Optional[SearchResponse]:
         """Find cached response for exact query match."""
         try:
             cache_key = build_exact_cache_key(request)
@@ -42,8 +43,8 @@ class ExactCacheClient:
             if cached_response:
                 try:
                     response_data = json.loads(cached_response)
-                    logger.info("Cache hit for exact query match")
-                    return AskResponse(**response_data)
+                    logger.info("Cache hit for exact hybrid search query match")
+                    return SearchResponse(**response_data)
                 except json.JSONDecodeError as e:
                     logger.warning("Failed to deserialize cached response: %s", e)
                     return None
@@ -54,11 +55,11 @@ class ExactCacheClient:
             logger.error("Error checking exact cache: %s", e)
             return None
 
-    async def store_response(self, request: AskRequest, response: AskResponse) -> bool:
+    async def store_response(self, request: HybridSearchRequest, response: SearchResponse) -> bool:
         """Store response for exact query matching."""
         try:
             cache_key = build_exact_cache_key(request)
-            success = self.redis.set(cache_key, response.model_dump_json(), ex=self.ttl)
+            success = self.redis.set(cache_key, response.model_dump_json(by_alias=True), ex=self.ttl)
 
             if success:
                 logger.info("Stored response in exact cache with key %s...", cache_key[:16])
@@ -73,7 +74,7 @@ class ExactCacheClient:
 
 
 class CacheClient:
-    """Layered RAG cache: exact match first, then confidence-based fuzzy + semantic matching."""
+    """Layered hybrid search cache: exact match first, then confidence-based fuzzy + semantic matching."""
 
     def __init__(
         self,
@@ -87,7 +88,7 @@ class CacheClient:
         self.embeddings = embeddings_client
         self.settings = settings
 
-    async def _embed_query(self, request: AskRequest) -> Optional[list[float]]:
+    async def _embed_query(self, request: HybridSearchRequest) -> Optional[list[float]]:
         if not self.embeddings:
             return None
 
@@ -97,7 +98,7 @@ class CacheClient:
             logger.warning("Failed to generate query embedding for semantic cache: %s", e)
             return None
 
-    async def lookup(self, request: AskRequest) -> CacheLookupResult:
+    async def lookup(self, request: HybridSearchRequest) -> CacheLookupResult:
         """Check exact cache, then semantic cache. Returns embedding for reuse."""
         exact_hit = await self.exact.find_cached_response(request)
         if exact_hit:
@@ -123,8 +124,8 @@ class CacheClient:
 
     async def store(
         self,
-        request: AskRequest,
-        response: AskResponse,
+        request: HybridSearchRequest,
+        response: SearchResponse,
         query_embedding: Optional[list[float]] = None,
     ) -> None:
         """Store response in exact and semantic caches."""
@@ -136,18 +137,3 @@ class CacheClient:
         embedding = query_embedding or await self._embed_query(request)
         if embedding:
             await self.semantic.store_response(request, response, embedding)
-
-    async def find_cached_response(self, request: AskRequest) -> Optional[AskResponse]:
-        """Backward-compatible cache lookup."""
-        result = await self.lookup(request)
-        return result.response
-
-    async def store_response(
-        self,
-        request: AskRequest,
-        response: AskResponse,
-        query_embedding: Optional[list[float]] = None,
-    ) -> bool:
-        """Backward-compatible cache store."""
-        await self.store(request, response, query_embedding=query_embedding)
-        return True

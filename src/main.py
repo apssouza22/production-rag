@@ -6,14 +6,13 @@ import uvicorn
 from fastapi import FastAPI
 
 from src.api import agentic_ask, hybrid_search, knowledge_router, ping, text_to_sql
-from src.api.ask import ask_router, stream_router
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
 from src.domain.cache.factory import make_cache_client
 from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
 from src.domain.langfuse.factory import make_langfuse_tracer
-from src.domain.llm.factory import make_llm_client, make_rag_client
+from src.domain.llm.factory import make_llm_client
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
 
@@ -69,9 +68,12 @@ async def lifespan(app: FastAPI):
     app.state.embeddings_service = make_embeddings_service()
     app.state.reranker_service = make_reranker_client()
     app.state.llm_client = make_llm_client()
-    app.state.rag_client = make_rag_client()
     app.state.langfuse_tracer = make_langfuse_tracer()
-    app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
+    try:
+        app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
+    except Exception as e:
+        logger.warning("Cache unavailable, hybrid search will run without caching: %s", e)
+        app.state.cache_client = None
     logger.info(
         "Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, "
         "%s LLM provider, Langfuse, Cache",
@@ -95,8 +97,6 @@ app = FastAPI(
 # Include routers
 app.include_router(ping.router, prefix="/api/v1")  # Health check endpoint
 app.include_router(hybrid_search.router, prefix="/api/v1")  # Search chunks with BM25/hybrid
-app.include_router(ask_router, prefix="/api/v1")  # RAG question answering with LLM
-app.include_router(stream_router, prefix="/api/v1")  # Streaming RAG responses
 app.include_router(agentic_ask.router)  # Agentic RAG with intelligent retrieval
 app.include_router(text_to_sql.router)  # Text-to-SQL agent over PostgreSQL
 app.include_router(knowledge_router.router)  # Knowledge router across retrieval agents

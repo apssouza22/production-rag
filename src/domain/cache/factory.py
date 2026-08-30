@@ -1,6 +1,7 @@
 import logging
 
 import redis
+
 from src.config import Settings
 from src.domain.cache.client import CacheClient, ExactCacheClient
 from src.domain.cache.semantic import SemanticCacheClient
@@ -55,20 +56,16 @@ def _make_semantic_cache_client(settings: Settings) -> SemanticCacheClient | Non
 
 
 def make_cache_client(settings: Settings, embeddings_client: JinaEmbeddingsClient | None = None) -> CacheClient:
-    """Create layered exact + semantic cache client."""
-    try:
-        exact_redis = make_redis_client(settings, decode_responses=True)
-        exact_cache = ExactCacheClient(exact_redis, settings.redis)
-        semantic_cache = _make_semantic_cache_client(settings)
+    """Create layered exact + semantic cache client for hybrid search."""
+    exact_redis = make_redis_client(settings, decode_responses=True)
+    exact_cache = ExactCacheClient(exact_redis, settings.redis)
+    semantic_cache = _make_semantic_cache_client(settings)
 
-        cache_client = CacheClient(
-            exact_cache=exact_cache,
-            semantic_cache=semantic_cache,
-            embeddings_client=embeddings_client,
-            settings=settings.redis,
-        )
-        logger.info("RAG cache client created successfully")
-        return cache_client
-    except Exception as e:
-        logger.error("Failed to create cache client: %s", e)
-        raise
+    cache_client = CacheClient(
+        exact_cache=exact_cache,
+        semantic_cache=semantic_cache,
+        embeddings_client=embeddings_client,
+        settings=settings.redis,
+    )
+    logger.info("Hybrid search cache client created successfully")
+    return cache_client

@@ -84,37 +84,6 @@ class LangfuseTracer:
             yield
 
     @contextmanager
-    def trace_rag_request(
-        self,
-        query: str,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        Context manager for tracing a standard RAG request.
-
-        Yields:
-            Root Langfuse observation for the request, or None if tracing is disabled.
-        """
-        if not self.client:
-            yield None
-            return
-
-        with self._propagate_attributes(
-            trace_name="rag_request",
-            user_id=user_id,
-            session_id=session_id,
-            metadata=metadata,
-        ):
-            with self.client.start_as_current_observation(
-                as_type="span",
-                name="rag_request",
-                input={"query": query},
-            ) as observation:
-                yield observation
-
-    @contextmanager
     def trace_agent_request(
         self,
         name: str,
@@ -162,7 +131,7 @@ class LangfuseTracer:
         Create a child span within an active observation.
 
         Args:
-            trace: Parent Langfuse observation from trace_rag_request or trace_agent_request
+            trace: Parent Langfuse observation from trace_agent_request
             name: Name of the span
             input_data: Input data for the span
             metadata: Additional metadata
@@ -220,7 +189,7 @@ class LangfuseTracer:
         Get a CallbackHandler for LangChain/LangGraph integration.
 
         Correlating attributes must be set via propagate_attributes() on an enclosing
-        context manager (trace_agent_request / trace_rag_request). The handler only
+        context manager (trace_agent_request). The handler only
         needs to be created inside that scope.
 
         Returns:

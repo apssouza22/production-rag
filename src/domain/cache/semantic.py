@@ -10,15 +10,16 @@ from redis.commands.search.field import TagField, TextField, VectorField
 from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.exceptions import ResponseError
+
 from src.config import RedisSettings
-from src.agents.fusionsearch.schemas import AskRequest, AskResponse
 from src.domain.cache.keys import build_params_hash
 from src.domain.cache.scoring import CacheConfidenceBreakdown, compute_confidence
+from src.domain.opensearch.schemas import HybridSearchRequest, SearchResponse
 
 logger = logging.getLogger(__name__)
 
-SEMANTIC_CACHE_INDEX = "semantic_cache_idx"
-SEMANTIC_CACHE_PREFIX = "semantic_cache:"
+SEMANTIC_CACHE_INDEX = "hybrid_search_semantic_cache_idx"
+SEMANTIC_CACHE_PREFIX = "hybrid_search_semantic_cache:"
 
 
 def embedding_to_bytes(embedding: List[float]) -> bytes:
@@ -51,7 +52,7 @@ class SemanticCacheClient:
         try:
             self.redis.ft(SEMANTIC_CACHE_INDEX).info()
             self._index_ready = True
-            logger.info("Semantic cache index already exists")
+            logger.info("Hybrid search semantic cache index already exists")
             return
         except ResponseError:
             pass
@@ -75,11 +76,11 @@ class SemanticCacheClient:
         try:
             self.redis.ft(SEMANTIC_CACHE_INDEX).create_index(schema, definition=definition)
             self._index_ready = True
-            logger.info("Semantic cache index created")
+            logger.info("Hybrid search semantic cache index created")
         except ResponseError as e:
             if "Index already exists" in str(e):
                 self._index_ready = True
-                logger.info("Semantic cache index already exists")
+                logger.info("Hybrid search semantic cache index already exists")
                 return
             raise
 
@@ -133,9 +134,9 @@ class SemanticCacheClient:
 
     async def find_cached_response(
         self,
-        request: AskRequest,
+        request: HybridSearchRequest,
         query_embedding: List[float],
-    ) -> tuple[Optional[AskResponse], Optional[CacheConfidenceBreakdown]]:
+    ) -> tuple[Optional[SearchResponse], Optional[CacheConfidenceBreakdown]]:
         """Find a cached response using confidence-based fuzzy + semantic scoring."""
         if not self._index_ready:
             return None, None
@@ -188,13 +189,18 @@ class SemanticCacheClient:
                 best_breakdown.semantic_score,
                 best_breakdown.matched_query[:80],
             )
-            return AskResponse(**json.loads(matched_response)), best_breakdown
+            return SearchResponse(**json.loads(matched_response)), best_breakdown
 
         except Exception as e:
             logger.error("Error checking semantic cache: %s", e)
             return None, None
 
-    async def store_response(self, request: AskRequest, response: AskResponse, query_embedding: List[float]) -> bool:
+    async def store_response(
+        self,
+        request: HybridSearchRequest,
+        response: SearchResponse,
+        query_embedding: List[float],
+    ) -> bool:
         """Store a response for semantic similarity lookups."""
         if not self._index_ready:
             return False
@@ -208,7 +214,7 @@ class SemanticCacheClient:
             mapping = {
                 "params_hash": build_params_hash(request),
                 "query": request.query,
-                "response": response.model_dump_json(),
+                "response": response.model_dump_json(by_alias=True),
                 "embedding": embedding_to_bytes(query_embedding),
             }
 

@@ -2,8 +2,7 @@ from typing import Literal
 
 from src.config import Settings, get_settings
 from src.domain.bifrost.factory import make_bifrost_client
-from src.domain.llm.protocol import LlmProviderClient, RagService
-from src.domain.llm.rag import RagServiceSimple
+from src.domain.llm.protocol import LlmProviderClient
 from src.domain.ollama.factory import make_ollama_client
 
 AgentKey = Literal["agent_1", "agent_2"]
@@ -19,12 +18,6 @@ def make_llm_client(settings: Settings | None = None, api_key: str | None = None
     """Create the configured LLM provider (Ollama direct or Bifrost gateway)."""
     resolved_settings = settings or get_settings()
     return _make_llm_provider(resolved_settings, api_key=api_key)
-
-
-def make_rag_client(settings: Settings | None = None, api_key: str | None = None) -> RagService:
-    """Create an LLM client with RAG generation helpers."""
-    resolved_settings = settings or get_settings()
-    return RagServiceSimple(_make_llm_provider(resolved_settings, api_key=api_key))
 
 
 def make_agent_llm_client(agent: AgentKey, settings: Settings | None = None) -> LlmProviderClient:

@@ -1,8 +1,7 @@
 from src.config import Settings
 from src.domain.bifrost.client import BifrostClient
-from src.domain.llm.factory import make_agent_llm_client, make_llm_client, make_rag_client
-from src.domain.llm.protocol import LlmProviderClient, RagService
-from src.domain.llm.rag import RagServiceSimple
+from src.domain.llm.factory import make_agent_llm_client, make_llm_client
+from src.domain.llm.protocol import LlmProviderClient
 from src.domain.ollama.client import OllamaClient
 
 
@@ -18,14 +17,6 @@ def test_make_llm_client_uses_bifrost_when_configured():
     client = make_llm_client(settings)
     assert isinstance(client, BifrostClient)
     assert isinstance(client, LlmProviderClient)
-
-
-def test_make_rag_client_wraps_provider_with_rag_helpers():
-    settings = Settings(llm_provider="ollama")
-    client = make_rag_client(settings)
-    assert isinstance(client, RagServiceSimple)
-    assert isinstance(client, RagService)
-    assert isinstance(client.provider, OllamaClient)
 
 
 def test_make_agent_llm_client_uses_agent_specific_api_key():
