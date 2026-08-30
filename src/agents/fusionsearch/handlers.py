@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from src.domain.graph import Command, NodeError
 
-from src.domain.agent_fault_tolerance.metadata import fault_metadata
+from src.domain.graph.metadata import fault_metadata
 
 if TYPE_CHECKING:
     from src.agents.fusionsearch.state import AgentState

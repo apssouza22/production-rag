@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from src.domain.graph import END, GraphBuilder, Send, START
 
-from src.domain.agent_fault_tolerance import (
+from src.domain.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
 )

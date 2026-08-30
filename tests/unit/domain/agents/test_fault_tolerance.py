@@ -6,8 +6,8 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from src.domain.graph import END, GraphBuilder, NodeError, START
-from src.domain.agent_fault_tolerance import (
-    FaultToleranceConfig,
+from src.domain.graph.config import FaultToleranceConfig
+from src.domain.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     is_transient_error,

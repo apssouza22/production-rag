@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage
 
 from src.domain.graph import END, GraphBuilder, MessagesState, START, ToolNode
 
-from src.domain.agent_fault_tolerance import (
+from src.domain.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     build_tool_retry_policy,

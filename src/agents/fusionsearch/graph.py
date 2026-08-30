@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from src.domain.graph import END, GraphBuilder, START, ToolNode, tools_condition
 
-from src.domain.agent_fault_tolerance import (
+from src.domain.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     build_tool_retry_policy,
@@ -471,24 +471,3 @@ class AgenticRAGGraph:
         logger.info("Graph compilation successful")
         return compiled_graph
 
-
-def build_agentic_rag_graph(
-    llm_client: LLMClient,
-    opensearch_client: OpenSearchClient,
-    embeddings_client: JinaEmbeddingsClient,
-    retrieval_settings: RetrievalSettings,
-    config: GraphConfig,
-    reranker_client: JinaRerankerClient | None = None,
-    langfuse_tracer: Optional[LangfuseTracer] = None,
-    middleware_manager: Optional[MiddlewareManager] = None,
-):
-    """Build the LangGraph agentic RAG workflow."""
-    return AgenticRAGGraph(
-        llm_client=llm_client,
-        opensearch_client=opensearch_client,
-        embeddings_client=embeddings_client,
-        retrieval_settings=retrieval_settings,
-        config=config,
-        reranker_client=reranker_client,
-        langfuse_tracer=langfuse_tracer,
-    ).compile(middleware_manager=middleware_manager)

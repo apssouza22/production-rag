@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypedDict, Any
+
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.typing import ContextT, InputT, OutputT, StateT
@@ -28,17 +30,17 @@ class StateGraphCompiled:
         input: InputT | Command | None,
         config: RunnableConfig | None = None,
         *,
-        context: ContextT | None = None,
+        context: ContextT | Any | None = None,
     ):
         """Run the compiled workflow synchronously."""
         return self._state_graph.invoke(input, config, context=context)
 
     async def ainvoke(
         self,
-        input: InputT | Command | None,
+        input: InputT | Command | type[TypedDict] |None,
         config: RunnableConfig | None = None,
         *,
-        context: ContextT | None = None,
+        context: ContextT | Any | None = None,
     ):
         """Run the compiled workflow asynchronously."""
         return await self._state_graph.ainvoke(input, config, context=context)

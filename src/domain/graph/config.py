@@ -15,7 +15,7 @@ class FaultToleranceConfig(BaseModel):
     initial_interval: float = 0.5
     backoff_factor: float = 2.0
     max_interval: float = 128.0
-    jitter: bool = True
+    jitter: bool = True # jitter adds randomness to retry intervals to avoid thundering herd effect
     llm_run_timeout: float = 120.0
     llm_idle_timeout: float = 30.0
     tool_run_timeout: float = 60.0

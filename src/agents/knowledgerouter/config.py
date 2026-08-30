@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
-from src.domain.agent_fault_tolerance import FaultToleranceConfig
+from src.domain.graph.config import FaultToleranceConfig
 
 
 class KnowledgeRouterConfig(BaseModel):
