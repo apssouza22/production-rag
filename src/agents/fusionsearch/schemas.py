@@ -2,6 +2,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from src.domain.callbacks.schemas import GraphTrajectoryResponse
+
 
 class AskRequest(BaseModel):
     """Request model for RAG question answering."""
@@ -51,6 +53,10 @@ class AgenticAskResponse(AskResponse):
     reasoning_steps: List[str] = Field(..., description="Agent's decision-making steps")
     retrieval_attempts: int = Field(..., description="Number of document retrieval attempts")
     trace_id: Optional[str] = Field(None, description="Langfuse trace ID for feedback and debugging")
+    trajectory: Optional[GraphTrajectoryResponse] = Field(
+        None,
+        description="Full LangGraph execution trajectory captured during the request",
+    )
 
     class Config:
         json_schema_extra = {
@@ -67,6 +73,20 @@ class AgenticAskResponse(AskResponse):
                 ],
                 "retrieval_attempts": 1,
                 "trace_id": "abc123-def456-ghi789",
+                "trajectory": {
+                    "started_at": 1712345678.1,
+                    "finished_at": 1712345680.4,
+                    "duration_ms": 2300,
+                    "events": [],
+                    "summary": {
+                        "event_count": 0,
+                        "nodes": [],
+                        "tools": [],
+                        "models": [],
+                        "errors": [],
+                    },
+                    "steps": ["node:retrieve", "tool:retrieve_papers({\"query\": \"transformers\"})"],
+                },
             }
         }
 

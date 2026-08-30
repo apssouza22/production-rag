@@ -84,7 +84,9 @@ class LangfuseTracingMiddleware(AgentMiddleware):
             handler = self.langfuse_tracer.get_callback_handler()
             if handler:
                 graph_config = ctx.config.setdefault("graph_config", {})
-                graph_config["callbacks"] = [handler]
+                callbacks = graph_config.setdefault("callbacks", [])
+                if handler not in callbacks:
+                    callbacks.append(handler)
                 logger.debug("Langfuse CallbackHandler attached for %s", ctx.agent_name)
         except Exception as exc:
             logger.warning("Failed to start Langfuse trace for %s: %s", ctx.agent_name, exc)

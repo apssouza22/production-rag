@@ -16,7 +16,7 @@ Before any architecture, it's worth being precise about what "production grade" 
 
 **It degrades instead of failing.** When the embedding API is down, search should fall back to keyword-only rather than return a 500. When the reranker times out, you keep the original ranking. Every external dependency needs a defined answer to "what happens when this is unavailable?"
 
-**Someone can debug it after the fact.** If a user complains about an answer from yesterday, you need the retrieved chunks, the prompt, the model, the latency of each stage, and the reasoning path. Logs are not enough; you need per-request traces with structured spans.
+**Someone can debug it after the fact.** If a user complains about an answer from yesterday, you need the retrieved chunks, the prompt, the model, the latency of each stage, and the reasoning path. Logs are not enough; you need per-request traces with structured spans — and, for agent paths, a compact execution trajectory you can read without opening Langfuse.
 
 **Quality is measured, not felt.** You need a way to answer "did this change help?" that does not depend on someone eyeballing five examples.
 
@@ -368,6 +368,77 @@ That asymmetry is correct. A broken guardrail that fails open is a safety hole, 
 
 The graph also gets dependency injection from LangGraph's `context_schema`. Clients (OpenSearch, LLM, embeddings, tracer) arrive in a typed `Runtime[Context]` rather than being captured in closures, which is what makes the nodes plain testable functions.
 
+### 7.1 Registering a request trajectory
+
+Langfuse tells you what happened inside spans. That is the right system of record for production. It is still the wrong place to look when you are iterating on a single bad answer in a notebook, writing an eval script, or staring at a CI failure and need to know *which graph node ran* without clicking through a trace UI.
+
+The agentic path therefore registers a **trajectory** on every invoke: a structured, chronological record of graph execution captured through LangChain callbacks and returned in the API response.
+
+```mermaid
+flowchart LR
+    REQ["POST /api/v1/ask-agentic"] --> MW["AgentPipeline"]
+    MW --> LF["LangfuseTracingMiddleware<br/>CallbackHandler → Langfuse"]
+    MW --> TR["TrajectoryMiddleware<br/>TrajectoryCallback"]
+    MW --> GR["GuardrailMiddleware"]
+    TR --> G["graph.ainvoke"]
+    LF --> G
+    G --> CB["Callbacks fire on<br/>nodes, tools, LLMs"]
+    CB --> TR
+    TR --> RESP["AgenticAskResponse<br/>answer + trajectory"]
+```
+
+`TrajectoryCallback` (`src/domain/callbacks/trajectory.py`) is an `AsyncCallbackHandler` that listens to the LangChain event stream during `graph.ainvoke`:
+
+| Callback event | What it records |
+|---|---|
+| `on_chain_start` / `on_chain_end` | LangGraph nodes (`retrieve`, `grade_documents`, …) |
+| `on_tool_start` / `on_tool_end` | Tool calls (`retrieve_papers`, …) with args and output |
+| `on_chat_model_start` / `on_llm_end` | LLM invocations inside nodes (grading, rewriting, answer) |
+| `on_*_error` | Failures at any layer |
+
+`TrajectoryMiddleware` attaches that callback before the graph runs and stores the finished trajectory on `ctx.metadata["trajectory"]`. It uses `extend_graph_callbacks` so it **appends** to the callback list rather than replacing the Langfuse handler — both observers see the same invoke.
+
+The service exposes it on every agentic response:
+
+```python
+# src/agents/fusionsearch/agentic_rag.py
+TrajectoryMiddleware(),  # in the pipeline, after Langfuse, before guardrail
+...
+"trajectory": trajectory.to_api_dict() if trajectory else None,
+```
+
+`POST /api/v1/ask-agentic` returns it as an optional `trajectory` field on `AgenticAskResponse`. Two views are intentional:
+
+- **`steps`** — a short human-readable timeline, ideal for troubleshooting and quick eval diffs:
+
+```json
+"steps": [
+  "node:retrieve",
+  "tool:retrieve_papers({\"query\": \"transformer attention\"})",
+  "node:grade_documents",
+  "llm:ChatOpenAI",
+  "node:generate_answer"
+]
+```
+
+- **`events`** — the full callback stream with `run_id`, `parent_run_id`, timings, truncated inputs/outputs, and errors. Use this when you need to know *what* was passed to a tool or whether grading ran at all.
+
+- **`summary`** — rollups (`nodes`, `tools`, `models`, `errors`) for dashboards and assertions.
+
+LangGraph sometimes calls `on_chain_start` with `serialized=None`; the callback falls back to `metadata["langgraph_node"]` for the node name. Without that guard you get warnings and `node:unknown` entries — useless for debugging.
+
+**When the graph does not run**, `trajectory` is `null`. A guardrail short-circuit still produces an answer, but there is nothing to trace inside the graph. Do not treat a missing trajectory as a bug; treat it as "the state machine never started."
+
+**Why put this in the response and not only in Langfuse?**
+
+1. **Troubleshooting** — paste one JSON response into a ticket and see the path taken without trace UI access or time-range search.
+2. **Evals** — assert on structure, not just final text: "did it retrieve before answering?", "did it loop twice?", "which tools fired?" Golden datasets test answers; trajectory tests behaviour.
+3. **Regression diffs** — compare `steps` across prompt or graph changes the way you would compare latency percentiles.
+
+Langfuse remains the durable, scored system of record. Trajectory is the **per-request flight recorder** you can grep, snapshot in tests, and attach to eval reports. They complement each other; neither replaces the other.
+
+`ToolNode` tool calls are also intercepted via `wrap_tool_call` middleware hooks (`before_tool_call`), so tool args can be mutated or logged in the agent pipeline *before* execution. The trajectory captures what actually ran; the middleware hooks are where you enforce policy on those runs.
+
 ---
 
 ## 8. Routing across knowledge sources
@@ -488,6 +559,8 @@ The gap worth naming: entries expire on a 6-hour TTL, and nothing invalidates th
 
 Every request produces a trace with a span per stage: query embedding, search retrieval, prompt construction, generation. Agent requests add a span per node with inputs, outputs, timings and the routing decision. When something goes wrong, you can see which stage was slow and what the grader actually decided, instead of inferring it from log grep archaeology.
 
+Agentic requests also return a **trajectory** in the HTTP response (see §7.1). That gives you the same execution path in the payload you are already logging or storing for evals — no separate fetch from Langfuse required to answer "did `grade_documents` run?"
+
 Tracing overhead measured under 2%, which is the right ballpark. If your instrumentation costs more than a few percent, you will eventually be tempted to turn it off, and you will turn it off right before the incident where you needed it.
 
 Traces alone tell you what happened, not whether it was good. That takes a second loop:
@@ -496,8 +569,10 @@ Traces alone tell you what happened, not whether it was good. That takes a secon
 flowchart LR
     A["Request"] --> B["Spans: embedding, search,<br/>prompt, generation, agent nodes"]
     B --> C["Langfuse trace"]
+    A --> T["Trajectory in API response<br/>steps + events + summary"]
     C --> D["User feedback<br/>POST /api/v1/feedback"]
     C --> E["rag-evals: fetch unscored<br/>traces, 24h window"]
+    T --> E
     E --> F["LLM judge per metric:<br/>relevancy, helpfulness, conciseness,<br/>hallucination, toxicity"]
     F --> G["create_score on the trace"]
     G --> C
@@ -510,6 +585,8 @@ The evaluation harness is a separate project with its own dependencies and virtu
 It pulls traces from the last 24 hours that have no scores yet, extracts the query and answer, scores each against every metric using an LLM judge with structured output, and writes the scores back onto the original trace. Metrics are markdown prompt files in a directory; dropping in a new `.md` file registers a new metric. Prompts are content, not code, and they should live somewhere a non-engineer can edit them.
 
 Scoring production traffic rather than a static test set is what makes this useful. Your golden dataset represents the queries you imagined; your traces are the queries you actually got. You want both, but only one of them tells you about the users you have.
+
+For agentic paths, store the `trajectory` field alongside the answer when you build eval fixtures. A judge can score relevancy from query and answer alone, but structural assertions are cheaper and more reliable: `assert "tool:retrieve_papers" in response["trajectory"]["steps"]`, `assert response["trajectory"]["summary"]["errors"] == []`, `assert response["trajectory"]["summary"]["nodes"].count("retrieve") <= 2` to enforce the bounded rewrite loop. When a hallucination score regresses, the trajectory tells you whether retrieval ran, whether grading passed, or whether the model answered from an empty context — without re-running the request.
 
 Human feedback lands in the same place through a `/feedback` endpoint that attaches a score and comment to a trace ID. Model judgements and human judgements sitting on the same object is what lets you eventually check whether your judge agrees with your users, which is the question that decides whether any of the automated scoring means anything.
 
@@ -585,6 +662,7 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Serve | Semantic cache with 0.90 confidence floor | Latency drops from 15-20s to 50-100ms without serving near-miss answers | Risk of a wrong hit if the threshold is lowered | Yes |
 | Measure | LLM-as-judge on production traces | You find out whether a change helped | Judge model calls, offline | Yes |
 | Measure | Human feedback on the same trace objects | You find out whether the judge is right | An endpoint and a UI affordance | Yes |
+| Measure | **Request trajectory in API response** | Structural debugging and eval assertions without Langfuse UI | Slightly larger JSON payloads | Yes, agentic path |
 
 Three things are worth reading out of that table.
 
@@ -627,5 +705,6 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Failure:** decide the direction each fallback fails in, and make sure your failure handler cannot fail.
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.
 - **Observability:** trace per stage, score production traffic rather than only a golden set, and put human and model judgements in the same place.
+- **Trajectory:** register graph execution via LangChain callbacks, return `steps` and `events` on the agentic API response, and use them for troubleshooting and structural evals alongside Langfuse traces.
 
 The uncomfortable summary is that the retrieval and generation logic, the part everyone writes tutorials about, is maybe a quarter of the code. The rest is ingestion that survives bad PDFs, fallbacks for every external call, a cache that doesn't lie, and enough instrumentation to answer "why did it say that?" three days later. That ratio is not a sign something went wrong. It is what production means.

@@ -67,6 +67,7 @@ class TestAgenticAskEndpoint:
         assert "retrieval_attempts" in data
         assert "chunks_used" in data
         assert "search_mode" in data
+        assert "trajectory" in data
 
         # Verify content
         assert data["query"] == "What is machine learning?"
@@ -165,6 +166,55 @@ class TestAgenticAskEndpoint:
         data = response.json()
         assert len(data["reasoning_steps"]) == 4
         assert "Query validation passed" in data["reasoning_steps"]
+
+    def test_ask_agentic_with_trajectory(self, client, mock_agentic_rag_service):
+        """Test that trajectory is included in the response when provided."""
+        mock_agentic_rag_service.ask = AsyncMock(return_value={
+            "query": "What is deep learning?",
+            "answer": "Deep learning is...",
+            "sources": [],
+            "reasoning_steps": ["Retrieved papers", "Generated answer"],
+            "retrieval_attempts": 1,
+            "rewritten_query": None,
+            "trajectory": {
+                "started_at": 1712345678.1,
+                "finished_at": 1712345680.4,
+                "duration_ms": 2300.0,
+                "events": [
+                    {
+                        "event_type": "chain_start",
+                        "name": "retrieve",
+                        "run_id": "run-1",
+                        "parent_run_id": None,
+                        "timestamp": 1712345678.1,
+                        "duration_ms": None,
+                        "input": {"messages": []},
+                        "output": None,
+                        "error": None,
+                        "tags": [],
+                        "metadata": {},
+                    }
+                ],
+                "summary": {
+                    "event_count": 1,
+                    "nodes": ["retrieve"],
+                    "tools": [],
+                    "models": [],
+                    "errors": [],
+                },
+                "steps": ["node:retrieve"],
+            },
+        })
+
+        response = client.post(
+            "/api/v1/ask-agentic",
+            json={"query": "What is deep learning?"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["trajectory"]["steps"] == ["node:retrieve"]
+        assert data["trajectory"]["summary"]["nodes"] == ["retrieve"]
 
     def test_ask_agentic_with_rewritten_query(self, client, mock_agentic_rag_service):
         """Test response when query was rewritten."""

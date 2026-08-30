@@ -53,6 +53,10 @@ class TestAgenticRAGServiceInitialization:
         assert test_service.llm is not None
         assert test_service.graph is not None
         assert test_service.graph_config is not None
+        assert any(
+            middleware.__class__.__name__ == "TrajectoryMiddleware"
+            for middleware in test_service.middleware_pipeline.manager._middlewares
+        )
 
     def test_graph_config_values(self, test_service):
         """Test graph configuration values."""
@@ -100,6 +104,7 @@ class TestAgenticRAGAskMethod:
         result = await test_service.ask(query="Test query", model="llama3.2:3b")
 
         assert result is not None
+        assert "trajectory" in result
         # Verify graph was called
         test_service.graph.ainvoke.assert_called_once()
 

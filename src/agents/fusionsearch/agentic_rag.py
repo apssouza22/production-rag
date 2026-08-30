@@ -11,6 +11,7 @@ from src.domain.middleware import (
     AgentPipeline,
     ErrorHandlingMiddleware,
     LoggingMiddleware,
+    TrajectoryMiddleware,
 )
 
 from .config import GraphConfig
@@ -60,6 +61,7 @@ class AgenticRAGService:
                     build_trace_metadata=self._build_trace_metadata,
                     build_trace_output=self._build_trace_output,
                 ),
+                TrajectoryMiddleware(),
                 GuardrailMiddleware(
                     llm_client=llm_client,
                     config=self.graph_config,
@@ -239,6 +241,7 @@ class AgenticRAGService:
             fault_tolerance = None
 
         trace_id = ctx.metadata.get("trace_id")
+        trajectory = ctx.metadata.get("trajectory")
 
         logger.info("=" * 80)
         logger.info("Agentic RAG Request Completed Successfully")
@@ -261,6 +264,7 @@ class AgenticRAGService:
             "guardrail_score": guardrail_result.score if guardrail_result else None,
             "trace_id": trace_id,
             "fault_tolerance": fault_tolerance,
+            "trajectory": trajectory.to_api_dict() if trajectory else None,
         }
 
     def _extract_answer(self, result: dict) -> str:
