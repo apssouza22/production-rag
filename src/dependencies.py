@@ -23,7 +23,7 @@ from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.factory import make_agent_llm_client
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.pdf_parser.parser import PDFParserService
 
@@ -75,12 +75,12 @@ def get_reranker_service(request: Request) -> JinaRerankerClient:
     return request.app.state.reranker_service
 
 
-def get_llm_client(request: Request) -> LLMClient:
+def get_llm_client(request: Request) -> RagClient:
     """Get the configured LLM client from the request state."""
     return request.app.state.llm_client
 
 
-def get_ollama_client(request: Request) -> LLMClient:
+def get_ollama_client(request: Request) -> RagClient:
     """Backward-compatible alias for get_llm_client."""
     return get_llm_client(request)
 
@@ -104,8 +104,8 @@ ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
-LLMDep = Annotated[LLMClient, Depends(get_llm_client)]
-OllamaDep = Annotated[LLMClient, Depends(get_llm_client)]
+LLMDep = Annotated[RagClient, Depends(get_llm_client)]
+OllamaDep = Annotated[RagClient, Depends(get_llm_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import List, Optional
 
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 
 from .models import TextChunk
 from .prompts import CHUNK_CONTEXT_PROMPT
@@ -20,7 +20,7 @@ class ChunkContextualizer:
 
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_client: RagClient,
         model: str,
         max_document_chars: int = 50_000,
         max_concurrent_requests: int = 3,

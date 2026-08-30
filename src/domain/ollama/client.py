@@ -6,22 +6,19 @@ import httpx
 from langchain_ollama import ChatOllama
 
 from src.config import Settings
-from src.domain.llm.rag import RAGGenerationMixin
+from src.domain.llm.protocol import LlmProviderClient
 from src.domain.ollama.exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
-from src.domain.ollama.prompts import RAGPromptBuilder, ResponseParser
 
 logger = logging.getLogger(__name__)
 
 
-class OllamaClient(RAGGenerationMixin):
+class OllamaClient(LlmProviderClient):
     """Client for interacting with Ollama local LLM service."""
 
     def __init__(self, settings: Settings):
         """Initialize Ollama client with settings."""
         self.base_url = settings.ollama_host
         self.timeout = httpx.Timeout(float(settings.ollama_timeout))
-        self.prompt_builder = RAGPromptBuilder()
-        self.response_parser = ResponseParser()
 
     def get_langchain_model(self, model: str, temperature: float = 0.7) -> ChatOllama:
         """Return a LangChain ChatOllama instance for agent graph nodes."""

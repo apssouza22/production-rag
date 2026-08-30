@@ -4,7 +4,7 @@ from src.config import get_settings
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 from src.domain.opensearch.client import OpenSearchClient
 
 from .agentic_rag import AgenticRAGService
@@ -14,7 +14,7 @@ from .retrieval_settings import RetrievalSettings
 
 
 def make_agentic_rag_graph(
-    llm_client: LLMClient,
+    llm_client: RagClient,
     opensearch_client: OpenSearchClient,
     embeddings_client: JinaEmbeddingsClient,
     graph_config: GraphConfig,
@@ -44,7 +44,7 @@ def make_agentic_rag_graph(
 
 def make_agentic_rag_service(
     opensearch_client: OpenSearchClient,
-    llm_client: LLMClient,
+    llm_client: RagClient,
     embeddings_client: JinaEmbeddingsClient,
     reranker_client: JinaRerankerClient | None = None,
     langfuse_tracer: Optional[LangfuseTracer] = None,

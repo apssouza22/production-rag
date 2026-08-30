@@ -1,19 +1,23 @@
-from typing import Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 
-@runtime_checkable
-class LLMClient(Protocol):
-    """Common interface for direct Ollama and Bifrost-backed LLM clients."""
+class LlmProviderClient(ABC):
+    """Low-level interface for direct Ollama and Bifrost-backed LLM backends."""
 
+    @abstractmethod
     def get_langchain_model(self, model: str, temperature: float = 0.7):
         """Return a LangChain chat model for agent graph nodes."""
 
+    @abstractmethod
     async def health_check(self) -> Dict[str, Any]:
         """Check whether the configured LLM backend is healthy."""
 
+    @abstractmethod
     async def list_models(self) -> List[Dict[str, Any]]:
         """List models available from the configured backend."""
 
+    @abstractmethod
     async def generate(
         self,
         model: str,
@@ -23,9 +27,15 @@ class LLMClient(Protocol):
     ) -> Optional[Dict[str, Any]]:
         """Generate text from a prompt."""
 
+    @abstractmethod
     async def generate_stream(self, model: str, prompt: str, **kwargs) -> AsyncIterator[Dict[str, Any]]:
         """Stream text generation chunks from a prompt."""
 
+
+class RagClient(LlmProviderClient, ABC):
+    """Full LLM client interface, including RAG generation."""
+
+    @abstractmethod
     async def generate_rag_answer(
         self,
         query: str,
@@ -35,6 +45,7 @@ class LLMClient(Protocol):
     ) -> Dict[str, Any]:
         """Generate a RAG answer using retrieved chunks."""
 
+    @abstractmethod
     async def generate_rag_answer_stream(
         self,
         query: str,

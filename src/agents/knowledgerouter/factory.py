@@ -4,7 +4,7 @@ from src.config import get_settings
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.texttosql.service import TextToSQLService
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 
 from .config import KnowledgeRouterConfig
 from .service import KnowledgeRouterService
@@ -13,7 +13,7 @@ from .service import KnowledgeRouterService
 def make_knowledge_router_service(
     agentic_rag_service: AgenticRAGService,
     text_to_sql_service: TextToSQLService,
-    llm_client: LLMClient,
+    llm_client: RagClient,
     langfuse_tracer: Optional[LangfuseTracer] = None,
     model: Optional[str] = None,
 ) -> KnowledgeRouterService:

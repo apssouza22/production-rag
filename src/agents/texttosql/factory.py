@@ -2,14 +2,14 @@ from typing import Optional
 
 from src.config import get_settings
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 
 from .config import TextToSQLConfig
 from .service import TextToSQLService
 
 
 def make_text_to_sql_service(
-    llm_client: LLMClient,
+    llm_client: RagClient,
     langfuse_tracer: Optional[LangfuseTracer] = None,
     model: Optional[str] = None,
     top_k: int = 5,

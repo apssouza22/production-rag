@@ -7,13 +7,12 @@ from langchain_openai import ChatOpenAI
 
 from src.config import Settings
 from src.domain.bifrost.exceptions import BifrostConnectionError, BifrostException, BifrostTimeoutError
-from src.domain.llm.rag import RAGGenerationMixin
-from src.domain.ollama.prompts import RAGPromptBuilder, ResponseParser
+from src.domain.llm.protocol import LlmProviderClient
 
 logger = logging.getLogger(__name__)
 
 
-class BifrostClient(RAGGenerationMixin):
+class BifrostClient(LlmProviderClient):
     """Client for LLM requests routed through the Bifrost gateway."""
 
     _REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
@@ -24,8 +23,6 @@ class BifrostClient(RAGGenerationMixin):
         self.fallback_models = settings.bifrost_fallback_models
         self.reasoning_effort = settings.reasoning_effort
         self.timeout = float(settings.ollama_timeout)
-        self.prompt_builder = RAGPromptBuilder()
-        self.response_parser = ResponseParser()
 
     @property
     def langchain_base_url(self) -> str:

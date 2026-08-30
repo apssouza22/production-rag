@@ -6,7 +6,7 @@ from typing import Optional
 from langchain_core.messages import AIMessage
 
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 from src.domain.middleware.types import AgentContext, AgentMiddleware, InvokeResult
 
 from ..config import GraphConfig
@@ -26,7 +26,7 @@ class GuardrailMiddleware(AgentMiddleware):
 
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_client: RagClient,
         config: GraphConfig,
         langfuse_tracer: Optional[LangfuseTracer] = None,
     ) -> None:

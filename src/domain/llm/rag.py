@@ -2,23 +2,45 @@ import logging
 from typing import Any, AsyncIterator, Dict, List
 
 from src.domain.llm.exceptions import LLMException
+from src.domain.llm.protocol import RagClient, LlmProviderClient
 from src.domain.ollama.prompts import RAGPromptBuilder, ResponseParser
 
 logger = logging.getLogger(__name__)
 
 
-class RAGGenerationMixin:
-    """Shared RAG prompt and response handling for LLM clients."""
+class RAGGenerationMixin(RagClient):
+    """LLM client that delegates generation to a provider and adds RAG helpers."""
 
-    prompt_builder: RAGPromptBuilder
-    response_parser: ResponseParser
+    def __init__(self, provider: LlmProviderClient):
+        self._provider = provider
+        self.prompt_builder = RAGPromptBuilder()
+        self.response_parser = ResponseParser()
 
-    async def generate(self, model: str, prompt: str, stream: bool = False, **kwargs) -> Dict[str, Any] | None:
-        raise NotImplementedError
+    @property
+    def provider(self) -> LlmProviderClient:
+        return self._provider
+
+    def get_langchain_model(self, model: str, temperature: float = 0.7):
+        return self._provider.get_langchain_model(model, temperature)
+
+    async def health_check(self) -> Dict[str, Any]:
+        return await self._provider.health_check()
+
+    async def list_models(self) -> List[Dict[str, Any]]:
+        return await self._provider.list_models()
+
+    async def generate(
+        self,
+        model: str,
+        prompt: str,
+        stream: bool = False,
+        **kwargs,
+    ) -> Dict[str, Any] | None:
+        return await self._provider.generate(model, prompt, stream=stream, **kwargs)
 
     async def generate_stream(self, model: str, prompt: str, **kwargs) -> AsyncIterator[Dict[str, Any]]:
-        raise NotImplementedError
-        yield {}
+        async for chunk in self._provider.generate_stream(model, prompt, **kwargs):
+            yield chunk
 
     async def generate_rag_answer(
         self,

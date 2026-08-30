@@ -16,7 +16,7 @@ from src.domain.graph.policies import (
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LLMClient
+from src.domain.llm.protocol import RagClient
 from src.domain.middleware import MiddlewareManager
 from src.domain.opensearch.client import OpenSearchClient
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
@@ -53,7 +53,7 @@ class AgenticRAGGraph:
 
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_client: RagClient,
         opensearch_client: OpenSearchClient,
         embeddings_client: JinaEmbeddingsClient,
         retrieval_settings: RetrievalSettings,
