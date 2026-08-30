@@ -19,6 +19,7 @@ Usage::
 from .error_handling_middleware import ErrorHandlingMiddleware
 from .logging_middleware import LoggingMiddleware
 from .pipeline import AgentPipeline, MiddlewareManager
+from .tool_hooks import middleware_tool_wrappers
 from .types import AgentContext, AgentMiddleware, InvokeResult, NextFn, build_invoke_config
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "MiddlewareManager",
     "NextFn",
     "build_invoke_config",
+    "middleware_tool_wrappers",
 ]

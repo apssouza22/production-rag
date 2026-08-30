@@ -17,6 +17,7 @@ from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
+from src.domain.middleware import MiddlewareManager, middleware_tool_wrappers
 from src.domain.opensearch.client import OpenSearchClient
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
 from src.agents.fusionsearch.models import GradeDocuments, GradingResult
@@ -414,7 +415,7 @@ class AgenticRAGGraph:
 
         return no_fault_tolerance, fault_tolerance
 
-    def compile(self):
+    def compile(self, middleware_manager: Optional[MiddlewareManager] = None):
         """Build and compile the LangGraph workflow."""
         logger.info("Building LangGraph workflow with context_schema")
 
@@ -429,7 +430,14 @@ class AgenticRAGGraph:
         no_fault_tolerance, fault_tolerance = self._configure_fault_tolerance(workflow)
 
         workflow.add_node("retrieve", self.retrieve)
-        workflow.add_node("tool_retrieve", ToolNode([retriever_tool]), **fault_tolerance)
+        workflow.add_node(
+            "tool_retrieve",
+            ToolNode(
+                [retriever_tool],
+                **middleware_tool_wrappers(middleware_manager),
+            ),
+            **fault_tolerance,
+        )
         workflow.add_node("grade_documents", self.grade_documents)
         workflow.add_node("rewrite_query", self.rewrite_query)
         workflow.add_node("generate_answer", self.generate_answer)
@@ -470,6 +478,7 @@ def build_agentic_rag_graph(
     config: GraphConfig,
     reranker_client: JinaRerankerClient | None = None,
     langfuse_tracer: Optional[LangfuseTracer] = None,
+    middleware_manager: Optional[MiddlewareManager] = None,
 ):
     """Build the LangGraph agentic RAG workflow."""
     return AgenticRAGGraph(
@@ -480,4 +489,4 @@ def build_agentic_rag_graph(
         config=config,
         reranker_client=reranker_client,
         langfuse_tracer=langfuse_tracer,
-    ).compile()
+    ).compile(middleware_manager=middleware_manager)

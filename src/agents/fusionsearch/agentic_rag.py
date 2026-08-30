@@ -45,7 +45,6 @@ class AgenticRAGService:
         :param graph_config: Configuration for graph execution
         """
         self.llm = llm_client
-        self.graph = graph_builder.compile()
         self.graph_builder = graph_builder
         self.retrieval_settings = retrieval_settings
         self.reranker = reranker_client
@@ -71,6 +70,7 @@ class AgenticRAGService:
             ],
             invoke_fn=self._core_invoke,
         )
+        self.graph = self.graph_builder.compile(middleware_manager=self.middleware_pipeline.manager)
 
         logger.info("Initializing AgenticRAGService with configuration:")
         logger.info(f"  Model: {self.graph_config.model}")

@@ -13,6 +13,7 @@ from src.domain.agent_fault_tolerance import (
     build_tool_retry_policy,
     build_tool_timeout,
 )
+from src.domain.middleware import MiddlewareManager, middleware_tool_wrappers
 from src.agents.texttosql.handlers import text_to_sql_error_handler
 
 from .config import TextToSQLConfig
@@ -46,8 +47,22 @@ class TextToSQLGraph:
             dialect=config.dialect,
         )
 
-        self._get_schema_node = ToolNode([self._get_schema_tool], name="get_schema")
-        self._run_query_node = ToolNode([self._run_query_tool], name="run_query")
+    def _build_tool_nodes(
+        self,
+        middleware_manager: MiddlewareManager | None = None,
+    ) -> tuple[ToolNode, ToolNode]:
+        tool_wrapper_kwargs = middleware_tool_wrappers(middleware_manager)
+        get_schema_node = ToolNode(
+            [self._get_schema_tool],
+            name="get_schema",
+            **tool_wrapper_kwargs,
+        )
+        run_query_node = ToolNode(
+            [self._run_query_tool],
+            name="run_query",
+            **tool_wrapper_kwargs,
+        )
+        return get_schema_node, run_query_node
 
     async def list_tables(self, state: MessagesState) -> dict:
         tool_call = {
@@ -111,16 +126,17 @@ class TextToSQLGraph:
 
         return tool_node_kwargs
 
-    def compile(self):
+    def compile(self, middleware_manager: MiddlewareManager | None = None):
         builder = StateGraph(MessagesState)
         tool_node_kwargs = self._configure_tool_fault_tolerance(builder)
+        get_schema_node, run_query_node = self._build_tool_nodes(middleware_manager)
 
         builder.add_node("list_tables", self.list_tables)
         builder.add_node("call_get_schema", self.call_get_schema)
-        builder.add_node("get_schema", self._get_schema_node, **tool_node_kwargs)
+        builder.add_node("get_schema", get_schema_node, **tool_node_kwargs)
         builder.add_node("generate_query", self.generate_query)
         builder.add_node("check_query", self.check_query)
-        builder.add_node("run_query", self._run_query_node, **tool_node_kwargs)
+        builder.add_node("run_query", run_query_node, **tool_node_kwargs)
 
         builder.add_edge(START, "list_tables")
         builder.add_edge("list_tables", "call_get_schema")
@@ -138,6 +154,11 @@ def build_text_to_sql_graph(
     model: BaseChatModel,
     tools: list,
     config: TextToSQLConfig,
+    middleware_manager: MiddlewareManager | None = None,
 ):
     """Build the LangGraph SQL agent workflow from the LangChain reference."""
-    return TextToSQLGraph(model=model, tools=tools, config=config).compile()
+    return TextToSQLGraph(
+        model=model,
+        tools=tools,
+        config=config,
+    ).compile(middleware_manager=middleware_manager)

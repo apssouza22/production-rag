@@ -43,11 +43,6 @@ class TextToSQLService:
             model=self.agent_config.model,
             temperature=self.agent_config.temperature,
         )
-        self.graph = build_text_to_sql_graph(
-            model=self.model,
-            tools=self.tools,
-            config=self.agent_config,
-        )
 
         self.middleware_pipeline = AgentPipeline(
             middlewares=[
@@ -62,6 +57,12 @@ class TextToSQLService:
                 ErrorHandlingMiddleware(),
             ],
             invoke_fn=self._core_invoke,
+        )
+        self.graph = build_text_to_sql_graph(
+            model=self.model,
+            tools=self.tools,
+            config=self.agent_config,
+            middleware_manager=self.middleware_pipeline.manager,
         )
 
         logger.info(
@@ -90,6 +91,7 @@ class TextToSQLService:
                 model=self.model,
                 tools=self.tools,
                 config=self.agent_config,
+                middleware_manager=self.middleware_pipeline.manager,
             )
 
         try:
