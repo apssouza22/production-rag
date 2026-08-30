@@ -5,7 +5,7 @@ from typing import Literal
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
-from src.domain.graph import END, GraphBuilder, MessagesState, START, ToolNode
+from src.domain.graph import END, GraphBuilder, MessagesState, START
 
 from src.domain.graph.policies import (
     build_llm_timeout,
@@ -13,7 +13,7 @@ from src.domain.graph.policies import (
     build_tool_retry_policy,
     build_tool_timeout,
 )
-from src.domain.middleware import MiddlewareManager, middleware_tool_wrappers
+from src.domain.middleware import MiddlewareManager
 from src.agents.texttosql.handlers import text_to_sql_error_handler
 
 from .config import TextToSQLConfig
@@ -46,23 +46,6 @@ class TextToSQLGraph:
         self._check_query_system_prompt = CHECK_QUERY_SYSTEM_PROMPT.format(
             dialect=config.dialect,
         )
-
-    def _build_tool_nodes(
-        self,
-        middleware_manager: MiddlewareManager | None = None,
-    ) -> tuple[ToolNode, ToolNode]:
-        tool_wrapper_kwargs = middleware_tool_wrappers(middleware_manager)
-        get_schema_node = ToolNode(
-            [self._get_schema_tool],
-            name="get_schema",
-            **tool_wrapper_kwargs,
-        )
-        run_query_node = ToolNode(
-            [self._run_query_tool],
-            name="run_query",
-            **tool_wrapper_kwargs,
-        )
-        return get_schema_node, run_query_node
 
     async def list_tables(self, state: MessagesState) -> dict:
         tool_call = {
@@ -109,36 +92,20 @@ class TextToSQLGraph:
             return END
         return "check_query"
 
-    def _configure_tool_fault_tolerance(self, builder: GraphBuilder) -> dict:
-        ft = self.config.fault_tolerance
-        tool_node_kwargs: dict = {}
-
-        if ft.enabled:
-            builder.set_node_defaults(
-                retry_policy=build_retry_policy(ft),
-                timeout=build_llm_timeout(ft),
-                error_handler=text_to_sql_error_handler,
-            )
-            tool_node_kwargs = {
-                "retry_policy": build_tool_retry_policy(ft),
-                "timeout": build_tool_timeout(ft),
-            }
-
-        return tool_node_kwargs
 
     def compile(self, middleware_manager: MiddlewareManager | None = None):
         builder = GraphBuilder(MessagesState)
-        tool_node_kwargs = self._configure_tool_fault_tolerance(builder)
-        get_schema_node, run_query_node = self._build_tool_nodes(middleware_manager)
+        if middleware_manager is not None:
+            builder.set_middleware_manager(middleware_manager)
 
         (
             builder
             .add_node("list_tables", self.list_tables)
             .add_node("call_get_schema", self.call_get_schema)
-            .add_node("get_schema", get_schema_node, **tool_node_kwargs)
+            .add_tool_node("get_schema", [self._get_schema_tool])
             .add_node("generate_query", self.generate_query)
             .add_node("check_query", self.check_query)
-            .add_node("run_query", run_query_node, **tool_node_kwargs)
+            .add_tool_node("run_query", [self._run_query_tool])
             .add_edge(START, "list_tables")
             .add_edge("list_tables", "call_get_schema")
             .add_edge("call_get_schema", "get_schema")

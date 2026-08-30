@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Union
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from src.domain.graph import END, GraphBuilder, START, ToolNode, tools_condition
+from src.domain.graph import END, GraphBuilder, START, tools_condition
 
 from src.domain.graph.policies import (
     build_llm_timeout,
@@ -17,7 +17,7 @@ from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.langfuse.client import LangfuseTracer
 from src.domain.llm.protocol import LLMClient
-from src.domain.middleware import MiddlewareManager, middleware_tool_wrappers
+from src.domain.middleware import MiddlewareManager
 from src.domain.opensearch.client import OpenSearchClient
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
 from src.agents.fusionsearch.models import GradeDocuments, GradingResult
@@ -420,6 +420,8 @@ class AgenticRAGGraph:
         logger.info("Building agentic RAG workflow with context_schema")
 
         workflow = GraphBuilder(AgentState, context_schema=Context)
+        if middleware_manager is not None:
+            workflow.set_middleware_manager(middleware_manager)
 
         retriever_tool = create_retriever_tool(
             opensearch_client=self.opensearch_client,
@@ -432,14 +434,7 @@ class AgenticRAGGraph:
         (
             workflow
             .add_node("retrieve", self.retrieve)
-            .add_node(
-                "tool_retrieve",
-                ToolNode(
-                    [retriever_tool],
-                    **middleware_tool_wrappers(middleware_manager),
-                ),
-                **fault_tolerance,
-            )
+            .add_tool_node("tool_retrieve", [retriever_tool])
             .add_node("grade_documents", self.grade_documents)
             .add_node("rewrite_query", self.rewrite_query)
             .add_node("generate_answer", self.generate_answer)

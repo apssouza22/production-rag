@@ -13,7 +13,8 @@ from langgraph.typing import StateT
 from src.domain.graph.config import FaultToleranceConfig
 from src.domain.graph.policies import build_llm_timeout, build_retry_policy
 from src.domain.graph.compiled import StateGraphCompiled
-from src.domain.graph.types import Checkpointer, Command, END, MessagesState, NodeError
+from src.domain.graph.types import Checkpointer, Command, END, MessagesState, NodeError, ToolNode
+from src.domain.middleware import MiddlewareManager, middleware_tool_wrappers
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class GraphBuilder:
         state_schema: type[StateT] | type[TypedDict],
         context_schema: type[Any] | None = None,
     ) -> None:
+        self._middleware_manager = None
         self._graph = StateGraph(state_schema, context_schema)
         ft = FaultToleranceConfig()
         self.set_node_defaults(
@@ -34,13 +36,36 @@ class GraphBuilder:
             error_handler=default_error_handler,
         )
 
+    def set_middleware_manager(self, manager: MiddlewareManager) -> Self:
+        self._middleware_manager = manager
+        return self
+
     def set_node_defaults(self, **kwargs: Any) -> Self:
         self._graph.set_node_defaults(**kwargs)
         return self
 
     def add_node(self, node: str, action: Any | None = None, /, **kwargs: Any) -> Self:
+        if isinstance(action, ToolNode):
+            action = self._apply_tool_middleware(action)
         self._graph.add_node(node, action, **kwargs)
         return self
+
+    def add_tool_node(
+        self,
+        node: str,
+        tools: Sequence[Any],
+        /,
+        *,
+        name: str | None = None,
+        **kwargs: Any,
+    ) -> Self:
+        """Add a ``ToolNode`` wired to the configured middleware manager."""
+        tool_node = ToolNode(
+            tools,
+            name=name or node,
+            **middleware_tool_wrappers(self._middleware_manager),
+        )
+        return self.add_node(node, tool_node, **kwargs)
 
     def add_edge(self, start_key: str | Any, end_key: str | Any) -> Self:
         self._graph.add_edge(start_key, end_key)
@@ -63,6 +88,17 @@ class GraphBuilder:
         **kwargs: Any,
     ) -> StateGraphCompiled:
         return StateGraphCompiled(self._graph.compile(name=name, checkpointer=checkpointer, **kwargs))
+
+    def _apply_tool_middleware(self, tool_node: ToolNode) -> ToolNode:
+        wrappers = middleware_tool_wrappers(self._middleware_manager)
+        if not wrappers:
+            return tool_node
+
+        if tool_node._wrap_tool_call is None:
+            tool_node._wrap_tool_call = wrappers["wrap_tool_call"]
+        if tool_node._awrap_tool_call is None:
+            tool_node._awrap_tool_call = wrappers["awrap_tool_call"]
+        return tool_node
 
 
 async def default_error_handler(state: MessagesState, error: NodeError) -> Command:
