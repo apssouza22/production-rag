@@ -12,8 +12,8 @@ from redis.commands.search.query import Query
 from redis.exceptions import ResponseError
 
 from src.config import RedisSettings
-from src.domain.cache.keys import build_params_hash
-from src.domain.cache.scoring import CacheConfidenceBreakdown, compute_confidence
+from src.platform.cache.keys import build_params_hash
+from src.platform.cache.scoring import CacheConfidenceBreakdown, compute_confidence
 from src.domain.opensearch.schemas import HybridSearchRequest, SearchResponse
 
 logger = logging.getLogger(__name__)

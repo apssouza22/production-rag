@@ -11,20 +11,63 @@ from uuid import UUID
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
+from langgraph.types import Send
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Convert callback payloads into JSON/Pydantic-serializable structures."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+
+    if isinstance(value, UUID):
+        return str(value)
+
+    if isinstance(value, Send):
+        payload: dict[str, Any] = {
+            "type": "Send",
+            "node": value.node,
+            "arg": _sanitize_for_json(value.arg),
+        }
+        if value.timeout is not None:
+            payload["timeout"] = value.timeout
+        return payload
+
+    if isinstance(value, BaseMessage):
+        message_payload: dict[str, Any] = {
+            "type": getattr(value, "type", value.__class__.__name__),
+            "content": getattr(value, "content", str(value)),
+        }
+        tool_calls = getattr(value, "tool_calls", None)
+        if tool_calls:
+            message_payload["tool_calls"] = _sanitize_for_json(tool_calls)
+        return message_payload
+
+    if isinstance(value, dict):
+        return {str(key): _sanitize_for_json(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_json(item) for item in value]
+
+    return str(value)
 
 
 def _truncate(value: Any, max_length: int) -> Any:
-    if max_length <= 0 or value is None:
-        return value
+    if value is None:
+        return None
 
-    if isinstance(value, str):
-        if len(value) <= max_length:
-            return value
-        return f"{value[:max_length]}..."
+    sanitized = _sanitize_for_json(value)
 
-    rendered = json.dumps(value, default=str)
+    if max_length <= 0:
+        return sanitized
+
+    if isinstance(sanitized, str):
+        if len(sanitized) <= max_length:
+            return sanitized
+        return f"{sanitized[:max_length]}..."
+
+    rendered = json.dumps(sanitized, default=str)
     if len(rendered) <= max_length:
-        return value
+        return sanitized
     return f"{rendered[:max_length]}..."
 
 

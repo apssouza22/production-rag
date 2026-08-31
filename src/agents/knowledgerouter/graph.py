@@ -3,9 +3,9 @@ import logging
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field
 
-from src.domain.graph import END, GraphBuilder, Send, START
+from src.platform.graph import END, GraphBuilder, Send, START
 
-from src.domain.graph.policies import (
+from src.platform.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
 )

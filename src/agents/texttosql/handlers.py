@@ -2,7 +2,7 @@ import logging
 
 from langchain_core.messages import AIMessage
 
-from src.domain.graph import Command, END, MessagesState, NodeError
+from src.platform.graph import Command, END, MessagesState, NodeError
 
 logger = logging.getLogger(__name__)
 

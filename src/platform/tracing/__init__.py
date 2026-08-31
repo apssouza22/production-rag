@@ -1,6 +1,5 @@
 """LangChain callback handlers for graph observability."""
 
-from src.domain.graph.callback_utils import extend_graph_callbacks
 from .schemas import GraphTrajectoryResponse, TrajectoryEventResponse, TrajectorySummaryResponse
 from .trajectory import GraphTrajectory, TrajectoryCallback, TrajectoryEvent
 
@@ -11,5 +10,4 @@ __all__ = [
     "TrajectoryEvent",
     "TrajectoryEventResponse",
     "TrajectorySummaryResponse",
-    "extend_graph_callbacks",
 ]

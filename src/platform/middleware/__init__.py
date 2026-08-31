@@ -2,7 +2,7 @@
 
 Usage::
 
-    from src.domain.middleware import (
+    from src.platform.middleware import (
         AgentContext,
         AgentPipeline,
         ErrorHandlingMiddleware,

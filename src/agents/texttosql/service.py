@@ -4,9 +4,9 @@ from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
 
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.middleware import (
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.middleware import (
     AgentContext,
     AgentPipeline,
     ErrorHandlingMiddleware,
@@ -16,7 +16,7 @@ from src.domain.middleware import (
 from .config import TextToSQLConfig
 from .graph import build_text_to_sql_graph
 from .tools import create_sql_tools
-from ...domain.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
+from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 

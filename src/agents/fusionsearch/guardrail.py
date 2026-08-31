@@ -4,8 +4,8 @@ import logging
 import time
 from typing import Optional
 
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
 
 from .models import GuardrailScoring
 from .prompts import GUARDRAIL_PROMPT

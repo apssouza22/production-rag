@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from src.config import RedisSettings
-from src.domain.cache.client import CacheClient, ExactCacheClient
-from src.domain.cache.keys import build_exact_cache_key, build_params_hash
-from src.domain.cache.scoring import CacheConfidenceBreakdown
-from src.domain.cache.semantic import SemanticCacheClient, embedding_to_bytes
+from src.platform.cache.client import CacheClient, ExactCacheClient
+from src.platform.cache.keys import build_exact_cache_key, build_params_hash
+from src.platform.cache.scoring import CacheConfidenceBreakdown
+from src.platform.cache.semantic import SemanticCacheClient, embedding_to_bytes
 from src.domain.opensearch.schemas import HybridSearchRequest, SearchHit, SearchResponse
 
 

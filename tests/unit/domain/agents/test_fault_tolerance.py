@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from src.domain.graph import END, GraphBuilder, NodeError, START
-from src.domain.graph.config import FaultToleranceConfig
-from src.domain.graph.policies import (
+from src.platform.graph import END, GraphBuilder, NodeError, START
+from src.platform.graph.config import FaultToleranceConfig
+from src.platform.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     is_transient_error,
@@ -21,7 +21,7 @@ from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.graph import AgenticRAGGraph
 from src.agents.fusionsearch.state import AgentState
 from src.agents.knowledgerouter.state import RouterState
-from src.domain.llm.exceptions import LLMConnectionError, LLMTimeoutError
+from src.platform.llm.exceptions import LLMConnectionError, LLMTimeoutError
 
 
 class TestRetryClassification:

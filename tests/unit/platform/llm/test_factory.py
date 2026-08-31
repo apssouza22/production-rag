@@ -1,8 +1,8 @@
 from src.config import Settings
-from src.domain.bifrost.client import BifrostClient
-from src.domain.llm.factory import make_agent_llm_client, make_llm_client
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.ollama.client import OllamaClient
+from src.platform.bifrost.client import BifrostClient
+from src.platform.llm.factory import make_agent_llm_client, make_llm_client
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.ollama import OllamaClient
 
 
 def test_make_llm_client_uses_ollama_by_default():

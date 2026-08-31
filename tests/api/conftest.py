@@ -22,7 +22,7 @@ async def client():
         patch("src.domain.opensearch.factory.make_opensearch_client") as mock_os,
         patch("src.domain.arxiv.factory.make_arxiv_client") as mock_arxiv,
         patch("src.domain.pdf_parser.factory.make_pdf_parser_service") as mock_pdf,
-        patch("src.domain.llm.factory.make_llm_client") as mock_llm,
+        patch("src.platform.llm.factory.make_llm_client") as mock_llm,
         patch("src.main.make_cache_client") as mock_cache,
         patch("src.domain.paper.repository.PaperRepository.get_by_arxiv_id") as mock_get_by_id,
     ):

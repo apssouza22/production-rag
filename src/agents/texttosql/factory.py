@@ -1,8 +1,8 @@
 from typing import Optional
 
 from src.config import get_settings
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
 
 from .config import TextToSQLConfig
 from .service import TextToSQLService

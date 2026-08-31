@@ -6,9 +6,9 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 
-from src.domain.graph import END, GraphBuilder, MessagesState, START, ToolNode
-from src.domain.middleware.pipeline import MiddlewareManager
-from src.domain.middleware.types import AgentContext, AgentMiddleware
+from src.platform.graph import END, GraphBuilder, MessagesState, START, ToolNode
+from src.platform.middleware.pipeline import MiddlewareManager
+from src.platform.middleware.types import AgentContext, AgentMiddleware
 
 
 class RecordingMiddleware(AgentMiddleware):

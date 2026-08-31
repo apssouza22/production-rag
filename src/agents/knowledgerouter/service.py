@@ -6,19 +6,20 @@ from langchain_core.messages import HumanMessage
 
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.texttosql.service import TextToSQLService
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.middleware import (
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.middleware import (
     AgentContext,
     AgentPipeline,
     ErrorHandlingMiddleware,
     LoggingMiddleware,
+    TrajectoryMiddleware,
 )
 
 from .config import KnowledgeRouterConfig
 from .graph import build_knowledge_router_graph
 from .schemas import AgentResultItem, ClassificationItem, classification_to_schema
-from ...domain.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
+from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class KnowledgeRouterService:
                     build_trace_metadata=self._build_trace_metadata,
                     build_trace_output=self._build_trace_output,
                 ),
+                TrajectoryMiddleware(),
                 LoggingMiddleware(),
                 ErrorHandlingMiddleware(),
             ],
@@ -145,6 +147,8 @@ class KnowledgeRouterService:
         agent_results = self._build_agent_results(graph_result.get("results", []))
         reasoning_steps = self._extract_reasoning_steps(classifications, agent_results)
 
+        trajectory = ctx.metadata.get("trajectory")
+
         return {
             "query": query,
             "answer": graph_result.get("final_answer", ""),
@@ -153,6 +157,7 @@ class KnowledgeRouterService:
             "reasoning_steps": reasoning_steps,
             "execution_time": execution_time,
             "trace_id": ctx.metadata.get("trace_id"),
+            "trajectory": trajectory.to_api_dict() if trajectory else None,
         }
 
     def _build_agent_results(self, results: list) -> List[AgentResultItem]:

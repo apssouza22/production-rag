@@ -8,7 +8,7 @@ from langchain_ollama import ChatOllama
 from src.config import Settings
 from src.platform.llm.fallback import build_fallback_models, build_model_chain
 from src.platform.llm.protocol import LlmProviderClient
-from src.domain.ollama.exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
+from src.platform.ollama.exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,8 @@
 """Domain graph package — single import surface for agent workflows."""
 
-from src.domain.graph.builder import GraphBuilder
-from src.domain.graph.compiled import StateGraphCompiled
-from src.domain.graph.types import (
+from src.platform.graph.builder import GraphBuilder
+from src.platform.graph.compiled import StateGraphCompiled
+from src.platform.graph.types import (
     END,
     START,
     Checkpointer,

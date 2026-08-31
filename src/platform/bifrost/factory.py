@@ -1,5 +1,5 @@
 from src.config import Settings, get_settings
-from src.domain.bifrost.client import BifrostClient
+from src.platform.bifrost.client import BifrostClient
 
 
 def make_bifrost_client(settings: Settings | None = None, api_key: str | None = None) -> BifrostClient:

@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import ToolMessage
 
-from src.domain.middleware.pipeline import MiddlewareManager
-from src.domain.middleware.tool_hooks import middleware_tool_wrappers
-from src.domain.middleware.types import AgentContext, AgentMiddleware
+from src.platform.middleware.pipeline import MiddlewareManager
+from src.platform.middleware.tool_hooks import middleware_tool_wrappers
+from src.platform.middleware.types import AgentContext, AgentMiddleware
 
 
 class RecordingMiddleware(AgentMiddleware):

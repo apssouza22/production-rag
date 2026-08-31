@@ -1,9 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.config import Settings
-from src.domain.ollama.client import OllamaClient
+from src.platform.ollama import OllamaClient
 
 
 def test_build_fallbacks_excludes_primary_model():

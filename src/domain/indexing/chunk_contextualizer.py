@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import List, Optional
 
-from src.domain.llm.protocol import LlmProviderClient
+from src.platform.llm.protocol import LlmProviderClient
 
 from .models import TextChunk
 from .prompts import CHUNK_CONTEXT_PROMPT

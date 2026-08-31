@@ -3,8 +3,8 @@ from typing import Optional
 from src.config import get_settings
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
 from src.domain.opensearch.client import OpenSearchClient
 
 from .agentic_rag import AgenticRAGService

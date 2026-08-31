@@ -6,9 +6,9 @@ from unittest.mock import Mock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from src.domain.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
-from src.domain.middleware.pipeline import AgentPipeline
-from src.domain.middleware.types import AgentContext
+from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
+from src.platform.middleware.pipeline import AgentPipeline
+from src.platform.middleware.types import AgentContext
 
 
 @pytest.fixture

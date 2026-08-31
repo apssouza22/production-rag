@@ -1,9 +1,9 @@
 from typing import Literal
 
 from src.config import Settings, get_settings
-from src.domain.bifrost.factory import make_bifrost_client
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.ollama.factory import make_ollama_client
+from src.platform.bifrost.factory import make_bifrost_client
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.ollama.factory import make_ollama_client
 
 AgentKey = Literal["agent_1", "agent_2"]
 

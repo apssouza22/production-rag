@@ -5,9 +5,9 @@ import time
 from contextlib import ExitStack
 from typing import Any, Callable, Optional
 
-from src.domain.langfuse.client import LangfuseTracer
+from src.platform.langfuse.client import LangfuseTracer
 
-from src.domain.middleware.types import AgentContext, AgentMiddleware, InvokeResult
+from src.platform.middleware.types import AgentContext, AgentMiddleware, InvokeResult
 
 logger = logging.getLogger(__name__)
 

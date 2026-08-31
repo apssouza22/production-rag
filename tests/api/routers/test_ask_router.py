@@ -38,6 +38,20 @@ def mock_knowledge_router_service():
             ],
             "execution_time": 4.5,
             "trace_id": "trace-123",
+            "trajectory": {
+                "started_at": 1712345678.1,
+                "finished_at": 1712345680.4,
+                "duration_ms": 2300,
+                "events": [],
+                "summary": {
+                    "event_count": 0,
+                    "nodes": [],
+                    "tools": [],
+                    "models": [],
+                    "errors": [],
+                },
+                "steps": ["node:classify", "node:route_agents"],
+            },
         }
     )
     return service
@@ -73,6 +87,7 @@ class TestKnowledgeRouterEndpoint:
         assert len(data["agent_results"]) == 2
         assert len(data["reasoning_steps"]) == 3
         assert data["trace_id"] == "trace-123"
+        assert data["trajectory"]["steps"] == ["node:classify", "node:route_agents"]
 
     def test_ask_router_minimal_request(self, client):
         response = client.post(

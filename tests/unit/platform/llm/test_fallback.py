@@ -1,6 +1,6 @@
 import pytest
 
-from src.domain.llm.fallback import build_fallback_models, build_model_chain
+from src.platform.llm.fallback import build_fallback_models, build_model_chain
 
 
 def test_build_fallback_models_excludes_primary_and_duplicates():

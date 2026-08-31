@@ -1,5 +1,5 @@
 from src.config import Settings, get_settings
-from src.domain.ollama.client import OllamaClient
+from src.platform.ollama.client import OllamaClient
 
 
 def make_ollama_client(settings: Settings | None = None) -> OllamaClient:

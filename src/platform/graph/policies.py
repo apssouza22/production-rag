@@ -1,11 +1,11 @@
-from src.domain.graph.types import RetryPolicy, TimeoutPolicy
+from src.platform.graph.types import RetryPolicy, TimeoutPolicy
 
-from src.domain.bifrost.exceptions import BifrostConnectionError, BifrostTimeoutError
-from src.domain.llm.exceptions import LLMConnectionError, LLMTimeoutError
-from src.domain.ollama.exceptions import OllamaConnectionError, OllamaTimeoutError
+from src.platform.bifrost.exceptions import BifrostConnectionError, BifrostTimeoutError
+from src.platform.llm.exceptions import LLMConnectionError, LLMTimeoutError
+from src.platform.ollama import OllamaConnectionError, OllamaTimeoutError
 from src.domain.opensearch.exceptions import OpenSearchException
 
-from src.domain.graph.config import FaultToleranceConfig
+from src.platform.graph.config import FaultToleranceConfig
 
 _TRANSIENT_EXCEPTIONS = (
     ConnectionError,

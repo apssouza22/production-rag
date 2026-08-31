@@ -6,10 +6,11 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import Generation, LLMResult
 
-from src.domain.trajectory_report import TrajectoryCallback, extend_graph_callbacks
-from src.domain.middleware.pipeline import AgentPipeline
-from src.domain.middleware.trajectory_middleware import TrajectoryMiddleware
-from src.domain.middleware.types import AgentContext
+from src.platform.graph.callback_utils import extend_graph_callbacks
+from src.platform.tracing import TrajectoryCallback
+from src.platform.middleware.pipeline import AgentPipeline
+from src.platform.middleware.trajectory_middleware import TrajectoryMiddleware
+from src.platform.middleware.types import AgentContext
 
 
 def _make_ctx() -> AgentContext:
@@ -128,6 +129,40 @@ class TestTrajectoryCallback:
         assert isinstance(event.input, str)
         assert event.input.endswith("...")
         assert len(event.input) <= 23
+
+    @pytest.mark.asyncio
+    async def test_sanitizes_langgraph_send_objects(self):
+        from langgraph.types import Send
+
+        from pydantic import TypeAdapter
+
+        from src.platform.tracing.schemas import GraphTrajectoryResponse
+
+        callback = TrajectoryCallback()
+        run_id = uuid4()
+        sends = [
+            Send("documents", {"query": "What is a transformer?"}),
+            Send("database", {"query": "How many transformer papers exist?"}),
+        ]
+
+        await callback.on_chain_end(sends, run_id=run_id)
+
+        trajectory = callback.finalize()
+        output = trajectory.events[0].output
+        assert output == [
+            {
+                "type": "Send",
+                "node": "documents",
+                "arg": {"query": "What is a transformer?"},
+            },
+            {
+                "type": "Send",
+                "node": "database",
+                "arg": {"query": "How many transformer papers exist?"},
+            },
+        ]
+
+        TypeAdapter(GraphTrajectoryResponse).validate_python(trajectory.to_api_dict())
 
 
 class TestTrajectoryMiddleware:

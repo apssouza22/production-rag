@@ -4,7 +4,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from src.config import Settings
-from src.domain.bifrost.client import BifrostClient
+from src.platform.bifrost.client import BifrostClient
 
 
 def test_normalize_model_routes_openai_models():

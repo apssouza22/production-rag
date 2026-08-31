@@ -5,9 +5,9 @@ from typing import Dict, List, Optional, Union
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from src.domain.graph import END, GraphBuilder, START, tools_condition
+from src.platform.graph import END, GraphBuilder, START, tools_condition
 
-from src.domain.graph.policies import (
+from src.platform.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     build_tool_retry_policy,
@@ -15,9 +15,9 @@ from src.domain.graph.policies import (
 )
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.middleware import MiddlewareManager
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.middleware import MiddlewareManager
 from src.domain.opensearch.client import OpenSearchClient
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
 from src.agents.fusionsearch.models import GradeDocuments, GradingResult

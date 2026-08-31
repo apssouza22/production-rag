@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.typing import ContextT, InputT, OutputT, StateT
 
-from src.domain.graph.types import Command
+from src.platform.graph.types import Command
 
 
 class StateGraphCompiled:

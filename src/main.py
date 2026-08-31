@@ -8,11 +8,11 @@ from fastapi import FastAPI
 from src.api import agentic_ask, hybrid_search, knowledge_router, ping, text_to_sql
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
-from src.domain.cache.factory import make_cache_client
+from src.platform.cache.factory import make_cache_client
 from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
-from src.domain.langfuse.factory import make_langfuse_tracer
-from src.domain.llm.factory import make_llm_client
+from src.platform.langfuse.factory import make_langfuse_tracer
+from src.platform.llm.factory import make_llm_client
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
 

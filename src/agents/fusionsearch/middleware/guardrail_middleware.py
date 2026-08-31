@@ -5,9 +5,9 @@ from typing import Optional
 
 from langchain_core.messages import AIMessage
 
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.middleware.types import AgentContext, AgentMiddleware, InvokeResult
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.middleware.types import AgentContext, AgentMiddleware, InvokeResult
 
 from ..config import GraphConfig
 from ..guardrail import build_out_of_scope_message, evaluate_guardrail

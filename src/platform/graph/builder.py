@@ -10,11 +10,11 @@ from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph
 from langgraph.typing import StateT
 
-from src.domain.graph.config import FaultToleranceConfig
-from src.domain.graph.policies import build_llm_timeout, build_retry_policy
-from src.domain.graph.compiled import StateGraphCompiled
-from src.domain.graph.types import Checkpointer, Command, END, MessagesState, NodeError, ToolNode
-from src.domain.middleware import MiddlewareManager, middleware_tool_wrappers
+from src.platform.graph.config import FaultToleranceConfig
+from src.platform.graph.policies import build_llm_timeout, build_retry_policy
+from src.platform.graph.compiled import StateGraphCompiled
+from src.platform.graph.types import Checkpointer, Command, END, MessagesState, NodeError, ToolNode
+from src.platform.middleware import MiddlewareManager, middleware_tool_wrappers
 
 logger = logging.getLogger(__name__)
 

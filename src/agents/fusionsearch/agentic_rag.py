@@ -4,9 +4,9 @@ from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.langfuse.client import LangfuseTracer
-from src.domain.llm.protocol import LlmProviderClient
-from src.domain.middleware import (
+from src.platform.langfuse.client import LangfuseTracer
+from src.platform.llm.protocol import LlmProviderClient
+from src.platform.middleware import (
     AgentContext,
     AgentPipeline,
     ErrorHandlingMiddleware,
@@ -19,7 +19,7 @@ from .context import Context
 from .graph import AgenticRAGGraph
 from .middleware import GuardrailMiddleware
 from .retrieval_settings import RetrievalSettings
-from ...domain.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
+from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 

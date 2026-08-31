@@ -7,9 +7,9 @@ from typing import Literal, Optional
 import redis
 
 from src.config import RedisSettings
-from src.domain.cache.keys import build_exact_cache_key
-from src.domain.cache.scoring import CacheConfidenceBreakdown
-from src.domain.cache.semantic import SemanticCacheClient
+from src.platform.cache.keys import build_exact_cache_key
+from src.platform.cache.scoring import CacheConfidenceBreakdown
+from src.platform.cache.semantic import SemanticCacheClient
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.opensearch.schemas import HybridSearchRequest, SearchResponse
 

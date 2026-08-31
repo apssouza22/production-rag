@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from src.config import get_settings
-from src.domain.langfuse.client import LangfuseTracer
+from src.platform.langfuse.client import LangfuseTracer
 
 
 @lru_cache(maxsize=1)

@@ -1,7 +1,7 @@
 import pytest
 
 from src.config import RedisSettings
-from src.domain.cache.semantic import SemanticCacheClient
+from src.platform.cache.semantic import SemanticCacheClient
 
 
 @pytest.fixture

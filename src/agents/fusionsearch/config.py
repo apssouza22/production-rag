@@ -3,7 +3,7 @@ from typing import Any, Dict
 from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
-from src.domain.graph.config import FaultToleranceConfig
+from src.platform.graph.config import FaultToleranceConfig
 
 
 class GraphConfig(BaseModel):

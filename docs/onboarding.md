@@ -441,7 +441,7 @@ OLLAMA_HOST=http://localhost:11434
 | Module | Role |
 |--------|------|
 | `src/domain/llm/` | `LLMClient` protocol + `make_llm_client()` factory |
-| `src/domain/ollama/` | Direct Ollama client (`ChatOllama`, native `/api/generate`) |
+| `src/platform/ollama/` | Direct Ollama client (`ChatOllama`, native `/api/generate`) |
 | `src/domain/bifrost/` | Bifrost client (`ChatOpenAI` via `/langchain`) |
 
 Shared RAG prompt logic lives in `src/domain/llm/rag.py`; both clients implement the same interface.
@@ -583,7 +583,7 @@ compose.yml → src/config.py → src/main.py → src/dependencies.py
 → src/domain/opensearch/client.py (search)
 → src/domain/jinaai/jina_reranker_client.py (reranking)
 → src/domain/llm/factory.py (LLM provider selection)
-→ src/domain/ollama/client.py (direct Ollama)
+→ src/platform/ollama/client.py (direct Ollama)
 → src/domain/bifrost/client.py (Bifrost gateway)
 → src/api/ask.py (RAG)
 → src/domain/langfuse/tracer.py (tracing)
