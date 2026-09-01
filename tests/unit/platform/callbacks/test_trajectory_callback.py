@@ -115,6 +115,67 @@ class TestTrajectoryCallback:
         assert trajectory.to_steps() == ["node:retrieve"]
 
     @pytest.mark.asyncio
+    async def test_filters_nested_chain_starts_from_summary_and_steps(self):
+        callback = TrajectoryCallback()
+        node_run_id = uuid4()
+
+        await callback.on_chain_start(
+            None,
+            {"query": "test"},
+            run_id=node_run_id,
+            metadata={"langgraph_node": "classify", "langgraph_step": 1},
+        )
+        await callback.on_chain_start(
+            {"name": "RunnableSequence"},
+            {},
+            run_id=uuid4(),
+            parent_run_id=node_run_id,
+            metadata={"langgraph_node": "classify", "langgraph_step": 1},
+        )
+        await callback.on_chain_start(
+            None,
+            {},
+            run_id=uuid4(),
+            parent_run_id=node_run_id,
+            metadata={"langgraph_node": "classify", "langgraph_step": 1},
+        )
+        await callback.on_chat_model_start(
+            {"name": "ChatOpenAI"},
+            [[HumanMessage(content="hi")]],
+            run_id=uuid4(),
+            parent_run_id=node_run_id,
+            metadata={"langgraph_node": "classify", "langgraph_step": 1},
+        )
+
+        trajectory = callback.finalize()
+
+        assert len(trajectory.events) == 4
+        assert trajectory.summary()["nodes"] == ["classify"]
+        assert trajectory.to_steps() == ["node:classify", "llm:classify"]
+
+    @pytest.mark.asyncio
+    async def test_keeps_repeated_node_visits_from_graph_loops(self):
+        callback = TrajectoryCallback()
+
+        await callback.on_chain_start(
+            None,
+            {},
+            run_id=uuid4(),
+            metadata={"langgraph_node": "grade_documents", "langgraph_step": 3},
+        )
+        await callback.on_chain_start(
+            None,
+            {},
+            run_id=uuid4(),
+            metadata={"langgraph_node": "grade_documents", "langgraph_step": 7},
+        )
+
+        trajectory = callback.finalize()
+
+        assert trajectory.summary()["nodes"] == ["grade_documents", "grade_documents"]
+        assert trajectory.to_steps() == ["node:grade_documents", "node:grade_documents"]
+
+    @pytest.mark.asyncio
     async def test_truncates_large_payloads(self):
         callback = TrajectoryCallback(max_content_length=20)
         run_id = uuid4()

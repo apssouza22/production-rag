@@ -85,7 +85,7 @@ The Airflow container is configured for cross-platform deployment:
 AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://rag_user:rag_password@postgres:5412/rag_db
 AIRFLOW__CORE__EXECUTOR=LocalExecutor
 POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5412/rag_db
-PYTHONPATH=/opt/airflow/src
+PYTHONPATH=/opt/airflow
 ```
 
 ### Service Dependencies

@@ -88,6 +88,66 @@ def _serialize_messages(messages: list[list[BaseMessage]]) -> list[list[dict[str
     return serialized_batches
 
 
+_GRAPH_INTERNAL_CHAIN_NAMES = frozenset(
+    {
+        "LangGraph",
+        "RunnableSequence",
+        "RunnableLambda",
+        "RunnableParallel",
+        "ChannelWrite",
+        "__start__",
+    }
+)
+
+
+def _is_top_level_graph_node_start(
+    serialized: dict[str, Any] | None,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """Return True when ``on_chain_start`` marks a LangGraph node boundary."""
+    metadata = metadata or {}
+    langgraph_node = metadata.get("langgraph_node")
+
+    if isinstance(langgraph_node, str) and langgraph_node:
+        if serialized is None:
+            return True
+        serialized_name = serialized.get("name") if serialized else None
+        return isinstance(serialized_name, str) and serialized_name == langgraph_node
+
+    if serialized is None:
+        return False
+
+    serialized_name = serialized.get("name")
+    if not isinstance(serialized_name, str) or not serialized_name:
+        return False
+    return serialized_name not in _GRAPH_INTERNAL_CHAIN_NAMES
+
+
+def _node_summary_key(event: TrajectoryEvent) -> tuple[Any, str]:
+    return (event.metadata.get("langgraph_step"), event.name)
+
+
+def _iter_graph_node_events(events: list[TrajectoryEvent]) -> list[TrajectoryEvent]:
+    """Select one chain_start per graph node visit for summary/steps views."""
+    seen: set[tuple[Any, str]] = set()
+    selected: list[TrajectoryEvent] = []
+
+    for event in events:
+        if event.event_type != "chain_start":
+            continue
+        if not event.is_graph_node_boundary:
+            continue
+        if event.name == "unknown":
+            continue
+        key = _node_summary_key(event)
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(event)
+
+    return selected
+
+
 def _extract_run_name(
     serialized: dict[str, Any] | None,
     metadata: dict[str, Any] | None = None,
@@ -154,6 +214,7 @@ class TrajectoryEvent:
     error: Optional[str] = None
     tags: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    is_graph_node_boundary: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -200,7 +261,6 @@ class GraphTrajectory:
         return self.to_dict()
 
     def summary(self) -> dict[str, Any]:
-        node_names: list[str] = []
         tool_names: list[str] = []
         model_names: list[str] = []
         errors: list[str] = []
@@ -208,12 +268,12 @@ class GraphTrajectory:
         for event in self.events:
             if event.error:
                 errors.append(f"{event.event_type}:{event.name}: {event.error}")
-            if event.event_type == "chain_start":
-                node_names.append(event.name)
-            elif event.event_type == "tool_start":
+            if event.event_type == "tool_start":
                 tool_names.append(event.name)
             elif event.event_type in {"chat_model_start", "llm_start"}:
                 model_names.append(event.name)
+
+        node_names = [event.name for event in _iter_graph_node_events(self.events)]
 
         return {
             "event_count": len(self.events),
@@ -226,9 +286,16 @@ class GraphTrajectory:
     def to_steps(self) -> list[str]:
         """Return a human-readable step list suitable for API responses."""
         steps: list[str] = []
+        seen_nodes: set[tuple[Any, str]] = set()
 
         for event in self.events:
             if event.event_type == "chain_start":
+                if not event.is_graph_node_boundary or event.name == "unknown":
+                    continue
+                key = _node_summary_key(event)
+                if key in seen_nodes:
+                    continue
+                seen_nodes.add(key)
                 steps.append(f"node:{event.name}")
             elif event.event_type == "tool_start":
                 tool_input = event.input if isinstance(event.input, dict) else {"input": event.input}
@@ -263,6 +330,7 @@ class TrajectoryCallback(AsyncCallbackHandler):
         input_data: Any = None,
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        is_graph_node_boundary: bool = False,
     ) -> None:
         run_id_str = str(run_id)
         self._start_times[run_id_str] = time.time()
@@ -275,6 +343,7 @@ class TrajectoryCallback(AsyncCallbackHandler):
                 input=_truncate(input_data, self.max_content_length),
                 tags=list(tags or []),
                 metadata=dict(metadata or {}),
+                is_graph_node_boundary=is_graph_node_boundary,
             )
         )
 
@@ -334,6 +403,7 @@ class TrajectoryCallback(AsyncCallbackHandler):
             input_data=inputs,
             tags=tags,
             metadata=metadata,
+            is_graph_node_boundary=_is_top_level_graph_node_start(serialized, metadata),
         )
 
     async def on_chain_end(

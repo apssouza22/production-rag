@@ -157,7 +157,7 @@ class KnowledgeRouterService:
             "reasoning_steps": reasoning_steps,
             "execution_time": execution_time,
             "trace_id": ctx.metadata.get("trace_id"),
-            "trajectory": trajectory.to_api_dict() if trajectory else None,
+            "trajectory": trajectory.summary() if trajectory else None,
         }
 
     def _build_agent_results(self, results: list) -> List[AgentResultItem]:

@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from src.platform.tracing.schemas import GraphTrajectoryResponse
+from src.platform.tracing.schemas import TrajectorySummaryResponse
 
 from .state import Classification, KnowledgeSource
 
@@ -51,9 +51,9 @@ class KnowledgeRouterResponse(BaseModel):
     reasoning_steps: List[str] = Field(default_factory=list, description="Router workflow steps")
     execution_time: float = Field(..., description="Total execution time in seconds")
     trace_id: Optional[str] = Field(None, description="Langfuse trace ID when tracing is enabled")
-    trajectory: Optional[GraphTrajectoryResponse] = Field(
+    trajectory: Optional[TrajectorySummaryResponse] = Field(
         None,
-        description="Full LangGraph execution trajectory captured during the request",
+        description="Summary of the LangGraph execution trajectory captured during the request",
     )
 
     class Config:
@@ -85,18 +85,11 @@ class KnowledgeRouterResponse(BaseModel):
                 "execution_time": 5.2,
                 "trace_id": "abc123-def456-ghi789",
                 "trajectory": {
-                    "started_at": 1712345678.1,
-                    "finished_at": 1712345680.4,
-                    "duration_ms": 2300,
-                    "events": [],
-                    "summary": {
-                        "event_count": 0,
-                        "nodes": [],
-                        "tools": [],
-                        "models": [],
-                        "errors": [],
-                    },
-                    "steps": ["node:classify", "node:route_agents"],
+                    "event_count": 12,
+                    "nodes": ["classify", "documents", "database", "synthesize"],
+                    "tools": ["sql_db_list_tables", "tool_retrieve"],
+                    "models": ["classify", "synthesize"],
+                    "errors": [],
                 },
             }
         }

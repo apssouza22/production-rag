@@ -26,6 +26,10 @@ async def ask_router(
     try:
         result = await knowledge_router.ask(query=request.query)
 
+        trajectory = result.get("trajectory")
+        if isinstance(trajectory, dict) and "summary" in trajectory:
+            trajectory = trajectory["summary"]
+
         return KnowledgeRouterResponse(
             query=result["query"],
             answer=result["answer"],
@@ -34,7 +38,7 @@ async def ask_router(
             reasoning_steps=result.get("reasoning_steps", []),
             execution_time=result.get("execution_time", 0.0),
             trace_id=result.get("trace_id"),
-            trajectory=result.get("trajectory"),
+            trajectory=trajectory,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

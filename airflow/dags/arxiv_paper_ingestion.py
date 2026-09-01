@@ -4,8 +4,6 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
-import sys
-sys.path.append("/opt/airflow")
 from src.domain.arxiv_ingestion import (
     fetch_daily_papers,
     generate_daily_report,
