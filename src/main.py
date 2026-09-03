@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from src.api import agentic_ask, hybrid_search, knowledge_router, ping, text_to_sql
+from src.api import agentic_ask, hybrid_search, knowledge_router, ping, rerank_search, text_to_sql
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
 from src.domain.db.factory import make_database
@@ -103,6 +103,7 @@ app = FastAPI(
 # Include routers
 app.include_router(ping.router, prefix="/api/v1")  # Health check endpoint
 app.include_router(hybrid_search.router, prefix="/api/v1")  # Search chunks with BM25/hybrid
+app.include_router(rerank_search.router, prefix="/api/v1")  # Search with optional Jina reranking
 app.include_router(agentic_ask.router)  # Agentic RAG with intelligent retrieval
 app.include_router(text_to_sql.router)  # Text-to-SQL agent over PostgreSQL
 app.include_router(knowledge_router.router)  # Knowledge router across retrieval agents
