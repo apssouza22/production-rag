@@ -11,7 +11,7 @@ from src.agents.fusionsearch.models import GuardrailScoring
 
 
 @pytest.fixture
-def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embeddings_client):
+def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embeddings_client, mock_rerank_search_service):
     """Create AgenticRAGService with mocked dependencies."""
     config = GraphConfig(
         model="gpt-4o-mini",
@@ -23,9 +23,8 @@ def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embedding
     )
     agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
         llm_client=mock_ollama_client,
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
         graph_config=config,
+        rerank_search_service=mock_rerank_search_service,
     )
     return AgenticRAGService(
         llm_client=mock_ollama_client,

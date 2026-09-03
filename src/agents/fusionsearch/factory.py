@@ -3,9 +3,11 @@ from typing import Optional
 from src.config import get_settings
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
+from src.domain.opensearch.client import OpenSearchClient
+from src.domain.rerank.factory import make_rerank_search_service
+from src.domain.rerank.service import RerankSearchService
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.protocol import LlmProviderClient
-from src.domain.opensearch.client import OpenSearchClient
 
 from .agentic_rag import AgenticRAGService
 from .config import GraphConfig
@@ -15,12 +17,14 @@ from .retrieval_settings import RetrievalSettings
 
 def make_agentic_rag_graph(
     llm_client: LlmProviderClient,
-    opensearch_client: OpenSearchClient,
-    embeddings_client: JinaEmbeddingsClient,
     graph_config: GraphConfig,
-    reranker_client: JinaRerankerClient | None = None,
+    rerank_search_service: RerankSearchService | None = None,
     retrieval_settings: RetrievalSettings | None = None,
     langfuse_tracer: Optional[LangfuseTracer] = None,
+    *,
+    opensearch_client: OpenSearchClient | None = None,
+    embeddings_client: JinaEmbeddingsClient | None = None,
+    reranker_client: JinaRerankerClient | None = None,
 ) -> tuple[AgenticRAGGraph, RetrievalSettings]:
     """Build AgenticRAGGraph and its shared retrieval settings."""
     settings = retrieval_settings or RetrievalSettings(
@@ -30,26 +34,36 @@ def make_agentic_rag_graph(
         rerank_candidate_multiplier=graph_config.rerank_candidate_multiplier,
         rerank_model=graph_config.rerank_model,
     )
+    resolved_rerank_search_service = rerank_search_service
+    if resolved_rerank_search_service is None:
+        if opensearch_client is None or embeddings_client is None:
+            raise ValueError("rerank_search_service or opensearch/embeddings clients are required")
+        resolved_rerank_search_service = make_rerank_search_service(
+            opensearch_client=opensearch_client,
+            embeddings_client=embeddings_client,
+            reranker_client=reranker_client,
+        )
+
     graph_builder = AgenticRAGGraph(
         llm_client=llm_client,
-        opensearch_client=opensearch_client,
-        embeddings_client=embeddings_client,
+        rerank_search_service=resolved_rerank_search_service,
         retrieval_settings=settings,
         config=graph_config,
-        reranker_client=reranker_client,
         langfuse_tracer=langfuse_tracer,
     )
     return graph_builder, settings
 
 
 def make_agentic_rag_service(
-    opensearch_client: OpenSearchClient,
     llm_client: LlmProviderClient,
-    embeddings_client: JinaEmbeddingsClient,
+    rerank_search_service: RerankSearchService | None = None,
     reranker_client: JinaRerankerClient | None = None,
     langfuse_tracer: Optional[LangfuseTracer] = None,
     top_k: int = 3,
     use_hybrid: bool = True,
+    *,
+    opensearch_client: OpenSearchClient | None = None,
+    embeddings_client: JinaEmbeddingsClient | None = None,
 ) -> AgenticRAGService:
     """Create AgenticRAGService with dependency injection."""
     settings = get_settings()
@@ -61,11 +75,12 @@ def make_agentic_rag_service(
     )
     graph_builder, retrieval_settings = make_agentic_rag_graph(
         llm_client=llm_client,
+        graph_config=graph_config,
+        rerank_search_service=rerank_search_service,
+        langfuse_tracer=langfuse_tracer,
         opensearch_client=opensearch_client,
         embeddings_client=embeddings_client,
-        graph_config=graph_config,
         reranker_client=reranker_client,
-        langfuse_tracer=langfuse_tracer,
     )
 
     return AgenticRAGService(

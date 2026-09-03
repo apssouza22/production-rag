@@ -10,12 +10,12 @@ from src.agents.fusionsearch.tools import create_retriever_tool
 async def test_create_retriever_tool_basic(
     mock_opensearch_client,
     mock_jina_embeddings_client,
+    mock_rerank_search_service,
     retrieval_settings,
 ):
     """Test basic retriever tool creation and invocation."""
     tool = create_retriever_tool(
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=retrieval_settings,
     )
 
@@ -46,15 +46,14 @@ async def test_create_retriever_tool_basic(
 @pytest.mark.asyncio
 async def test_retriever_tool_empty_results(
     mock_opensearch_client,
-    mock_jina_embeddings_client,
+    mock_rerank_search_service,
     retrieval_settings,
 ):
     """Test retriever tool with no results."""
     mock_opensearch_client.search_unified = Mock(return_value={"hits": []})
 
     tool = create_retriever_tool(
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=retrieval_settings,
     )
 
@@ -67,14 +66,13 @@ async def test_retriever_tool_empty_results(
 @pytest.mark.asyncio
 async def test_retriever_tool_custom_top_k(
     mock_opensearch_client,
-    mock_jina_embeddings_client,
+    mock_rerank_search_service,
 ):
     """Test retriever tool with custom top_k parameter."""
     retrieval_settings = RetrievalSettings(top_k=5, use_hybrid=False, rerank_enabled=False)
 
     tool = create_retriever_tool(
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=retrieval_settings,
     )
 
@@ -88,7 +86,7 @@ async def test_retriever_tool_custom_top_k(
 @pytest.mark.asyncio
 async def test_retriever_tool_metadata_fields(
     mock_opensearch_client,
-    mock_jina_embeddings_client,
+    mock_rerank_search_service,
     retrieval_settings,
 ):
     """Test that all expected metadata fields are present."""
@@ -108,8 +106,7 @@ async def test_retriever_tool_metadata_fields(
     )
 
     tool = create_retriever_tool(
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=retrieval_settings,
     )
 
@@ -127,8 +124,8 @@ async def test_retriever_tool_metadata_fields(
 @pytest.mark.asyncio
 async def test_retriever_tool_reranks_candidates(
     mock_opensearch_client,
-    mock_jina_embeddings_client,
     mock_jina_reranker_client,
+    mock_rerank_search_service,
 ):
     """Test retriever tool reranks a larger candidate pool."""
     retrieval_settings = RetrievalSettings(
@@ -139,10 +136,8 @@ async def test_retriever_tool_reranks_candidates(
     )
 
     tool = create_retriever_tool(
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=retrieval_settings,
-        reranker_client=mock_jina_reranker_client,
     )
 
     result = await tool.ainvoke({"query": "machine learning"})
@@ -163,19 +158,16 @@ async def test_retriever_tool_reranks_candidates(
 
 @pytest.mark.asyncio
 async def test_retriever_tool_rerank_failure_falls_back(
-    mock_opensearch_client,
-    mock_jina_embeddings_client,
     mock_jina_reranker_client,
+    mock_rerank_search_service,
 ):
     """Test retriever tool falls back to search order when reranking fails."""
     retrieval_settings = RetrievalSettings(top_k=2, rerank_enabled=True, rerank_candidate_multiplier=2)
     mock_jina_reranker_client.rerank = AsyncMock(side_effect=Exception("rerank failed"))
 
     tool = create_retriever_tool(
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=retrieval_settings,
-        reranker_client=mock_jina_reranker_client,
     )
 
     result = await tool.ainvoke({"query": "machine learning"})

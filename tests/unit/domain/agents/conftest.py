@@ -6,6 +6,7 @@ import pytest
 
 from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 from src.domain.jinaai.jina import JinaRerankResult
+from src.domain.rerank.factory import make_rerank_search_service
 
 
 @pytest.fixture
@@ -58,6 +59,20 @@ def mock_jina_reranker_client():
         ]
     )
     return client
+
+
+@pytest.fixture
+def mock_rerank_search_service(
+    mock_opensearch_client,
+    mock_jina_embeddings_client,
+    mock_jina_reranker_client,
+):
+    """Mock rerank search service wired from retrieval dependencies."""
+    return make_rerank_search_service(
+        opensearch_client=mock_opensearch_client,
+        embeddings_client=mock_jina_embeddings_client,
+        reranker_client=mock_jina_reranker_client,
+    )
 
 
 @pytest.fixture

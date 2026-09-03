@@ -8,13 +8,14 @@ from fastapi import FastAPI
 from src.api import agentic_ask, hybrid_search, knowledge_router, ping, text_to_sql
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
-from src.platform.cache.factory import make_cache_client
 from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
-from src.platform.langfuse.factory import make_langfuse_tracer
-from src.platform.llm.factory import make_llm_client
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
+from src.domain.rerank.factory import make_rerank_search_service
+from src.platform.cache.factory import make_cache_client
+from src.platform.langfuse.factory import make_langfuse_tracer
+from src.platform.llm.factory import make_llm_client
 
 # Setup logging
 logging.basicConfig(
@@ -67,6 +68,11 @@ async def lifespan(app: FastAPI):
     app.state.pdf_parser = make_pdf_parser_service()
     app.state.embeddings_service = make_embeddings_service()
     app.state.reranker_service = make_reranker_client()
+    app.state.rerank_search_service = make_rerank_search_service(
+        opensearch_client=opensearch_client,
+        embeddings_client=app.state.embeddings_service,
+        reranker_client=app.state.reranker_service,
+    )
     app.state.llm_client = make_llm_client()
     app.state.langfuse_tracer = make_langfuse_tracer()
     try:
@@ -76,7 +82,7 @@ async def lifespan(app: FastAPI):
         app.state.cache_client = None
     logger.info(
         "Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, "
-        "%s LLM provider, Langfuse, Cache",
+        "Rerank search, %s LLM provider, Langfuse, Cache",
         settings.llm_provider,
     )
 

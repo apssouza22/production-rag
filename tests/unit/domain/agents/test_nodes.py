@@ -12,7 +12,7 @@ from src.agents.fusionsearch.state import AgentState
 
 
 @pytest.fixture
-def graph(mock_ollama_client, mock_opensearch_client, mock_jina_embeddings_client):
+def graph(mock_ollama_client, mock_rerank_search_service):
     """AgenticRAGGraph with mocked dependencies."""
     from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 
@@ -24,8 +24,7 @@ def graph(mock_ollama_client, mock_opensearch_client, mock_jina_embeddings_clien
     )
     return AgenticRAGGraph(
         llm_client=mock_ollama_client,
-        opensearch_client=mock_opensearch_client,
-        embeddings_client=mock_jina_embeddings_client,
+        rerank_search_service=mock_rerank_search_service,
         retrieval_settings=RetrievalSettings(),
         config=config,
     )

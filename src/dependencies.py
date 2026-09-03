@@ -11,21 +11,22 @@ else:
     except ImportError:
         pass
 
-from src.config import Settings
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.fusionsearch.factory import make_agentic_rag_service
 from src.agents.knowledgerouter import KnowledgeRouterService, make_knowledge_router_service
 from src.agents.texttosql import TextToSQLService, make_text_to_sql_service
+from src.config import Settings
 from src.domain.arxiv.client import ArxivClient
-from src.platform.cache.client import CacheClient
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
+from src.domain.opensearch.client import OpenSearchClient
+from src.domain.pdf_parser.parser import PDFParserService
+from src.domain.rerank.service import RerankSearchService
+from src.platform.cache.client import CacheClient
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.factory import make_agent_llm_client
 from src.platform.llm.protocol import LlmProviderClient
-from src.domain.opensearch.client import OpenSearchClient
-from src.domain.pdf_parser.parser import PDFParserService
 
 
 @lru_cache
@@ -75,6 +76,11 @@ def get_reranker_service(request: Request) -> JinaRerankerClient:
     return request.app.state.reranker_service
 
 
+def get_rerank_search_service(request: Request) -> RerankSearchService:
+    """Get rerank search service from the request state."""
+    return request.app.state.rerank_search_service
+
+
 def get_llm_client(request: Request) -> LlmProviderClient:
     """Get the configured LLM provider from the request state."""
     return request.app.state.llm_client
@@ -104,6 +110,7 @@ ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
+RerankSearchDep = Annotated[RerankSearchService, Depends(get_rerank_search_service)]
 LLMDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
 OllamaDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
@@ -111,17 +118,15 @@ CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 
 
 def get_agentic_rag_service(
-    opensearch: OpenSearchDep,
-    embeddings: EmbeddingsDep,
+    rerank_search: RerankSearchDep,
     reranker: RerankerDep,
     langfuse: LangfuseDep,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AgenticRAGService:
     """Get agentic RAG service (Bifrost virtual key: agent-1)."""
     return make_agentic_rag_service(
-        opensearch_client=opensearch,
         llm_client=make_agent_llm_client("agent_1", settings),
-        embeddings_client=embeddings,
+        rerank_search_service=rerank_search,
         reranker_client=reranker,
         langfuse_tracer=langfuse,
     )

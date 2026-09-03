@@ -5,28 +5,25 @@ from typing import Dict, List, Optional, Union
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from src.platform.graph import END, GraphBuilder, START, tools_condition
-
+from src.agents.fusionsearch.handlers import route_agentic_rag_failure
+from src.agents.fusionsearch.models import GradeDocuments, GradingResult
+from src.agents.fusionsearch.prompts import (
+    GENERATE_ANSWER_PROMPT,
+    GRADE_DOCUMENTS_PROMPT,
+    REWRITE_PROMPT,
+)
+from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
+from src.domain.rerank.service import RerankSearchService
+from src.platform.graph import END, START, GraphBuilder, tools_condition
 from src.platform.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     build_tool_retry_policy,
     build_tool_timeout,
 )
-from src.domain.jinaai.jina_client import JinaEmbeddingsClient
-from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware import MiddlewareManager
-from src.domain.opensearch.client import OpenSearchClient
-from src.agents.fusionsearch.handlers import route_agentic_rag_failure
-from src.agents.fusionsearch.models import GradeDocuments, GradingResult
-from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
-from src.agents.fusionsearch.prompts import (
-    GENERATE_ANSWER_PROMPT,
-    GRADE_DOCUMENTS_PROMPT,
-    REWRITE_PROMPT,
-)
 
 from .config import GraphConfig
 from .context import Context
@@ -54,17 +51,13 @@ class AgenticRAGGraph:
     def __init__(
         self,
         llm_client: LlmProviderClient,
-        opensearch_client: OpenSearchClient,
-        embeddings_client: JinaEmbeddingsClient,
+        rerank_search_service: RerankSearchService,
         retrieval_settings: RetrievalSettings,
         config: GraphConfig,
-        reranker_client: JinaRerankerClient | None = None,
         langfuse_tracer: Optional[LangfuseTracer] = None,
     ):
         self.llm_client = llm_client
-        self.opensearch_client = opensearch_client
-        self.embeddings_client = embeddings_client
-        self.reranker_client = reranker_client
+        self.rerank_search_service = rerank_search_service
         self.retrieval_settings = retrieval_settings
         self.config = config
         self.langfuse_tracer = langfuse_tracer
@@ -424,10 +417,8 @@ class AgenticRAGGraph:
             workflow.set_middleware_manager(middleware_manager)
 
         retriever_tool = create_retriever_tool(
-            opensearch_client=self.opensearch_client,
-            embeddings_client=self.embeddings_client,
+            rerank_search_service=self.rerank_search_service,
             retrieval_settings=self.retrieval_settings,
-            reranker_client=self.reranker_client,
         )
         no_fault_tolerance, fault_tolerance = self._configure_fault_tolerance(workflow)
 

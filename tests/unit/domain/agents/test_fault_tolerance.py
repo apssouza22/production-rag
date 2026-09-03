@@ -56,8 +56,7 @@ class TestAgenticRagFailureFlow:
     async def test_retry_then_route_to_handle_failure(self):
         graph = AgenticRAGGraph(
             llm_client=MagicMock(),
-            opensearch_client=MagicMock(),
-            embeddings_client=MagicMock(),
+            rerank_search_service=MagicMock(),
             retrieval_settings=MagicMock(),
             config=GraphConfig(),
         )
@@ -199,9 +198,8 @@ class TestAgenticRagGraphCompilation:
         config = GraphConfig()
         agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
             llm_client=MagicMock(),
-            opensearch_client=MagicMock(),
-            embeddings_client=MagicMock(),
             graph_config=config,
+            rerank_search_service=MagicMock(),
         )
         service = AgenticRAGService(
             llm_client=MagicMock(),
