@@ -3,7 +3,7 @@ import logging
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 
-from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
+from src.agents.fusionsearch.config import GraphConfig
 from src.domain.rerank.schemas import SearchDocument
 from src.domain.rerank.service import RerankSearchService
 
@@ -29,14 +29,11 @@ def _to_langchain_document(document: SearchDocument, *, search_mode: str, top_k:
     )
 
 
-def create_retriever_tool(
-    rerank_search_service: RerankSearchService,
-    retrieval_settings: RetrievalSettings,
-):
+def create_retriever_tool(rerank_search_service: RerankSearchService, graph_config: GraphConfig):
     """Create a retriever tool that wraps the rerank search service.
 
     :param rerank_search_service: OpenSearch + Jina rerank search service
-    :param retrieval_settings: Mutable retrieval settings (updated per request)
+    :param graph_config: Graph configuration with per-request top_k
     :returns: LangChain tool for retrieving papers
     """
 
@@ -55,18 +52,11 @@ def create_retriever_tool(
         :param query: The search query describing what papers to find
         :returns: List of relevant paper excerpts with metadata
         """
-        top_k = retrieval_settings.top_k
+        top_k = graph_config.top_k
 
         logger.info(f"Retrieving papers for query: {query[:100]}...")
 
-        search_result = await rerank_search_service.search(
-            query=query,
-            top_k=top_k,
-            use_hybrid=retrieval_settings.use_hybrid,
-            rerank_enabled=retrieval_settings.rerank_enabled,
-            rerank_candidate_multiplier=retrieval_settings.rerank_candidate_multiplier,
-            rerank_model=retrieval_settings.rerank_model,
-        )
+        search_result = await rerank_search_service.search(query=query, top_k=top_k)
 
         documents = [
             _to_langchain_document(

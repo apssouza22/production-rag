@@ -32,7 +32,6 @@ class GraphConfig(BaseModel):
     enable_tracing: bool = True
     rerank_enabled: bool = True
     rerank_model: str = "jina-reranker-v2-base-multilingual"
-    rerank_candidate_multiplier: int = 2
     metadata: Dict[str, Any] = {}
     fault_tolerance: FaultToleranceConfig = Field(default_factory=FaultToleranceConfig)
     settings: Settings = Field(default_factory=get_settings)

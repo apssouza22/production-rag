@@ -3,8 +3,11 @@ import time
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage
+
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
+from src.domain.rerank.service import RerankSearchService
 from src.platform.langfuse.client import LangfuseTracer
+from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware import (
     AgentContext,
@@ -18,8 +21,6 @@ from .config import GraphConfig
 from .context import Context
 from .graph import AgenticRAGGraph
 from .middleware import GuardrailMiddleware
-from .retrieval_settings import RetrievalSettings
-from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,8 @@ class AgenticRAGService:
     def __init__(
         self,
         llm_client: LlmProviderClient,
-        retrieval_settings: RetrievalSettings,
         graph_builder: AgenticRAGGraph,
+        rerank_search_service: RerankSearchService,
         reranker_client: JinaRerankerClient | None = None,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         graph_config: Optional[GraphConfig] = None,
@@ -39,15 +40,15 @@ class AgenticRAGService:
         """Initialize agentic RAG service.
 
         :param llm_client: Client for LLM generation
-        :param retrieval_settings: Mutable retrieval settings shared with the graph
         :param graph_builder: Graph builder used for per-request overrides
+        :param rerank_search_service: Retrieval service with mutable search config
         :param reranker_client: Optional client for Jina reranking
         :param langfuse_tracer: Optional Langfuse tracer
         :param graph_config: Configuration for graph execution
         """
         self.llm = llm_client
         self.graph_builder = graph_builder
-        self.retrieval_settings = retrieval_settings
+        self.rerank_search_service = rerank_search_service
         self.reranker = reranker_client
         self.langfuse_tracer = langfuse_tracer
         self.graph_config = graph_config or GraphConfig()
@@ -105,11 +106,12 @@ class AgenticRAGService:
         """
         model_to_use = model or self.graph_config.model
 
-        self.retrieval_settings.top_k = top_k if top_k is not None else self.graph_config.top_k
-        self.retrieval_settings.use_hybrid = (
+        if top_k is not None:
+            self.graph_config.top_k = top_k
+        self.rerank_search_service.config.use_hybrid = (
             use_hybrid if use_hybrid is not None else self.graph_config.use_hybrid
         )
-        self.retrieval_settings.rerank_enabled = (
+        self.rerank_search_service.config.rerank_enabled = (
             rerank_enabled if rerank_enabled is not None else self.graph_config.rerank_enabled
         )
 
@@ -302,7 +304,7 @@ class AgenticRAGService:
                 return steps
 
         if retrieval_attempts > 0:
-            if self.retrieval_settings.rerank_enabled and self.reranker and self.reranker.is_configured:
+            if self.rerank_search_service.config.rerank_enabled and self.reranker and self.reranker.is_configured:
                 steps.append(f"Retrieved and reranked documents ({retrieval_attempts} attempt(s))")
             else:
                 steps.append(f"Retrieved documents ({retrieval_attempts} attempt(s))")

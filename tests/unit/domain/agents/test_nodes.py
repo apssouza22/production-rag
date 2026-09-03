@@ -14,8 +14,6 @@ from src.agents.fusionsearch.state import AgentState
 @pytest.fixture
 def graph(mock_ollama_client, mock_rerank_search_service):
     """AgenticRAGGraph with mocked dependencies."""
-    from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
-
     config = GraphConfig(
         model="gpt-4o-mini",
         temperature=0.0,
@@ -25,7 +23,6 @@ def graph(mock_ollama_client, mock_rerank_search_service):
     return AgenticRAGGraph(
         llm_client=mock_ollama_client,
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=RetrievalSettings(),
         config=config,
     )
 

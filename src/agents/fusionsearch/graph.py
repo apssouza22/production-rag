@@ -27,7 +27,6 @@ from src.platform.middleware import MiddlewareManager
 
 from .config import GraphConfig
 from .context import Context
-from .retrieval_settings import RetrievalSettings
 from .state import AgentState
 from .tools import create_retriever_tool
 
@@ -52,13 +51,11 @@ class AgenticRAGGraph:
         self,
         llm_client: LlmProviderClient,
         rerank_search_service: RerankSearchService,
-        retrieval_settings: RetrievalSettings,
         config: GraphConfig,
         langfuse_tracer: Optional[LangfuseTracer] = None,
     ):
         self.llm_client = llm_client
         self.rerank_search_service = rerank_search_service
-        self.retrieval_settings = retrieval_settings
         self.config = config
         self.langfuse_tracer = langfuse_tracer
         self._trace = None
@@ -418,7 +415,7 @@ class AgenticRAGGraph:
 
         retriever_tool = create_retriever_tool(
             rerank_search_service=self.rerank_search_service,
-            retrieval_settings=self.retrieval_settings,
+            graph_config=self.config,
         )
         no_fault_tolerance, fault_tolerance = self._configure_fault_tolerance(workflow)
 

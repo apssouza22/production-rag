@@ -2,8 +2,13 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 from langchain_core.documents import Document
 
-from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
+from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.tools import create_retriever_tool
+
+
+@pytest.fixture
+def graph_config():
+    return GraphConfig(top_k=2, use_hybrid=True, rerank_enabled=False)
 
 
 @pytest.mark.asyncio
@@ -11,12 +16,12 @@ async def test_create_retriever_tool_basic(
     mock_opensearch_client,
     mock_jina_embeddings_client,
     mock_rerank_search_service,
-    retrieval_settings,
+    graph_config,
 ):
     """Test basic retriever tool creation and invocation."""
     tool = create_retriever_tool(
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=retrieval_settings,
+        graph_config=graph_config,
     )
 
     assert tool.name == "retrieve_papers"
@@ -47,14 +52,14 @@ async def test_create_retriever_tool_basic(
 async def test_retriever_tool_empty_results(
     mock_opensearch_client,
     mock_rerank_search_service,
-    retrieval_settings,
+    graph_config,
 ):
     """Test retriever tool with no results."""
     mock_opensearch_client.search_unified = Mock(return_value={"hits": []})
 
     tool = create_retriever_tool(
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=retrieval_settings,
+        graph_config=graph_config,
     )
 
     result = await tool.ainvoke({"query": "nonexistent topic"})
@@ -69,11 +74,13 @@ async def test_retriever_tool_custom_top_k(
     mock_rerank_search_service,
 ):
     """Test retriever tool with custom top_k parameter."""
-    retrieval_settings = RetrievalSettings(top_k=5, use_hybrid=False, rerank_enabled=False)
+    graph_config = GraphConfig(top_k=5, use_hybrid=False, rerank_enabled=False)
+    mock_rerank_search_service.config.use_hybrid = False
+    mock_rerank_search_service.config.rerank_enabled = False
 
     tool = create_retriever_tool(
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=retrieval_settings,
+        graph_config=graph_config,
     )
 
     await tool.ainvoke({"query": "test query"})
@@ -87,7 +94,7 @@ async def test_retriever_tool_custom_top_k(
 async def test_retriever_tool_metadata_fields(
     mock_opensearch_client,
     mock_rerank_search_service,
-    retrieval_settings,
+    graph_config,
 ):
     """Test that all expected metadata fields are present."""
     mock_opensearch_client.search_unified = Mock(
@@ -107,7 +114,7 @@ async def test_retriever_tool_metadata_fields(
 
     tool = create_retriever_tool(
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=retrieval_settings,
+        graph_config=graph_config,
     )
 
     result = await tool.ainvoke({"query": "test"})
@@ -128,16 +135,12 @@ async def test_retriever_tool_reranks_candidates(
     mock_rerank_search_service,
 ):
     """Test retriever tool reranks a larger candidate pool."""
-    retrieval_settings = RetrievalSettings(
-        top_k=2,
-        use_hybrid=True,
-        rerank_enabled=True,
-        rerank_candidate_multiplier=2,
-    )
+    graph_config = GraphConfig(top_k=2, use_hybrid=True, rerank_enabled=True)
+    mock_rerank_search_service.config.rerank_enabled = True
 
     tool = create_retriever_tool(
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=retrieval_settings,
+        graph_config=graph_config,
     )
 
     result = await tool.ainvoke({"query": "machine learning"})
@@ -162,12 +165,13 @@ async def test_retriever_tool_rerank_failure_falls_back(
     mock_rerank_search_service,
 ):
     """Test retriever tool falls back to search order when reranking fails."""
-    retrieval_settings = RetrievalSettings(top_k=2, rerank_enabled=True, rerank_candidate_multiplier=2)
+    graph_config = GraphConfig(top_k=2, rerank_enabled=True)
+    mock_rerank_search_service.config.rerank_enabled = True
     mock_jina_reranker_client.rerank = AsyncMock(side_effect=Exception("rerank failed"))
 
     tool = create_retriever_tool(
         rerank_search_service=mock_rerank_search_service,
-        retrieval_settings=retrieval_settings,
+        graph_config=graph_config,
     )
 
     result = await tool.ainvoke({"query": "machine learning"})

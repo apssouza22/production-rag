@@ -57,7 +57,6 @@ class TestAgenticRagFailureFlow:
         graph = AgenticRAGGraph(
             llm_client=MagicMock(),
             rerank_search_service=MagicMock(),
-            retrieval_settings=MagicMock(),
             config=GraphConfig(),
         )
 
@@ -191,21 +190,12 @@ class TestAgenticRagGraphCompilation:
     def test_service_compiles_with_fault_tolerance_enabled(self):
         from unittest.mock import MagicMock
 
-        from src.agents.fusionsearch.agentic_rag import AgenticRAGService
-        from src.agents.fusionsearch.config import GraphConfig
-        from src.agents.fusionsearch.factory import make_agentic_rag_graph
+        from src.agents.fusionsearch.factory import make_agentic_rag_service
 
-        config = GraphConfig()
-        agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
+        service = make_agentic_rag_service(
             llm_client=MagicMock(),
-            graph_config=config,
-            rerank_search_service=MagicMock(),
-        )
-        service = AgenticRAGService(
-            llm_client=MagicMock(),
-            graph_builder=agentic_rag_graph,
-            retrieval_settings=retrieval_settings,
-            graph_config=config,
+            opensearch_client=MagicMock(),
+            embeddings_client=MagicMock(),
         )
 
         assert service.graph is not None

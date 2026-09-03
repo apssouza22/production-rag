@@ -118,15 +118,17 @@ CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 
 
 def get_agentic_rag_service(
-    rerank_search: RerankSearchDep,
+    opensearch: OpenSearchDep,
+    embeddings: EmbeddingsDep,
     reranker: RerankerDep,
     langfuse: LangfuseDep,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AgenticRAGService:
     """Get agentic RAG service (Bifrost virtual key: agent-1)."""
     return make_agentic_rag_service(
+        opensearch_client=opensearch,
         llm_client=make_agent_llm_client("agent_1", settings),
-        rerank_search_service=rerank_search,
+        embeddings_client=embeddings,
         reranker_client=reranker,
         langfuse_tracer=langfuse,
     )

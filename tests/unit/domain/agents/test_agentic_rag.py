@@ -6,12 +6,13 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.fusionsearch.config import GraphConfig
-from src.agents.fusionsearch.factory import make_agentic_rag_graph
+from src.agents.fusionsearch.factory import _build_rerank_search_config, make_agentic_rag_graph
 from src.agents.fusionsearch.models import GuardrailScoring
+from src.domain.rerank.factory import make_rerank_search_service
 
 
 @pytest.fixture
-def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embeddings_client, mock_rerank_search_service):
+def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embeddings_client, mock_jina_reranker_client):
     """Create AgenticRAGService with mocked dependencies."""
     config = GraphConfig(
         model="gpt-4o-mini",
@@ -21,15 +22,21 @@ def test_service(mock_opensearch_client, mock_ollama_client, mock_jina_embedding
         max_retrieval_attempts=2,
         guardrail_threshold=60,
     )
-    agentic_rag_graph, retrieval_settings = make_agentic_rag_graph(
+    rerank_search_service = make_rerank_search_service(
+        opensearch_client=mock_opensearch_client,
+        embeddings_client=mock_jina_embeddings_client,
+        reranker_client=mock_jina_reranker_client,
+        config=_build_rerank_search_config(config),
+    )
+    graph_builder = make_agentic_rag_graph(
         llm_client=mock_ollama_client,
         graph_config=config,
-        rerank_search_service=mock_rerank_search_service,
+        rerank_search_service=rerank_search_service,
     )
     return AgenticRAGService(
         llm_client=mock_ollama_client,
-        graph_builder=agentic_rag_graph,
-        retrieval_settings=retrieval_settings,
+        graph_builder=graph_builder,
+        rerank_search_service=rerank_search_service,
         langfuse_tracer=None,
         graph_config=config,
     )

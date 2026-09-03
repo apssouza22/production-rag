@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.agents.fusionsearch.retrieval_settings import RetrievalSettings
 from src.domain.jinaai.jina import JinaRerankResult
+from src.domain.rerank.config import RerankSearchConfig
 from src.domain.rerank.factory import make_rerank_search_service
 
 
@@ -72,6 +72,7 @@ def mock_rerank_search_service(
         opensearch_client=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
+        config=RerankSearchConfig(use_hybrid=True, rerank_enabled=False),
     )
 
 
@@ -81,12 +82,6 @@ def mock_ollama_client():
     client = Mock()
     client.get_langchain_model = Mock(return_value=AsyncMock())
     return client
-
-
-@pytest.fixture
-def retrieval_settings():
-    """Default retrieval settings for tool tests."""
-    return RetrievalSettings(top_k=2, use_hybrid=True, rerank_enabled=False)
 
 
 @pytest.fixture

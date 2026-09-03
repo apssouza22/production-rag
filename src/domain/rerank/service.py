@@ -5,9 +5,12 @@ from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.opensearch.client import OpenSearchClient
 
+from .config import RerankSearchConfig
 from .schemas import RerankSearchResult, SearchDocument
 
 logger = logging.getLogger(__name__)
+
+RERANK_CANDIDATE_MULTIPLIER = 2
 
 
 def _hit_to_document(hit: dict, rank: int) -> SearchDocument:
@@ -30,42 +33,35 @@ class RerankSearchService:
         self,
         opensearch_client: OpenSearchClient,
         embeddings_client: JinaEmbeddingsClient,
+        config: RerankSearchConfig,
         reranker_client: JinaRerankerClient | None = None,
     ) -> None:
         self.opensearch_client = opensearch_client
         self.embeddings_client = embeddings_client
+        self.config = config
         self.reranker_client = reranker_client
 
-    async def search(
-        self,
-        query: str,
-        *,
-        top_k: int,
-        use_hybrid: bool = True,
-        rerank_enabled: bool = True,
-        rerank_candidate_multiplier: int = 2,
-        rerank_model: str = "jina-reranker-v2-base-multilingual",
-    ) -> RerankSearchResult:
-        """Retrieve documents from OpenSearch and optionally rerank them with Jina.
-
-        :param query: Search query
-        :param top_k: Number of documents to return after reranking
-        :param use_hybrid: Use hybrid BM25 + vector search when True
-        :param rerank_enabled: Apply Jina reranking when configured
-        :param rerank_candidate_multiplier: Candidate pool size multiplier before reranking
-        :param rerank_model: Jina reranker model name
-        :returns: Retrieval result with before and after rerank document lists
-        """
-        search_mode: Literal["hybrid", "bm25"] = "hybrid" if use_hybrid else "bm25"
-        should_rerank = (
-            rerank_enabled
+    def _should_rerank(self) -> bool:
+        return (
+            self.config.rerank_enabled
             and self.reranker_client is not None
             and self.reranker_client.is_configured
         )
 
+    async def search(self, query: str, *, top_k: int) -> RerankSearchResult:
+        """Retrieve documents from OpenSearch and optionally rerank them with Jina.
+
+        :param query: Search query
+        :param top_k: Number of documents to return after reranking
+        :returns: Retrieval result with before and after rerank document lists
+        """
+        use_hybrid = self.config.use_hybrid
+        search_mode: Literal["hybrid", "bm25"] = "hybrid" if use_hybrid else "bm25"
+        should_rerank = self._should_rerank()
+
         search_size = top_k
         if should_rerank:
-            search_size = top_k * rerank_candidate_multiplier
+            search_size = top_k * RERANK_CANDIDATE_MULTIPLIER
 
         logger.info("Searching OpenSearch for query: %s...", query[:100])
         logger.debug(
@@ -95,7 +91,7 @@ class RerankSearchService:
                     query=query,
                     hits=hits,
                     top_n=top_k,
-                    model=rerank_model,
+                    model=self.config.rerank_model,
                 )
                 logger.info("Reranking complete, returning top %d documents", len(after_rerank))
                 return RerankSearchResult(
@@ -112,7 +108,7 @@ class RerankSearchService:
                     query[:100],
                     len(hits),
                     top_k,
-                    rerank_model,
+                    self.config.rerank_model,
                     type(e).__name__,
                     e,
                 )
