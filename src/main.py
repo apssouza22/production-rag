@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
+from src.agents.fusionsearch.factory import make_agentic_rag_service
+from src.agents.knowledgerouter import make_knowledge_router_service
+from src.agents.texttosql import make_text_to_sql_service
 from src.api import agentic_ask, hybrid_search, knowledge_router, ping, rerank_search, text_to_sql
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
@@ -15,7 +18,7 @@ from src.domain.pdf_parser.factory import make_pdf_parser_service
 from src.domain.rerank.factory import make_rerank_search_service
 from src.platform.cache.factory import make_cache_client
 from src.platform.langfuse.factory import make_langfuse_tracer
-from src.platform.llm.factory import make_llm_client
+from src.platform.llm.factory import make_agent_llm_client, make_llm_client
 
 # Setup logging
 logging.basicConfig(
@@ -39,51 +42,38 @@ async def lifespan(app: FastAPI):
     app.state.database = database
     logger.info("Database connected")
 
-    # Initialize search service
-    opensearch_client = make_opensearch_client()
-    app.state.opensearch_client = opensearch_client
-
-    # Verify OpenSearch connectivity and create index if needed
-    if opensearch_client.health_check():
-        logger.info("OpenSearch connected successfully")
-
-        # Setup hybrid index (supports all search types)
-        setup_results = opensearch_client.setup_indices(force=False)
-        if setup_results.get("hybrid_index"):
-            logger.info("Hybrid index created")
-        else:
-            logger.info("Hybrid index already exists")
-
-        # Get simple statistics
-        try:
-            stats = opensearch_client.client.count(index=opensearch_client.index_name)
-            logger.info(f"OpenSearch ready: {stats['count']} documents indexed")
-        except Exception:
-            logger.info("OpenSearch index ready (stats unavailable)")
-    else:
-        logger.warning("OpenSearch connection failed - search features will be limited")
-
-    # Initialize other services (kept for future endpoints and notebook demos)
+    app.state.opensearch_client = make_opensearch_client()
     app.state.arxiv_client = make_arxiv_client()
     app.state.pdf_parser = make_pdf_parser_service()
     app.state.embeddings_service = make_embeddings_service()
     app.state.reranker_service = make_reranker_client()
     app.state.rerank_search_service = make_rerank_search_service(
-        opensearch_client=opensearch_client,
+        opensearch_client=app.state.opensearch_client,
         embeddings_client=app.state.embeddings_service,
         reranker_client=app.state.reranker_service,
     )
     app.state.llm_client = make_llm_client()
     app.state.langfuse_tracer = make_langfuse_tracer()
-    try:
-        app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
-    except Exception as e:
-        logger.warning("Cache unavailable, hybrid search will run without caching: %s", e)
-        app.state.cache_client = None
-    logger.info(
-        "Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings, "
-        "Rerank search, %s LLM provider, Langfuse, Cache",
-        settings.llm_provider,
+    app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
+
+    app.state.agentic_rag_service = make_agentic_rag_service(
+        opensearch_client=app.state.opensearch_client,
+        llm_client=make_agent_llm_client("agent_1", settings),
+        embeddings_client=app.state.embeddings_service,
+        reranker_client=app.state.reranker_service,
+        langfuse_tracer=app.state.langfuse_tracer,
+    )
+    app.state.text_to_sql_service = make_text_to_sql_service(
+        llm_client=make_agent_llm_client("agent_2", settings),
+        langfuse_tracer=app.state.langfuse_tracer,
+        model=settings.agent_model,
+    )
+    app.state.knowledge_router_service = make_knowledge_router_service(
+        agentic_rag_service=app.state.agentic_rag_service,
+        text_to_sql_service=app.state.text_to_sql_service,
+        llm_client=make_agent_llm_client("agent_2", settings),
+        langfuse_tracer=app.state.langfuse_tracer,
+        model=settings.agent_model,
     )
 
     logger.info("API ready")

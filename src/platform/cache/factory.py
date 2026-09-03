@@ -55,17 +55,22 @@ def _make_semantic_cache_client(settings: Settings) -> SemanticCacheClient | Non
         return None
 
 
-def make_cache_client(settings: Settings, embeddings_client: JinaEmbeddingsClient | None = None) -> CacheClient:
+def make_cache_client(settings: Settings, embeddings_client: JinaEmbeddingsClient | None = None) -> CacheClient | None:
     """Create layered exact + semantic cache client for hybrid search."""
-    exact_redis = make_redis_client(settings, decode_responses=True)
-    exact_cache = ExactCacheClient(exact_redis, settings.redis)
-    semantic_cache = _make_semantic_cache_client(settings)
+    try:
+        exact_redis = make_redis_client(settings, decode_responses=True)
+        exact_cache = ExactCacheClient(exact_redis, settings.redis)
+        semantic_cache = _make_semantic_cache_client(settings)
 
-    cache_client = CacheClient(
-        exact_cache=exact_cache,
-        semantic_cache=semantic_cache,
-        embeddings_client=embeddings_client,
-        settings=settings.redis,
-    )
-    logger.info("Hybrid search cache client created successfully")
-    return cache_client
+        cache_client = CacheClient(
+            exact_cache=exact_cache,
+            semantic_cache=semantic_cache,
+            embeddings_client=embeddings_client,
+            settings=settings.redis,
+        )
+        logger.info("Hybrid search cache client created successfully")
+        return cache_client
+    except Exception as e:
+        logger.warning("Cache unavailable, hybrid search will run without caching: %s", e)
+        return  None
+

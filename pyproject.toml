@@ -1,8 +1,8 @@
 [project]
-name = "moai-zero-to-rag"
+name = "production-rag"
 version = "0.1.0"
-description = "Mother-of-AI Phase-1-Zero to RAG"
-requires-python = ">=3.12,<3.13"
+description = "Production ready RAG"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115.12",
     "uvicorn>=0.34.0",

@@ -1,4 +1,3 @@
-from functools import lru_cache
 from typing import TYPE_CHECKING, Annotated, Generator
 
 if TYPE_CHECKING:
@@ -12,9 +11,8 @@ else:
         pass
 
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
-from src.agents.fusionsearch.factory import make_agentic_rag_service
-from src.agents.knowledgerouter import KnowledgeRouterService, make_knowledge_router_service
-from src.agents.texttosql import TextToSQLService, make_text_to_sql_service
+from src.agents.knowledgerouter import KnowledgeRouterService
+from src.agents.texttosql import TextToSQLService
 from src.config import Settings
 from src.domain.arxiv.client import ArxivClient
 from src.domain.db.interfaces.base import BaseDatabase
@@ -25,14 +23,7 @@ from src.domain.pdf_parser.parser import PDFParserService
 from src.domain.rerank.service import RerankSearchService
 from src.platform.cache.client import CacheClient
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.factory import make_agent_llm_client
 from src.platform.llm.protocol import LlmProviderClient
-
-
-@lru_cache
-def get_settings() -> Settings:
-    """Get application settings."""
-    return Settings()
 
 
 def get_request_settings(request: Request) -> Settings:
@@ -101,8 +92,22 @@ def get_cache_client(request: Request) -> CacheClient | None:
     return getattr(request.app.state, "cache_client", None)
 
 
-# Dependency annotations
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+def get_agentic_rag_service(request: Request) -> AgenticRAGService:
+    """Get agentic RAG service from the request state."""
+    return request.app.state.agentic_rag_service
+
+
+def get_text_to_sql_service(request: Request) -> TextToSQLService:
+    """Get text-to-SQL service from the request state."""
+    return request.app.state.text_to_sql_service
+
+
+def get_knowledge_router_service(request: Request) -> KnowledgeRouterService:
+    """Get knowledge router service from the request state."""
+    return request.app.state.knowledge_router_service
+
+
+SettingsDep = Annotated[Settings, Depends(get_request_settings)]
 DatabaseDep = Annotated[BaseDatabase, Depends(get_database)]
 SessionDep = Annotated[Session, Depends(get_db_session)]
 OpenSearchDep = Annotated[OpenSearchClient, Depends(get_opensearch_client)]
@@ -115,57 +120,6 @@ LLMDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
 OllamaDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
-
-
-def get_agentic_rag_service(
-    opensearch: OpenSearchDep,
-    embeddings: EmbeddingsDep,
-    reranker: RerankerDep,
-    langfuse: LangfuseDep,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> AgenticRAGService:
-    """Get agentic RAG service (Bifrost virtual key: agent-1)."""
-    return make_agentic_rag_service(
-        opensearch_client=opensearch,
-        llm_client=make_agent_llm_client("agent_1", settings),
-        embeddings_client=embeddings,
-        reranker_client=reranker,
-        langfuse_tracer=langfuse,
-    )
-
-
 AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]
-
-
-def get_text_to_sql_service(
-    langfuse: LangfuseDep,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> TextToSQLService:
-    """Get text-to-SQL service (Bifrost virtual key: agent-2)."""
-    return make_text_to_sql_service(
-        llm_client=make_agent_llm_client("agent_2", settings),
-        langfuse_tracer=langfuse,
-        model=settings.agent_model,
-    )
-
-
 TextToSQLDep = Annotated[TextToSQLService, Depends(get_text_to_sql_service)]
-
-
-def get_knowledge_router_service(
-    agentic_rag: AgenticRAGDep,
-    text_to_sql: TextToSQLDep,
-    langfuse: LangfuseDep,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> KnowledgeRouterService:
-    """Get knowledge router service (Bifrost virtual key: agent-2)."""
-    return make_knowledge_router_service(
-        agentic_rag_service=agentic_rag,
-        text_to_sql_service=text_to_sql,
-        llm_client=make_agent_llm_client("agent_2", settings),
-        langfuse_tracer=langfuse,
-        model=settings.agent_model,
-    )
-
-
 KnowledgeRouterDep = Annotated[KnowledgeRouterService, Depends(get_knowledge_router_service)]

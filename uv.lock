@@ -1781,103 +1781,6 @@ wheels = [
 ]
 
 [[package]]
-name = "moai-zero-to-rag"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "docling" },
-    { name = "fastapi", extra = ["standard"] },
-    { name = "httpx" },
-    { name = "langchain" },
-    { name = "langchain-community" },
-    { name = "langchain-core" },
-    { name = "langchain-ollama" },
-    { name = "langchain-openai" },
-    { name = "langfuse" },
-    { name = "langgraph" },
-    { name = "opensearch-py" },
-    { name = "psycopg2-binary" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dateutil" },
-    { name = "redis" },
-    { name = "requests" },
-    { name = "sentence-transformers" },
-    { name = "sqlalchemy" },
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "anyio", extra = ["trio"] },
-    { name = "asgi-lifespan" },
-    { name = "jupyter" },
-    { name = "mypy" },
-    { name = "notebook" },
-    { name = "polyfactory" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-aiohttp" },
-    { name = "pytest-cov" },
-    { name = "pytest-dotenv" },
-    { name = "pytest-env" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
-    { name = "testcontainers" },
-    { name = "types-sqlalchemy" },
-]
-viz = [
-    { name = "grandalf" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.13.3" },
-    { name = "docling", specifier = ">=2.43.0" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.12" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "langchain", specifier = ">=0.3.0" },
-    { name = "langchain-community", specifier = ">=0.3.0" },
-    { name = "langchain-core", specifier = ">=1.4.7" },
-    { name = "langchain-ollama", specifier = ">=0.3.0" },
-    { name = "langchain-openai", specifier = ">=0.3.0" },
-    { name = "langfuse", specifier = ">=4.0.0" },
-    { name = "langgraph", specifier = ">=1.2.9" },
-    { name = "opensearch-py", specifier = ">=3.0.0" },
-    { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "pydantic", specifier = ">=2.11.3" },
-    { name = "pydantic-settings", specifier = ">=2.8.1" },
-    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
-    { name = "redis", specifier = ">=6.4.0" },
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentence-transformers", specifier = ">=5.1.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.0" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "anyio", extras = ["trio"], specifier = ">=4.9.0" },
-    { name = "asgi-lifespan", specifier = ">=2.1.0" },
-    { name = "jupyter", specifier = ">=1.1.1" },
-    { name = "mypy", specifier = ">=1.15.0" },
-    { name = "notebook", specifier = ">=7.4.4" },
-    { name = "polyfactory", specifier = ">=2.21.0" },
-    { name = "pre-commit", specifier = ">=4.2.0" },
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "pytest-aiohttp", specifier = ">=1.1.0" },
-    { name = "pytest-cov", specifier = ">=6.1.1" },
-    { name = "pytest-dotenv", specifier = ">=0.5.2" },
-    { name = "pytest-env", specifier = ">=1.1.5" },
-    { name = "pytest-mock", specifier = ">=3.14.0" },
-    { name = "ruff", specifier = ">=0.11.5" },
-    { name = "testcontainers", specifier = ">=4.10.0" },
-    { name = "types-sqlalchemy", specifier = ">=1.4.53.38" },
-]
-viz = [{ name = "grandalf", specifier = ">=0.8" }]
-
-[[package]]
 name = "mpire"
 version = "2.10.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2603,6 +2506,103 @@ sdist = { url = "https://files.pythonhosted.org/packages/ff/29/7cf5bbc236333876e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/a5/987a405322d78a73b66e39e4a90e4ef156fd7141bf71df987e50717c321b/pre_commit-4.3.0-py2.py3-none-any.whl", hash = "sha256:2b0747ad7e6e967169136edffee14c16e148a778a54e4f967921aa1ebf2308d8", size = 220965, upload-time = "2025-08-09T18:56:13.192Z" },
 ]
+
+[[package]]
+name = "production-rag"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "docling" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "httpx" },
+    { name = "langchain" },
+    { name = "langchain-community" },
+    { name = "langchain-core" },
+    { name = "langchain-ollama" },
+    { name = "langchain-openai" },
+    { name = "langfuse" },
+    { name = "langgraph" },
+    { name = "opensearch-py" },
+    { name = "psycopg2-binary" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dateutil" },
+    { name = "redis" },
+    { name = "requests" },
+    { name = "sentence-transformers" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "anyio", extra = ["trio"] },
+    { name = "asgi-lifespan" },
+    { name = "jupyter" },
+    { name = "mypy" },
+    { name = "notebook" },
+    { name = "polyfactory" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-aiohttp" },
+    { name = "pytest-cov" },
+    { name = "pytest-dotenv" },
+    { name = "pytest-env" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
+    { name = "testcontainers" },
+    { name = "types-sqlalchemy" },
+]
+viz = [
+    { name = "grandalf" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13.3" },
+    { name = "docling", specifier = ">=2.43.0" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.12" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "langchain", specifier = ">=0.3.0" },
+    { name = "langchain-community", specifier = ">=0.3.0" },
+    { name = "langchain-core", specifier = ">=1.4.7" },
+    { name = "langchain-ollama", specifier = ">=0.3.0" },
+    { name = "langchain-openai", specifier = ">=0.3.0" },
+    { name = "langfuse", specifier = ">=4.0.0" },
+    { name = "langgraph", specifier = ">=1.2.9" },
+    { name = "opensearch-py", specifier = ">=3.0.0" },
+    { name = "psycopg2-binary", specifier = ">=2.9.10" },
+    { name = "pydantic", specifier = ">=2.11.3" },
+    { name = "pydantic-settings", specifier = ">=2.8.1" },
+    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
+    { name = "redis", specifier = ">=6.4.0" },
+    { name = "requests", specifier = ">=2.32.3" },
+    { name = "sentence-transformers", specifier = ">=5.1.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "anyio", extras = ["trio"], specifier = ">=4.9.0" },
+    { name = "asgi-lifespan", specifier = ">=2.1.0" },
+    { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "mypy", specifier = ">=1.15.0" },
+    { name = "notebook", specifier = ">=7.4.4" },
+    { name = "polyfactory", specifier = ">=2.21.0" },
+    { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-aiohttp", specifier = ">=1.1.0" },
+    { name = "pytest-cov", specifier = ">=6.1.1" },
+    { name = "pytest-dotenv", specifier = ">=0.5.2" },
+    { name = "pytest-env", specifier = ">=1.1.5" },
+    { name = "pytest-mock", specifier = ">=3.14.0" },
+    { name = "ruff", specifier = ">=0.11.5" },
+    { name = "testcontainers", specifier = ">=4.10.0" },
+    { name = "types-sqlalchemy", specifier = ">=1.4.53.38" },
+]
+viz = [{ name = "grandalf", specifier = ">=0.8" }]
 
 [[package]]
 name = "prometheus-client"
