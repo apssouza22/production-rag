@@ -11,19 +11,12 @@ Learn to build modern AI systems production grade from the ground up through han
 
 </br>
 
-<p align="center">
-  <a href="#-about-this-course">
-    <img src="static/mother_of_ai_project_rag_architecture.gif" alt="RAG Architecture" width="700">
-  </a>
-</p>
 
 
-## 🏗️ System Architecture Evolution
-
-### Agentic RAG
+## 🏗️ System Architecture 
 <div align="center">
-  <img src="static/week7_telegram_and_agentic_ai.png" alt="Agentic RAG Architecture" width="800">
-  <p><em>The agentic RAG system: guardrails, retrieval grading, and query rewriting</em></p>
+  <img src="docs/assets/system-architecture.drawio.png" alt="Production RAG System Architecture" width="800">
+  <p><em>Layered system view: API, agents, search, ingestion, caching, tracing, and model providers</em></p>
 </div>
 
 
@@ -226,7 +219,6 @@ uv run pytest                 # Run tests
 ---
 
 ## TODOs
-- [ ] Use virtual keys for bifrost
 - [ ] Add governance with bifrost plugins
 
 
