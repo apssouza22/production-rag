@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 
     bifrost_enabled: bool = False
     bifrost_host: str = "http://localhost:8090"
-    bifrost_api_key: str = "dummy-key"
+    # Must match a Bifrost virtual key when enforce_auth_on_inference is enabled (see bifrost/config.json).
+    bifrost_api_key: str = "sk-bf-agent-1-dev"
     llm_provider: Literal["openai", "bifrost"] = "openai"
 
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
@@ -44,9 +45,11 @@ def build_openai_client_kwargs(settings: Settings | None = None, **overrides) ->
 
     use_bifrost = resolved.bifrost_enabled or resolved.llm_provider == "bifrost"
     if use_bifrost:
+        virtual_key = overrides.pop("api_key", None) or resolved.bifrost_api_key
         return {
-            "api_key": resolved.bifrost_api_key,
+            "api_key": virtual_key,
             "base_url": f"{resolved.bifrost_host.rstrip('/')}/v1",
+            "default_headers": {"x-bf-vk": virtual_key},
             **overrides,
         }
 

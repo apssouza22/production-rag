@@ -29,13 +29,16 @@ Edit `.env` with your credentials:
 | `EVALUATION_BASE_URL` | OpenAI-compatible endpoint (default: `https://api.openai.com/v1`) |
 | `EVALUATION_SLEEP_TIME` | Seconds to wait between traces (default: `10`) |
 
-Optional Bifrost routing:
+Optional Bifrost routing (when the main stack uses `LLM_PROVIDER=bifrost`):
 
 ```bash
 BIFROST_ENABLED=true
 BIFROST_HOST=http://localhost:8090
-BIFROST_API_KEY=dummy-key
+BIFROST_API_KEY=sk-bf-agent-1-dev   # virtual key from bifrost/config.json
+EVALUATION_LLM=openai/gpt-4o-mini   # optional; unprefixed names also work
 ```
+
+With `enforce_auth_on_inference: true` in Bifrost, `dummy-key` is rejected — use a configured virtual key.
 
 Install dependencies:
 
