@@ -1,4 +1,4 @@
-# RAG Evals
+# Custom Evals
 
 Standalone evaluation framework that scores Langfuse traces from the RAG API using LLM-as-judge metrics.
 
@@ -57,15 +57,15 @@ make eval-no-report  # skip JSON report
 Or directly:
 
 ```bash
-uv run python -m rag_evals.main --quick
-uv run python -m rag_evals.main --interactive
-uv run python -m rag_evals.main --no-report
-uv run rag-eval --quick
+uv run python -m custom_evals.main --quick
+uv run python -m custom_evals.main --interactive
+uv run python -m custom_evals.main --no-report
+uv run custom-eval --quick
 ```
 
 ## Metrics
 
-Metric prompts live in `rag_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
+Metric prompts live in `custom_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
 
 - `relevancy`
 - `helpfulness`

@@ -10,8 +10,8 @@ from langfuse import Langfuse
 from langfuse.api import TraceWithDetails
 from tqdm import tqdm
 
-from rag_evals.config import build_openai_client_kwargs, get_settings
-from rag_evals.helpers import (
+from custom_evals.config import build_openai_client_kwargs, get_settings
+from custom_evals.helpers import (
     calculate_avg_scores,
     generate_report,
     get_input_output,
@@ -21,8 +21,8 @@ from rag_evals.helpers import (
     update_failure_metrics,
     update_success_metrics,
 )
-from rag_evals.metrics import metrics
-from rag_evals.schemas import ScoreSchema
+from custom_evals.metrics import metrics
+from custom_evals.schemas import ScoreSchema
 
 logger = logging.getLogger(__name__)
 

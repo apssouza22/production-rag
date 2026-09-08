@@ -7,10 +7,10 @@ setup: ## Install dependencies
 	uv sync
 
 eval: ## Run evaluation with interactive mode
-	uv run python -m rag_evals.main --interactive
+	uv run python -m custom_evals.main --interactive
 
 eval-quick: ## Run evaluation with default settings
-	uv run python -m rag_evals.main --quick
+	uv run python -m custom_evals.main --quick
 
 eval-no-report: ## Run evaluation without generating a JSON report
-	uv run python -m rag_evals.main --no-report
+	uv run python -m custom_evals.main --no-report

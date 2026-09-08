@@ -55,7 +55,7 @@ flowchart LR
     subgraph ops["Pipelines and observability"]
         AF["Airflow 3<br/>ingestion DAG"]
         LF["Langfuse Cloud<br/>traces + scores"]
-        EV["rag-evals<br/>LLM-as-judge"]
+        EV["custom-evals<br/>LLM-as-judge"]
     end
 
     API --> AG
@@ -606,7 +606,7 @@ flowchart LR
     B --> C["Langfuse trace"]
     A --> T["Trajectory in API response<br/>steps + events + summary"]
     C --> D["User feedback<br/>POST /api/v1/feedback"]
-    C --> E["rag-evals: fetch unscored<br/>traces, 24h window"]
+    C --> E["custom-evals: fetch unscored<br/>traces, 24h window"]
     T --> E
     E --> F["LLM judge per metric:<br/>relevancy, helpfulness, conciseness,<br/>hallucination, toxicity"]
     F --> G["create_score on the trace"]

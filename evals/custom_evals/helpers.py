@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from langfuse.api import TraceWithDetails
 
-from rag_evals.schemas import ScoreSchema
+from custom_evals.schemas import ScoreSchema
 
 logger = logging.getLogger(__name__)
 

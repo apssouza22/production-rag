@@ -1,6 +1,6 @@
 """Tests for evals configuration helpers."""
 
-from rag_evals.config import Settings, build_openai_client_kwargs
+from custom_evals.config import Settings, build_openai_client_kwargs
 
 
 def test_build_openai_client_kwargs_uses_direct_openai_by_default():

@@ -10,8 +10,8 @@ from typing import Any, Dict, Optional
 import colorama
 from colorama import Fore, Style
 
-from rag_evals.config import get_settings
-from rag_evals.evaluator import Evaluator
+from custom_evals.config import get_settings
+from custom_evals.evaluator import Evaluator
 
 logger = logging.getLogger(__name__)
 
