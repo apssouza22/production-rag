@@ -7,7 +7,7 @@ from custom_evals.config import build_openai_client_kwargs
 
 PROJECT_ROOT = Path(__file__).parent.parent
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
-DEFAULT_DATASET_PATH = Path(__file__).parent / "data" / "queries.json"
+DEFAULT_DATASET_PATH = Path(__file__).parent / "queries.json"
 
 
 class RagEvalSettings(BaseSettings):

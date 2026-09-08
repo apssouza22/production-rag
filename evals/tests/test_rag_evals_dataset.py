@@ -18,8 +18,15 @@ def sample_dataset_path(tmp_path: Path) -> Path:
     dataset_path.write_text(
         json.dumps(
             [
-                {"user_input": "What is RAG?", "response": "Retrieval augmented generation."},
-                {"user_input": "How does hybrid search work?"},
+                {
+                    "user_input": "What is RAG?",
+                    "reference": "RAG combines retrieval with generation.",
+                    "response": "Retrieval augmented generation.",
+                },
+                {
+                    "user_input": "How does hybrid search work?",
+                    "reference": "Hybrid search combines BM25 and vector retrieval.",
+                },
             ]
         ),
         encoding="utf-8",
@@ -31,7 +38,11 @@ def test_load_queries(sample_dataset_path: Path):
     queries = load_queries(sample_dataset_path)
 
     assert len(queries) == 2
-    assert queries[0] == EvalQuery(user_input="What is RAG?", response="Retrieval augmented generation.")
+    assert queries[0] == EvalQuery(
+        user_input="What is RAG?",
+        reference="RAG combines retrieval with generation.",
+        response="Retrieval augmented generation.",
+    )
     assert queries[1].response is None
 
 
@@ -66,13 +77,21 @@ async def test_build_samples_uses_rerank_search_contexts(sample_dataset_path: Pa
     builder = DatasetBuilder(settings=settings, retrieval_client=retrieval_client, openai_client=openai_client)
     samples = await builder.build_samples(
         [
-            EvalQuery(user_input="What is RAG?", response="Retrieval augmented generation."),
-            EvalQuery(user_input="How does hybrid search work?"),
+            EvalQuery(
+                user_input="What is RAG?",
+                reference="RAG combines retrieval with generation.",
+                response="Retrieval augmented generation.",
+            ),
+            EvalQuery(
+                user_input="How does hybrid search work?",
+                reference="Hybrid search combines BM25 and vector retrieval.",
+            ),
         ]
     )
 
     assert len(samples) == 2
     assert samples[0].retrieved_contexts == ["chunk about RAG"]
+    assert samples[0].reference == "RAG combines retrieval with generation."
     assert samples[0].response == "Retrieval augmented generation."
     assert samples[1].retrieved_contexts == ["chunk about hybrid search"]
     assert samples[1].response == "Hybrid search combines BM25 and vectors."

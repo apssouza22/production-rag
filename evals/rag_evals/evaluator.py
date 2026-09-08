@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from rag_evals.config import RagEvalSettings, get_settings
 from rag_evals.dataset import DatasetBuilder, load_queries
-from rag_evals.metrics import build_reference_free_metrics, create_openai_client
+from rag_evals.metrics import build_metrics, create_openai_client
 from rag_evals.retrieval import RerankSearchClient
 from rag_evals.schemas import EvalSample, MetricScore
 
@@ -21,7 +21,7 @@ REPORTS_DIR = Path(__file__).parent.parent / "reports"
 
 
 class RagEvaluator:
-    """Evaluate retrieval quality with reference-free Ragas metrics."""
+    """Evaluate retrieval and response quality with Ragas metrics."""
 
     def __init__(self, settings: RagEvalSettings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -32,7 +32,7 @@ class RagEvaluator:
             retrieval_client=self.retrieval_client,
             openai_client=self.openai_client,
         )
-        self.metrics = build_reference_free_metrics(self.settings, self.openai_client)
+        self.metrics = build_metrics(self.settings, self.openai_client)
         self.report = self._initialize_report()
 
     async def run(self, generate_report_file: bool = True) -> dict[str, Any]:
@@ -67,6 +67,9 @@ class RagEvaluator:
     async def _evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
         metric_scores: list[MetricScore] = []
         for metric in self.metrics:
+            if metric.requires_reference and not sample.reference:
+                metric_scores.append(MetricScore(name=metric.name, error="reference is required"))
+                continue
             try:
                 metric_scores.append(await metric.scorer(sample))
             except Exception as exc:
@@ -75,6 +78,7 @@ class RagEvaluator:
 
         return {
             "user_input": sample.user_input,
+            "reference_preview": sample.reference[:200],
             "response_preview": sample.response[:200],
             "context_count": len(sample.retrieved_contexts),
             "rerank_applied": sample.rerank_applied,
@@ -92,12 +96,25 @@ class RagEvaluator:
                 "rerank_enabled": self.settings.rag_eval_rerank_enabled,
                 "api_base_url": self.settings.rag_api_base_url,
             },
-            "metrics": [metric.name for metric in self.metrics],
+            "metrics": [
+                {
+                    "name": metric.name,
+                    "description": metric.description,
+                    "requires_reference": metric.requires_reference,
+                }
+                for metric in self.metrics
+            ],
             "total_queries": 0,
             "evaluated_samples": 0,
             "duration_seconds": 0,
             "metrics_summary": {
-                metric.name: {"success_count": 0, "failure_count": 0, "avg_score": 0.0}
+                metric.name: {
+                    "description": metric.description,
+                    "requires_reference": metric.requires_reference,
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "avg_score": 0.0,
+                }
                 for metric in self.metrics
             },
             "sample_results": [],

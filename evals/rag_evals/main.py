@@ -43,13 +43,16 @@ def display_summary(report: dict) -> None:
     print("\n" + f"{Fore.CYAN}Metrics:{Style.RESET_ALL}")
     for metric_name, summary in report["metrics_summary"].items():
         total = summary["success_count"] + summary["failure_count"]
+        description = summary.get("description", "")
         if total == 0:
             print(f"  • {metric_name}: no scores")
-            continue
-        print(
-            f"  • {metric_name}: avg={summary['avg_score']:.4f}, "
-            f"success={summary['success_count']}/{total}"
-        )
+        else:
+            print(
+                f"  • {metric_name}: avg={summary['avg_score']:.4f}, "
+                f"success={summary['success_count']}/{total}"
+            )
+        if description:
+            print(f"    {description}")
 
     if report.get("report_path"):
         print(f"\n{Fore.CYAN}Report:{Style.RESET_ALL} {report['report_path']}")

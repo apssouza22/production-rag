@@ -65,6 +65,7 @@ class DatasetBuilder:
             samples.append(
                 EvalSample(
                     user_input=query.user_input,
+                    reference=query.reference,
                     response=response,
                     retrieved_contexts=retrieved_contexts,
                     rerank_applied=search_result.rerank_applied,

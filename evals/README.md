@@ -80,7 +80,7 @@ Reports are written to `reports/`.
 
 ## Ragas Retrieval Evaluation (`rag_evals`)
 
-Evaluates retrieval quality with reference-free Ragas metrics. For each query in the dataset, contexts are fetched from the running RAG API's `/api/v1/rerank-search` endpoint, which delegates to `rerank_search_service.search`.
+Evaluates retrieval and response quality with Ragas metrics. For each query in the dataset, contexts are fetched from the running RAG API's `/api/v1/rerank-search` endpoint, which delegates to `rerank_search_service.search`.
 
 ### Prerequisites
 
@@ -88,20 +88,23 @@ Evaluates retrieval quality with reference-free Ragas metrics. For each query in
 2. OpenSearch is indexed with papers
 3. An OpenAI API key (or Bifrost gateway) for Ragas judge metrics
 
-### Metrics (no reference data required)
+### Metrics
 
-| Metric | Description |
-|--------|-------------|
-| `context_relevance` | Whether retrieved contexts are pertinent to the query |
-| `context_utilization` | Context precision without reference (uses generated response) |
-| `faithfulness` | Whether the response is supported by retrieved contexts |
+| Metric | Reference required | Description |
+|--------|-------------------|-------------|
+| `context_relevance` | No | Whether retrieved contexts are pertinent to the query |
+| `context_utilization` | No | Context precision without reference (uses generated response) |
+| `faithfulness` | No | Whether the response is supported by retrieved contexts |
+| `context_precision` | Yes | Whether relevant chunks are ranked above irrelevant ones |
+| `context_recall` | Yes | How much of the reference answer is covered by retrieved contexts |
+| `factual_correctness` | Yes | Whether response claims match the reference answer |
 
 ### Configuration
 
 | Variable | Description |
 |----------|-------------|
 | `RAG_API_BASE_URL` | RAG API base URL (default: `http://localhost:8000`) |
-| `RAG_EVAL_DATASET_PATH` | JSON file with `user_input` queries (default: `rag_evals/data/queries.json`) |
+| `RAG_EVAL_DATASET_PATH` | JSON file with queries (default: `rag_evals/queries.json`) |
 | `RAG_EVAL_TOP_K` | Documents to retrieve per query (default: `5`) |
 | `RAG_EVAL_USE_HYBRID` | Use hybrid search (default: `true`) |
 | `RAG_EVAL_RERANK_ENABLED` | Enable Jina reranking (default: `true`) |
@@ -111,10 +114,19 @@ Dataset format:
 
 ```json
 [
-  {"user_input": "What is RAG?"},
-  {"user_input": "How does hybrid search work?", "response": "Optional pre-generated answer."}
+  {
+    "user_input": "What is RAG?",
+    "reference": "Retrieval augmented generation combines search with LLM generation."
+  },
+  {
+    "user_input": "How does hybrid search work?",
+    "reference": "Hybrid search combines BM25 keyword search with vector similarity.",
+    "response": "Optional pre-generated answer for response-based metrics."
+  }
 ]
 ```
+
+`reference` is required. `response` is optional and generated from retrieved contexts when omitted.
 
 ### Usage
 

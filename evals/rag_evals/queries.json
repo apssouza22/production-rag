@@ -1,0 +1,14 @@
+[
+  {
+    "user_input": "What are the main approaches to retrieval-augmented generation for large language models?",
+    "reference": "RAG systems typically combine a retriever with a generator. Common approaches include single-shot retrieve-then-read, iterative retrieval with query rewriting, hybrid BM25-plus-vector search, reranking, and agentic workflows that decide when to retrieve."
+  },
+  {
+    "user_input": "How do transformer architectures improve long-context reasoning?",
+    "reference": "Transformers model long-range dependencies with self-attention, and recent architectures extend context through sparse attention, recurrence, memory modules, and position encoding schemes that scale beyond fixed context windows."
+  },
+  {
+    "user_input": "What methods are used to reduce hallucinations in LLM-based question answering?",
+    "reference": "Hallucination reduction methods include grounding answers in retrieved documents, faithfulness checks, citation generation, self-consistency, uncertainty estimation, and training or fine-tuning models to stay faithful to provided evidence."
+  }
+]

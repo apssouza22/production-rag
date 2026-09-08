@@ -4,9 +4,10 @@ from pydantic import BaseModel, Field
 
 
 class EvalQuery(BaseModel):
-    """A single evaluation query with an optional pre-generated response."""
+    """A single evaluation query with a reference answer and optional response."""
 
     user_input: str = Field(min_length=1, description="Question to evaluate")
+    reference: str = Field(min_length=1, description="Ground-truth answer for reference-based metrics")
     response: str | None = Field(default=None, description="Optional answer used by response-based metrics")
 
 
@@ -31,6 +32,7 @@ class EvalSample(BaseModel):
     """Evaluation sample with retrieved contexts from rerank search."""
 
     user_input: str
+    reference: str
     response: str
     retrieved_contexts: list[str]
     rerank_applied: bool = False
