@@ -1,8 +1,11 @@
 # Custom Evals
 
-Standalone evaluation framework that scores Langfuse traces from the RAG API using LLM-as-judge metrics.
+Standalone evaluation frameworks for the API:
 
-This project is independent from the main app: it has its own `pyproject.toml`, virtualenv, and `.env` file.
+- **custom_evals** — scores Langfuse traces with LLM-as-judge metrics
+- **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
+
+Both packages share the same `pyproject.toml`, virtualenv, and `.env` file.
 
 ## Prerequisites
 
@@ -75,7 +78,56 @@ Metric prompts live in `custom_evals/metrics/prompts/`. Add a new `.md` file and
 
 Reports are written to `reports/`.
 
-## How it works
+## Ragas Retrieval Evaluation (`rag_evals`)
+
+Evaluates retrieval quality with reference-free Ragas metrics. For each query in the dataset, contexts are fetched from the running RAG API's `/api/v1/rerank-search` endpoint, which delegates to `rerank_search_service.search`.
+
+### Prerequisites
+
+1. The main RAG API stack is running (`make start` from the repo root)
+2. OpenSearch is indexed with papers
+3. An OpenAI API key (or Bifrost gateway) for Ragas judge metrics
+
+### Metrics (no reference data required)
+
+| Metric | Description |
+|--------|-------------|
+| `context_relevance` | Whether retrieved contexts are pertinent to the query |
+| `context_utilization` | Context precision without reference (uses generated response) |
+| `faithfulness` | Whether the response is supported by retrieved contexts |
+
+### Configuration
+
+| Variable | Description |
+|----------|-------------|
+| `RAG_API_BASE_URL` | RAG API base URL (default: `http://localhost:8000`) |
+| `RAG_EVAL_DATASET_PATH` | JSON file with `user_input` queries (default: `rag_evals/data/queries.json`) |
+| `RAG_EVAL_TOP_K` | Documents to retrieve per query (default: `5`) |
+| `RAG_EVAL_USE_HYBRID` | Use hybrid search (default: `true`) |
+| `RAG_EVAL_RERANK_ENABLED` | Enable Jina reranking (default: `true`) |
+| `RAG_EVAL_GENERATE_RESPONSES` | Generate answers when omitted from dataset (default: `true`) |
+
+Dataset format:
+
+```json
+[
+  {"user_input": "What is RAG?"},
+  {"user_input": "How does hybrid search work?", "response": "Optional pre-generated answer."}
+]
+```
+
+### Usage
+
+```bash
+make rag-eval
+make rag-eval-no-report
+uv run python -m rag_evals.main --quick
+uv run rag-eval --quick
+```
+
+Reports are written to `reports/ragas_evaluation_report_<timestamp>.json`.
+
+## How custom_evals works
 
 1. Fetches unscored Langfuse traces from the last 24 hours
 2. Extracts `query` and `answer` from each trace (supports RAG API and LangGraph trace formats)
