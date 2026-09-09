@@ -1,15 +1,82 @@
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types.doc import DocItemLabel
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
-from .models import PaperFigure, PaperSection, PaperTable, ParserType, PdfContent
+
+from .models import PaperSection, ParserType, PdfContent
 
 logger = logging.getLogger(__name__)
+
+_HEADER_LABELS = {DocItemLabel.TITLE, DocItemLabel.SECTION_HEADER}
+_CONTENT_LABELS = {
+    DocItemLabel.TEXT,
+    DocItemLabel.PARAGRAPH,
+    DocItemLabel.LIST_ITEM,
+    DocItemLabel.CAPTION,
+    DocItemLabel.CODE,
+    DocItemLabel.FORMULA,
+}
+
+
+def extract_sections_from_document(doc: Any) -> list[PaperSection]:
+    """Extract hierarchical sections with breadcrumbs from a Docling document.
+
+    Walks the document tree via ``iterate_items`` and maintains a header stack so
+    nested sections retain their full path (e.g. ``Methods > Training``).
+    """
+    sections: list[PaperSection] = []
+    header_stack: list[tuple[int, str]] = []
+    current: Optional[dict[str, Any]] = {"title": "Content", "content": "", "level": 1, "breadcrumb": None}
+
+    def flush_current() -> None:
+        nonlocal current
+        if current and current["content"].strip():
+            sections.append(
+                PaperSection(
+                    title=current["title"],
+                    content=current["content"].strip(),
+                    level=current["level"],
+                    breadcrumb=current.get("breadcrumb"),
+                )
+            )
+
+    for item, depth in doc.iterate_items():
+        label = getattr(item, "label", None)
+        text = getattr(item, "text", "").strip()
+        if not text:
+            continue
+
+        if label in _HEADER_LABELS:
+            flush_current()
+
+            if label == DocItemLabel.TITLE:
+                # Keep the document title as the breadcrumb root across same-level section headers.
+                level = 0
+            else:
+                level = getattr(item, "level", None) or max(depth, 1)
+
+            while header_stack and header_stack[-1][0] >= level:
+                header_stack.pop()
+            header_stack.append((level, text))
+
+            breadcrumb = " > ".join(title for _, title in header_stack)
+            current = {
+                "title": text,
+                "content": "",
+                "level": level,
+                "breadcrumb": breadcrumb,
+            }
+        elif current is not None and label in _CONTENT_LABELS:
+            current["content"] += text + "\n"
+
+    flush_current()
+    return sections
 
 
 class DoclingParser:
@@ -108,26 +175,7 @@ class DoclingParser:
 
             # Extract structured content
             doc = result.document
-
-            # Extract sections from document structure
-            sections = []
-            current_section = {"title": "Content", "content": ""}
-
-            for element in doc.texts:
-                if hasattr(element, "label") and element.label in ["title", "section_header"]:
-                    # Save previous section if it has content
-                    if current_section["content"].strip():
-                        sections.append(PaperSection(title=current_section["title"], content=current_section["content"].strip()))
-                    # Start new section
-                    current_section = {"title": element.text.strip(), "content": ""}
-                else:
-                    # Add content to current section
-                    if hasattr(element, "text") and element.text:
-                        current_section["content"] += element.text + "\n"
-
-            # Add final section
-            if current_section["content"].strip():
-                sections.append(PaperSection(title=current_section["title"], content=current_section["content"].strip()))
+            sections = extract_sections_from_document(doc)
 
             # Focus on what arXiv API doesn't provide: structured full text content only
             return PdfContent(

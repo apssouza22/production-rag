@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from .models import ChunkMetadata, TextChunk
 
@@ -189,13 +189,13 @@ class TextChunker:
         :returns: List of text chunks
         """
         # Parse sections data
-        sections_dict = self._parse_sections(sections)
-        if not sections_dict:
+        section_items = self._parse_sections(sections)
+        if not section_items:
             return []
 
         # Filter and clean sections
-        sections_dict = self._filter_sections(sections_dict, abstract)
-        if not sections_dict:
+        section_items = self._filter_sections(section_items, abstract)
+        if not section_items:
             logger.warning(f"No meaningful sections found after filtering for {arxiv_id}")
             return []
 
@@ -206,87 +206,121 @@ class TextChunker:
         chunks = []
         small_sections = []  # Buffer for combining small sections
 
-        section_items = list(sections_dict.items())
-
-        for i, (section_title, section_content) in enumerate(section_items):
-            content_str = str(section_content) if section_content else ""
+        for i, section in enumerate(section_items):
+            section_title = section["title"]
+            section_breadcrumb = section.get("breadcrumb")
+            section_label = section_breadcrumb or section_title
+            content_str = str(section["content"]) if section["content"] else ""
             section_words = len(content_str.split())
 
             if section_words < 100:
                 # Collect small sections to combine later
-                small_sections.append((section_title, content_str, section_words))
+                small_sections.append((section_title, content_str, section_words, section_breadcrumb))
 
                 # If this is the last section or next section is large, process accumulated small sections
-                if i == len(section_items) - 1 or len(str(section_items[i + 1][1]).split()) >= 100:
+                next_content = str(section_items[i + 1]["content"]) if i < len(section_items) - 1 else ""
+                if i == len(section_items) - 1 or len(next_content.split()) >= 100:
                     chunks.extend(self._create_combined_chunk(header, small_sections, chunks, arxiv_id, paper_id))
                     small_sections = []
 
             elif 100 <= section_words <= 800:
                 # Perfect size - create single chunk
-                chunk_text = f"{header}Section: {section_title}\n\n{content_str}"
-                chunk = self._create_section_chunk(chunk_text, section_title, len(chunks), arxiv_id, paper_id)
+                chunk_text = f"{header}Section: {section_label}\n\n{content_str}"
+                chunk = self._create_section_chunk(
+                    chunk_text, section_title, len(chunks), arxiv_id, paper_id, section_breadcrumb
+                )
                 chunks.append(chunk)
 
             else:
                 # Large section - split using traditional chunking
-                section_text = f"Section: {section_title}\n\n{content_str}"
+                section_text = f"Section: {section_label}\n\n{content_str}"
                 full_section_text = f"{header}{section_text}"
 
                 # Use traditional chunking but with section context
                 section_chunks = self._split_large_section(
-                    full_section_text, header, section_title, len(chunks), arxiv_id, paper_id
+                    full_section_text,
+                    header,
+                    section_title,
+                    len(chunks),
+                    arxiv_id,
+                    paper_id,
+                    section_breadcrumb,
                 )
                 chunks.extend(section_chunks)
 
         return chunks
 
-    def _parse_sections(self, sections: Union[Dict[str, str], str, list]) -> Dict[str, str]:
-        """Parse sections data into a dictionary."""
+    def _section_label(self, title: str, breadcrumb: Optional[str]) -> str:
+        """Return the display label for a section, preferring breadcrumb when available."""
+        return breadcrumb or title
+
+    def _normalize_section_dict(
+        self,
+        title: str,
+        content: str,
+        level: int = 1,
+        breadcrumb: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Build a normalized section dictionary."""
+        return {
+            "title": title,
+            "content": content,
+            "level": level,
+            "breadcrumb": breadcrumb,
+        }
+
+    def _parse_sections(self, sections: Union[Dict[str, str], str, list]) -> list[dict[str, Any]]:
+        """Parse sections data into a list of section dictionaries."""
         if isinstance(sections, dict):
-            return sections
-        elif isinstance(sections, list):
-            # Handle list of sections directly
-            result = {}
-            for i, section in enumerate(sections):
-                if isinstance(section, dict):
-                    title = section.get("title", section.get("heading", f"Section {i + 1}"))
-                    content = section.get("content", section.get("text", ""))
-                    result[title] = content
-                else:
-                    result[f"Section {i + 1}"] = str(section)
-            return result
-        elif isinstance(sections, str):
+            return [self._normalize_section_dict(title, content) for title, content in sections.items()]
+
+        if isinstance(sections, list):
+            return self._parse_section_list(sections)
+
+        if isinstance(sections, str):
             try:
                 parsed = json.loads(sections)
-                if isinstance(parsed, dict):
-                    return parsed
-                elif isinstance(parsed, list):
-                    # Convert list to dict with enumerated keys
-                    result = {}
-                    for i, section in enumerate(parsed):
-                        if isinstance(section, dict):
-                            title = section.get("title", section.get("heading", f"Section {i + 1}"))
-                            content = section.get("content", section.get("text", ""))
-                            result[title] = content
-                        else:
-                            result[f"Section {i + 1}"] = str(section)
-                    return result
             except json.JSONDecodeError:
                 logger.warning("Failed to parse sections JSON")
-        return {}
+                return []
 
-    def _filter_sections(self, sections_dict: Dict[str, str], abstract: str) -> Dict[str, str]:
+            if isinstance(parsed, dict):
+                return [self._normalize_section_dict(title, content) for title, content in parsed.items()]
+            if isinstance(parsed, list):
+                return self._parse_section_list(parsed)
+
+        return []
+
+    def _parse_section_list(self, sections: list) -> list[dict[str, Any]]:
+        """Parse a list of section objects into normalized section dictionaries."""
+        result: list[dict[str, Any]] = []
+        for i, section in enumerate(sections):
+            if isinstance(section, dict):
+                result.append(
+                    self._normalize_section_dict(
+                        title=section.get("title", section.get("heading", f"Section {i + 1}")),
+                        content=section.get("content", section.get("text", "")),
+                        level=section.get("level", 1),
+                        breadcrumb=section.get("breadcrumb"),
+                    )
+                )
+            else:
+                result.append(self._normalize_section_dict(f"Section {i + 1}", str(section)))
+        return result
+
+    def _filter_sections(self, section_items: list[dict[str, Any]], abstract: str) -> list[dict[str, Any]]:
         """Filter out unwanted sections and avoid duplication.
 
-        :param sections_dict: Dictionary of sections
+        :param section_items: Parsed section dictionaries
         :param abstract: Paper abstract for duplication check
-        :returns: Filtered dictionary of sections
+        :returns: Filtered section dictionaries
         """
-        filtered = {}
+        filtered: list[dict[str, Any]] = []
         abstract_words = set(abstract.lower().split())
 
-        for section_title, section_content in sections_dict.items():
-            content_str = str(section_content).strip()
+        for section in section_items:
+            section_title = section["title"]
+            content_str = str(section["content"]).strip()
 
             # Skip empty sections
             if not content_str:
@@ -306,7 +340,7 @@ class TextChunker:
                 logger.debug(f"Skipping metadata section: {section_title}")
                 continue
 
-            filtered[section_title] = content_str
+            filtered.append(section)
 
         return filtered
 
@@ -398,17 +432,18 @@ class TextChunker:
         combined_content = []
         total_words = 0
 
-        for section_title, content, word_count in small_sections:
-            combined_content.append(f"Section: {section_title}\n\n{content}")
+        for section_title, content, word_count, section_breadcrumb in small_sections:
+            section_label = self._section_label(section_title, section_breadcrumb)
+            combined_content.append(f"Section: {section_label}\n\n{content}")
             total_words += word_count
 
-        combined_text = f"{header}{'\\n\\n'.join(combined_content)}"
+        combined_text = f"{header}{'\n\n'.join(combined_content)}"
 
         # If still too small, combine with previous chunk if possible
         if total_words + len(header.split()) < 200 and existing_chunks:
             # Try to merge with previous chunk
             prev_chunk = existing_chunks[-1]
-            merged_text = f"{prev_chunk.text}\\n\\n{'\\n\\n'.join(combined_content)}"
+            merged_text = f"{prev_chunk.text}\n\n{'\n\n'.join(combined_content)}"
 
             # Update the previous chunk
             existing_chunks[-1] = TextChunk(
@@ -421,6 +456,7 @@ class TextChunker:
                     overlap_with_previous=0,
                     overlap_with_next=0,
                     section_title=f"{prev_chunk.metadata.section_title} + Combined",
+                    section_breadcrumb=prev_chunk.metadata.section_breadcrumb,
                 ),
                 arxiv_id=arxiv_id,
                 paper_id=paper_id,
@@ -428,16 +464,29 @@ class TextChunker:
             return []
 
         # Create new chunk with combined content
-        sections_titles = [title for title, _, _ in small_sections]
+        sections_titles = [title for title, _, _, _ in small_sections]
         combined_title = " + ".join(sections_titles[:3])  # Limit title length
         if len(sections_titles) > 3:
             combined_title += f" + {len(sections_titles) - 3} more"
 
-        chunk = self._create_section_chunk(combined_text, combined_title, len(existing_chunks), arxiv_id, paper_id)
+        breadcrumbs = [breadcrumb for _, _, _, breadcrumb in small_sections if breadcrumb]
+        combined_breadcrumb = " + ".join(breadcrumbs[:3]) if breadcrumbs else None
+        if breadcrumbs and len(breadcrumbs) > 3:
+            combined_breadcrumb = f"{combined_breadcrumb} + {len(breadcrumbs) - 3} more"
+
+        chunk = self._create_section_chunk(
+            combined_text, combined_title, len(existing_chunks), arxiv_id, paper_id, combined_breadcrumb
+        )
         return [chunk]
 
     def _create_section_chunk(
-        self, chunk_text: str, section_title: str, chunk_index: int, arxiv_id: str, paper_id: str
+        self,
+        chunk_text: str,
+        section_title: str,
+        chunk_index: int,
+        arxiv_id: str,
+        paper_id: str,
+        section_breadcrumb: Optional[str] = None,
     ) -> TextChunk:
         """Create a single section-based chunk."""
         return TextChunk(
@@ -450,13 +499,21 @@ class TextChunker:
                 overlap_with_previous=0,
                 overlap_with_next=0,
                 section_title=section_title,
+                section_breadcrumb=section_breadcrumb,
             ),
             arxiv_id=arxiv_id,
             paper_id=paper_id,
         )
 
     def _split_large_section(
-        self, full_section_text: str, header: str, section_title: str, base_chunk_index: int, arxiv_id: str, paper_id: str
+        self,
+        full_section_text: str,
+        header: str,
+        section_title: str,
+        base_chunk_index: int,
+        arxiv_id: str,
+        paper_id: str,
+        section_breadcrumb: Optional[str] = None,
     ) -> List[TextChunk]:
         """Split large sections using traditional word-based chunking."""
         # Remove header from section text for chunking, then add back to each chunk
@@ -480,6 +537,7 @@ class TextChunker:
                     overlap_with_previous=chunk.metadata.overlap_with_previous,
                     overlap_with_next=chunk.metadata.overlap_with_next,
                     section_title=f"{section_title} (Part {i + 1})",
+                    section_breadcrumb=section_breadcrumb,
                 ),
                 arxiv_id=arxiv_id,
                 paper_id=paper_id,

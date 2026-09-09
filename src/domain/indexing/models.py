@@ -13,6 +13,7 @@ class ChunkMetadata(BaseModel):
     overlap_with_previous: int
     overlap_with_next: int
     section_title: Optional[str] = None
+    section_breadcrumb: Optional[str] = None
     chunk_context: Optional[str] = None
 
 

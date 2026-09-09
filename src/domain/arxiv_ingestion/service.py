@@ -310,7 +310,15 @@ class MetadataFetcher:
             pdf_content = parsed_paper.pdf_content
 
             # Serialize sections
-            sections = [{"title": section.title, "content": section.content} for section in pdf_content.sections]
+            sections = [
+                {
+                    "title": section.title,
+                    "content": section.content,
+                    "level": section.level,
+                    "breadcrumb": section.breadcrumb,
+                }
+                for section in pdf_content.sections
+            ]
 
             # Serialize references
             references = list(pdf_content.references)  #

@@ -16,6 +16,7 @@ class PaperSection(BaseModel):
     title: str = Field(..., description="Section title")
     content: str = Field(..., description="Section content")
     level: int = Field(default=1, description="Section hierarchy level")
+    breadcrumb: Optional[str] = Field(default=None, description="Full section path, e.g. Methods > Training")
 
 
 class PaperFigure(BaseModel):
