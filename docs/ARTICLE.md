@@ -55,7 +55,7 @@ flowchart LR
     subgraph ops["Pipelines and observability"]
         AF["Airflow 3<br/>ingestion DAG"]
         LF["Langfuse Cloud<br/>traces + scores"]
-        EV["custom-evals<br/>LLM-as-judge"]
+        EV["evals/<br/>custom_evals + rag_evals"]
     end
 
     API --> AG
@@ -81,7 +81,7 @@ The write path and the read path are separate. Airflow owns ingestion and never 
 
 Every model call goes through a gateway or a provider client that knows how to fail over. The application does not know whether it is talking to a local Llama or to OpenAI, and when the primary model errors it walks a configured fallback chain before giving up. That is what makes provider and model fallback possible at all.
 
-Observability is not a sidecar you bolt on at the end. Traces come from both the API and the agent layer, and the evaluation job feeds scores back onto the same traces, which turns the tracing system into the system of record for quality.
+Observability is not a sidecar you bolt on at the end. Traces come from both the API and the agent layer, and the evaluation jobs feed scores back onto those traces or onto a golden dataset, which turns measurement into something you can compare across changes rather than something you feel.
 
 ---
 
@@ -598,34 +598,98 @@ Agentic requests also return a **trajectory** in the HTTP response (see §7.1). 
 
 Tracing overhead measured under 2%, which is the right ballpark. If your instrumentation costs more than a few percent, you will eventually be tempted to turn it off, and you will turn it off right before the incident where you needed it.
 
-Traces alone tell you what happened, not whether it was good. That takes a second loop:
+Traces alone tell you what happened, not whether it was good. That takes measurement loops — and you need two of them, because they answer different questions.
 
 ```mermaid
-flowchart LR
-    A["Request"] --> B["Spans: embedding, search,<br/>prompt, generation, agent nodes"]
-    B --> C["Langfuse trace"]
-    A --> T["Trajectory in API response<br/>steps + events + summary"]
-    C --> D["User feedback<br/>POST /api/v1/feedback"]
-    C --> E["custom-evals: fetch unscored<br/>traces, 24h window"]
-    T --> E
-    E --> F["LLM judge per metric:<br/>relevancy, helpfulness, conciseness,<br/>hallucination, toxicity"]
-    F --> G["create_score on the trace"]
-    G --> C
-    F --> H["JSON report in reports/"]
-    D --> C
+flowchart TB
+    subgraph prod["Production loop — custom_evals"]
+        A["Request"] --> B["Spans: embedding, search,<br/>prompt, generation, agent nodes"]
+        B --> C["Langfuse trace"]
+        A --> T["Trajectory in API response<br/>steps + events + summary"]
+        C --> D["User feedback<br/>POST /api/v1/feedback"]
+        C --> E["custom_evals: fetch unscored<br/>traces, 24h window"]
+        T --> E
+        E --> F["LLM judge per metric:<br/>relevancy, helpfulness, conciseness,<br/>hallucination, toxicity"]
+        F --> G["create_score on the trace"]
+        G --> C
+        F --> H1["JSON report in reports/"]
+        D --> C
+    end
+
+    subgraph golden["Golden-set loop — rag_evals"]
+        Q["rag_evals/queries.json<br/>user_input + reference"] --> RS["POST /api/v1/rerank-search<br/>hybrid + rerank, top_k=5"]
+        RS --> CTX["retrieved_contexts<br/>chunk_text from after_rerank"]
+        CTX --> GEN["Optional response generation<br/>from contexts only"]
+        GEN --> RAG["Ragas metrics<br/>6 scorers, gpt-4o-mini judge"]
+        RAG --> H2["JSON report in reports/<br/>ragas_evaluation_report_*.json"]
+    end
 ```
 
-The evaluation harness is a separate project with its own dependencies and virtualenv. That separation is deliberate: judge models, API keys and eval libraries have no business being installed in the service that answers user traffic.
+Both packages live under `evals/` with their own `pyproject.toml` and virtualenv. That separation is deliberate: judge models, Ragas, API keys and eval libraries have no business being installed in the service that answers user traffic.
 
-It pulls traces from the last 24 hours that have no scores yet, extracts the query and answer, scores each against every metric using an LLM judge with structured output, and writes the scores back onto the original trace. Metrics are markdown prompt files in a directory; dropping in a new `.md` file registers a new metric. Prompts are content, not code, and they should live somewhere a non-engineer can edit them.
+### 11.1 Production trace scoring (`custom_evals`)
 
-Scoring production traffic rather than a static test set is what makes this useful. Your golden dataset represents the queries you imagined; your traces are the queries you actually got. You want both, but only one of them tells you about the users you have.
+`custom_evals` scores what users actually asked. It pulls Langfuse traces from the last 24 hours that have no scores yet, extracts `query` and `answer` from each trace (RAG API and LangGraph formats), scores each against every metric using an LLM judge with structured output, and writes the scores back onto the original trace.
+
+Metrics are markdown prompt files in `custom_evals/metrics/prompts/`. Dropping in a new `.md` file registers a new metric. Prompts are content, not code, and they should live somewhere a non-engineer can edit them:
+
+| Metric | What it measures |
+|---|---|
+| `relevancy` | Does the answer address the question? |
+| `helpfulness` | Is the answer useful to the user? |
+| `conciseness` | Is the answer appropriately brief? |
+| `hallucination` | Are claims unsupported by the retrieved context? |
+| `toxicity` | Is the response harmful or offensive? |
+
+```bash
+cd evals && make eval-quick    # or: uv run python -m custom_evals.main --quick
+```
+
+Scoring production traffic rather than a static test set is what makes this useful for drift detection. Your golden dataset represents the queries you imagined; your traces are the queries you actually got. You want both, but only one of them tells you about the users you have.
+
+### 11.2 Golden-set retrieval scoring (`rag_evals`)
+
+`rag_evals` scores what you *intended* the retrieval stack to do. For each query in a JSON dataset with a reference answer, it calls the same `/api/v1/rerank-search` endpoint the production stack uses — hybrid search, RRF fusion, Jina reranking — and evaluates the returned `chunk_text` contexts with [Ragas](https://docs.ragas.io/) metrics. When a query has no pre-written `response`, the harness generates one from the retrieved contexts alone (same grounding instruction as the RAG prompt: answer only from excerpts, say you do not know otherwise).
+
+```bash
+cd evals && make rag-eval    # or: uv run python -m rag_evals.main --quick
+```
+
+Six metrics, split by whether they need a reference answer:
+
+| Metric | Reference required | What it measures |
+|---|---|---|
+| `context_relevance` | No | Are retrieved chunks pertinent to the query? |
+| `context_utilization` | No | Are useful chunks ranked above irrelevant ones? (uses generated response) |
+| `faithfulness` | No | Are response claims supported by retrieved contexts? |
+| `context_precision` | Yes | Are relevant chunks ranked above irrelevant ones? (uses reference) |
+| `context_recall` | Yes | How much of the reference answer is covered by retrieved contexts? |
+| `factual_correctness` | Yes | Do response claims match the reference answer? |
+
+The seed dataset in `rag_evals/queries.json` has three CS.AI questions — RAG approaches, transformer long-context reasoning, hallucination reduction. Small on purpose: it is a regression harness, not a benchmark leaderboard. Grow it as you find failure modes in production traces.
+
+**Baseline on the course local setup** (Llama 3.2 1B via Ollama for generation, hybrid + rerank, `top_k=5`, judge `gpt-4o-mini`, September 2026):
+
+| Metric | Avg score |
+|---|---|
+| `context_relevance` | 0.42 |
+| `context_utilization` | 0.33 |
+| `faithfulness` | 0.33 |
+| `context_precision` | 0.16 |
+| `context_recall` | 0.33 |
+| `factual_correctness` | 0.00 |
+
+Those numbers are not good, and that is the point. Two of three queries produced "I do not know" despite retrieving five chunks each — retrieval ran, but the small local model refused to synthesise from the excerpts. The third query retrieved on-topic chunks about a user-simulator paper and scored well on faithfulness (1.0) while `factual_correctness` stayed at zero, because the answer discussed the wrong paper relative to the reference. Ragas separated a retrieval miss from a generation miss without anyone reading the traces by hand. That is exactly the decomposition the quality ladder in §14 is built around.
+
+Re-run after any change to chunking, field boosts, contextual retrieval, or reranking. The report lands in `evals/reports/ragas_evaluation_report_<timestamp>.json` with per-query breakdowns.
+
+### 11.3 Trajectory assertions and human feedback
 
 For agentic paths, store the `trajectory` field alongside the answer when you build eval fixtures. A judge can score relevancy from query and answer alone, but structural assertions are cheaper and more reliable: `assert "tool:retrieve_papers" in response["trajectory"]["steps"]`, `assert response["trajectory"]["summary"]["errors"] == []`, `assert response["trajectory"]["summary"]["nodes"].count("retrieve") <= 2` to enforce the bounded rewrite loop. When a hallucination score regresses, the trajectory tells you whether retrieval ran, whether grading passed, or whether the model answered from an empty context — without re-running the request.
 
 Human feedback lands in the same place through a `/feedback` endpoint that attaches a score and comment to a trace ID. Model judgements and human judgements sitting on the same object is what lets you eventually check whether your judge agrees with your users, which is the question that decides whether any of the automated scoring means anything.
 
-What is missing from this loop, and I'd want it before calling the system finished: nothing gates deployment on eval results. The scores are computed and stored, but nothing fails a build when hallucination regresses. Measurement without a gate is a dashboard nobody opens after week three.
+What is missing from this loop, and I'd want it before calling the system finished: nothing gates deployment on eval results. The scores are computed and stored, but nothing fails a build when `context_recall` or hallucination regresses. Measurement without a gate is a dashboard nobody opens after week three.
 
 ---
 
@@ -695,7 +759,8 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Generate | Grounding instructions + citation requirement | Answers cite papers and admit insufficient context | Longer system prompt | Yes |
 | Generate | Structured output for judgement nodes | Guardrail and grader return parseable scores, not prose | None | Yes |
 | Serve | Semantic cache with 0.90 confidence floor | Latency drops from 15-20s to 50-100ms without serving near-miss answers | Risk of a wrong hit if the threshold is lowered | Yes |
-| Measure | LLM-as-judge on production traces | You find out whether a change helped | Judge model calls, offline | Yes |
+| Measure | LLM-as-judge on production traces (`custom_evals`) | You find out whether live traffic got worse | Judge model calls, offline | Yes |
+| Measure | **Ragas golden-set eval** (`rag_evals`) | Retrieval precision/recall/faithfulness on a fixed dataset via `/api/v1/rerank-search` | Judge model calls, requires indexed corpus | Yes |
 | Measure | Human feedback on the same trace objects | You find out whether the judge is right | An endpoint and a UI affordance | Yes |
 | Measure | **Request trajectory in API response** | Structural debugging and eval assertions without Langfuse UI | Slightly larger JSON payloads | Yes, agentic path |
 
@@ -703,7 +768,7 @@ Three things are worth reading out of that table.
 
 The techniques are not interchangeable, they compose in a specific direction. Contextual retrieval makes the candidate pool better; over-fetching makes the pool bigger; RRF orders it using two views of relevance; the cross-encoder reorders the top of it accurately; grading decides whether the whole thing worked. Skipping an early stage cannot be compensated for by a later one, because a reranker can only reorder what retrieval found. This is why "just add a reranker" is such a common disappointment: it is the last stage, and it inherits every recall failure upstream of it.
 
-Exactly one lever is off by default, and it is the one that costs money per chunk rather than per query. That asymmetry is not an accident. Query-time techniques scale with traffic and can be tuned or disabled per request; index-time techniques scale with corpus size and are committed to at ingestion. Getting contextual retrieval wrong means reindexing everything, which is the argument for keeping it behind a flag and enabling it after the eval loop exists rather than before.
+Exactly one lever is off by default, and it is the one that costs money per chunk rather than per query. That asymmetry is not an accident. Query-time techniques scale with traffic and can be tuned or disabled per request; index-time techniques scale with corpus size and are committed to at ingestion. Getting contextual retrieval wrong means reindexing everything, which is the argument for keeping it behind a flag and enabling it after `rag_evals` exists rather than before — you need a way to measure whether `context_recall` actually moved before you pay to reindex the corpus.
 
 Most of these are cheap. Field boosts, the asymmetric embedding task, the analyzer configuration, prompt trimming and the abstract-duplicate filter cost nothing at runtime and are pure configuration. They are also the ones most likely to be skipped, because none of them are interesting enough to write a blog post about. The expensive techniques get the attention; the free ones get the results.
 
@@ -739,7 +804,7 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Orchestration:** a state machine with explicit guardrail, grading and bounded retry beats a straight pipeline, and costs you extra LLM calls.
 - **Failure:** decide the direction each fallback fails in, and make sure your failure handler cannot fail.
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.
-- **Observability:** trace per stage, score production traffic rather than only a golden set, and put human and model judgements in the same place.
+- **Observability:** trace per stage, score production traffic with `custom_evals` and retrieval quality with `rag_evals`, and put human and model judgements in the same place.
 - **Trajectory:** register graph execution via LangChain callbacks, return `steps` and `events` on the agentic API response, and use them for troubleshooting and structural evals alongside Langfuse traces.
 
 The uncomfortable summary is that the retrieval and generation logic, the part everyone writes tutorials about, is maybe a quarter of the code. The rest is ingestion that survives bad PDFs, fallbacks for every external call, a cache that doesn't lie, and enough instrumentation to answer "why did it say that?" three days later. That ratio is not a sign something went wrong. It is what production means.
