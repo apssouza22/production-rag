@@ -149,6 +149,104 @@ class MetadataFetcher:
             results["errors"].append(f"Pipeline error: {str(e)}")
             raise PipelineException(f"Pipeline execution failed: {e}") from e
 
+    async def fetch_and_download_papers(
+        self,
+        max_results: Optional[int] = None,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch paper metadata from arXiv and download PDFs without parsing.
+
+        :param max_results: Maximum papers to fetch
+        :param from_date: Filter papers from this date (YYYYMMDD)
+        :param to_date: Filter papers to this date (YYYYMMDD)
+        :returns: Dictionary with fetch/download statistics and serialized papers for XCom
+        """
+        results: Dict[str, Any] = {
+            "papers_fetched": 0,
+            "pdfs_downloaded": 0,
+            "errors": [],
+            "papers": [],
+            "downloaded_paths": {},
+            "processing_time": 0,
+        }
+
+        start_time = datetime.now()
+
+        try:
+            papers = await self.arxiv_client.fetch_papers(
+                max_results=max_results, from_date=from_date, to_date=to_date, sort_by="submittedDate", sort_order="descending"
+            )
+            results["papers_fetched"] = len(papers)
+
+            if not papers:
+                logger.warning("No papers found")
+                return results
+
+            download_results = await self._download_pdfs_batch(papers)
+            results["pdfs_downloaded"] = download_results["downloaded"]
+            results["errors"].extend(download_results["errors"])
+            results["downloaded_paths"] = {arxiv_id: str(path) for arxiv_id, path in download_results["paths"].items()}
+            results["papers"] = [paper.model_dump() for paper in papers]
+
+            results["processing_time"] = (datetime.now() - start_time).total_seconds()
+            logger.info(
+                f"Download step completed in {results['processing_time']:.1f}s: "
+                f"{results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs"
+            )
+            return results
+
+        except Exception as e:
+            logger.error(f"Download step error: {e}")
+            results["errors"].append(f"Download step error: {str(e)}")
+            raise PipelineException(f"Download step failed: {e}") from e
+
+    async def parse_and_store_papers(
+        self,
+        papers: List[ArxivPaper],
+        downloaded_paths: Dict[str, str],
+        db_session: Session,
+    ) -> Dict[str, Any]:
+        """Parse downloaded PDFs and store papers with content in PostgreSQL.
+
+        :param papers: Paper metadata fetched in the download step
+        :param downloaded_paths: Mapping of arxiv_id to local PDF path
+        :param db_session: Database session for storage
+        :returns: Dictionary with parse/store statistics
+        """
+        results: Dict[str, Any] = {
+            "pdfs_parsed": 0,
+            "papers_stored": 0,
+            "errors": [],
+            "processing_time": 0,
+        }
+
+        start_time = datetime.now()
+
+        try:
+            if not papers:
+                logger.warning("No papers to parse")
+                return results
+
+            parse_results = await self._parse_pdfs_batch(papers, downloaded_paths)
+            results["pdfs_parsed"] = parse_results["parsed"]
+            results["errors"].extend(parse_results["errors"])
+
+            stored_count = self._store_papers_to_db(papers, parse_results["parsed_papers"], db_session)
+            results["papers_stored"] = stored_count
+
+            results["processing_time"] = (datetime.now() - start_time).total_seconds()
+            logger.info(
+                f"Parse step completed in {results['processing_time']:.1f}s: "
+                f"{results['pdfs_parsed']} parsed, {results['papers_stored']} stored"
+            )
+            return results
+
+        except Exception as e:
+            logger.error(f"Parse step error: {e}")
+            results["errors"].append(f"Parse step error: {str(e)}")
+            raise PipelineException(f"Parse step failed: {e}") from e
+
     async def _process_pdfs_batch(self, papers: List[ArxivPaper]) -> Dict[str, Any]:
         """
         Process PDFs for a batch of papers with async concurrency.
@@ -241,6 +339,116 @@ class MetadataFetcher:
 
         return results
 
+    async def _download_pdfs_batch(self, papers: List[ArxivPaper]) -> Dict[str, Any]:
+        """Download PDFs for a batch of papers without parsing."""
+        results: Dict[str, Any] = {
+            "downloaded": 0,
+            "paths": {},
+            "errors": [],
+            "download_failures": [],
+        }
+
+        logger.info(f"Starting download batch for {len(papers)} PDFs")
+        download_semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+        download_tasks = [self._download_pdf_only(paper, download_semaphore) for paper in papers]
+        download_results = await asyncio.gather(*download_tasks, return_exceptions=True)
+
+        for paper, result in zip(papers, download_results):
+            if isinstance(result, Exception):
+                error_msg = f"Download error for {paper.arxiv_id}: {result}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+                results["download_failures"].append(paper.arxiv_id)
+            elif result:
+                results["downloaded"] += 1
+                results["paths"][paper.arxiv_id] = result
+            else:
+                results["download_failures"].append(paper.arxiv_id)
+
+        if results["download_failures"]:
+            results["errors"].extend([f"Download failed: {arxiv_id}" for arxiv_id in results["download_failures"]])
+
+        logger.info(f"Download batch complete: {results['downloaded']}/{len(papers)} downloaded")
+        return results
+
+    async def _parse_pdfs_batch(self, papers: List[ArxivPaper], downloaded_paths: Dict[str, str]) -> Dict[str, Any]:
+        """Parse already-downloaded PDFs for a batch of papers."""
+        results: Dict[str, Any] = {
+            "parsed": 0,
+            "parsed_papers": {},
+            "errors": [],
+            "parse_failures": [],
+        }
+
+        logger.info(f"Starting parse batch for {len(papers)} PDFs")
+        parse_semaphore = asyncio.Semaphore(self.max_concurrent_parsing)
+        parse_tasks = [self._parse_pdf_only(paper, downloaded_paths.get(paper.arxiv_id), parse_semaphore) for paper in papers]
+        parse_results = await asyncio.gather(*parse_tasks, return_exceptions=True)
+
+        for paper, result in zip(papers, parse_results):
+            if isinstance(result, Exception):
+                error_msg = f"Parse error for {paper.arxiv_id}: {result}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+                results["parse_failures"].append(paper.arxiv_id)
+            elif result:
+                results["parsed"] += 1
+                results["parsed_papers"][paper.arxiv_id] = result
+            else:
+                results["parse_failures"].append(paper.arxiv_id)
+
+        if results["parse_failures"]:
+            results["errors"].extend([f"PDF parse failed: {arxiv_id}" for arxiv_id in results["parse_failures"]])
+
+        logger.info(f"Parse batch complete: {results['parsed']}/{len(papers)} parsed")
+        return results
+
+    async def _download_pdf_only(self, paper: ArxivPaper, download_semaphore: asyncio.Semaphore) -> Optional[Path]:
+        """Download a single PDF with concurrency control."""
+        async with download_semaphore:
+            logger.debug(f"Starting download: {paper.arxiv_id}")
+            pdf_path = await self.arxiv_client.download_pdf(paper, False)
+
+            if pdf_path:
+                logger.debug(f"Download complete: {paper.arxiv_id}")
+                return pdf_path
+
+            logger.error(f"Download failed: {paper.arxiv_id}")
+            return None
+
+    async def _parse_pdf_only(
+        self,
+        paper: ArxivPaper,
+        downloaded_path: Optional[str],
+        parse_semaphore: asyncio.Semaphore,
+    ) -> Optional[ParsedPaper]:
+        """Parse a single downloaded PDF with concurrency control."""
+        pdf_path = Path(downloaded_path) if downloaded_path else self.arxiv_client._get_pdf_path(paper.arxiv_id)
+        if not pdf_path.exists():
+            logger.warning(f"No PDF available for parsing: {paper.arxiv_id}")
+            return None
+
+        async with parse_semaphore:
+            logger.debug(f"Starting parse: {paper.arxiv_id}")
+            pdf_content = await self.pdf_parser.parse_pdf(pdf_path)
+
+            if not pdf_content:
+                logger.warning(f"PDF parsing failed for {paper.arxiv_id}, continuing with metadata only")
+                return None
+
+            arxiv_metadata = ArxivMetadata(
+                title=paper.title,
+                authors=paper.authors,
+                abstract=paper.abstract,
+                arxiv_id=paper.arxiv_id,
+                categories=paper.categories,
+                published_date=paper.published_date,
+                pdf_url=paper.pdf_url,
+            )
+            parsed_paper = ParsedPaper(arxiv_metadata=arxiv_metadata, pdf_content=pdf_content)
+            logger.debug(f"Parse complete: {paper.arxiv_id} - {len(pdf_content.raw_text)} chars extracted")
+            return parsed_paper
+
     async def _download_and_parse_pipeline(
         self, paper: ArxivPaper, download_semaphore: asyncio.Semaphore, parse_semaphore: asyncio.Semaphore
     ) -> tuple:
@@ -251,52 +459,17 @@ class MetadataFetcher:
         Returns:
             Tuple of (download_success: bool, parsed_paper: Optional[ParsedPaper])
         """
-        download_success = False
-        parsed_paper = None
-
         try:
-            # Step 1: Download PDF with download concurrency control
-            async with download_semaphore:
-                logger.debug(f"Starting download: {paper.arxiv_id}")
-                pdf_path = await self.arxiv_client.download_pdf(paper, False)
+            pdf_path = await self._download_pdf_only(paper, download_semaphore)
+            if not pdf_path:
+                return (False, None)
 
-                if pdf_path:
-                    download_success = True
-                    logger.debug(f"Download complete: {paper.arxiv_id}")
-                else:
-                    logger.error(f"Download failed: {paper.arxiv_id}")
-                    return (False, None)
-
-            # Step 2: Parse PDF with parse concurrency control (happens AFTER download completes)
-            # This allows other downloads to continue while this PDF is being parsed
-            async with parse_semaphore:
-                logger.debug(f"Starting parse: {paper.arxiv_id}")
-                pdf_content = await self.pdf_parser.parse_pdf(pdf_path)
-
-                if pdf_content:
-                    # Create ArxivMetadata from the paper
-                    arxiv_metadata = ArxivMetadata(
-                        title=paper.title,
-                        authors=paper.authors,
-                        abstract=paper.abstract,
-                        arxiv_id=paper.arxiv_id,
-                        categories=paper.categories,
-                        published_date=paper.published_date,
-                        pdf_url=paper.pdf_url,
-                    )
-
-                    # Combine into ParsedPaper
-                    parsed_paper = ParsedPaper(arxiv_metadata=arxiv_metadata, pdf_content=pdf_content)
-                    logger.debug(f"Parse complete: {paper.arxiv_id} - {len(pdf_content.raw_text)} chars extracted")
-                else:
-                    # PDF parsing failed, but this is not critical - we can continue with metadata only
-                    logger.warning(f"PDF parsing failed for {paper.arxiv_id}, continuing with metadata only")
+            parsed_paper = await self._parse_pdf_only(paper, str(pdf_path), parse_semaphore)
+            return (True, parsed_paper)
 
         except Exception as e:
             logger.error(f"Pipeline error for {paper.arxiv_id}: {e}")
             raise MetadataFetchingException(f"Pipeline error for {paper.arxiv_id}: {e}") from e
-
-        return (download_success, parsed_paper)
 
     def _serialize_parsed_content(self, parsed_paper: ParsedPaper) -> Dict[str, Any]:
         """Serialize ParsedPaper content for database storage.

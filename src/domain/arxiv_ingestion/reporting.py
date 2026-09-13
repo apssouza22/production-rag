@@ -19,15 +19,20 @@ def generate_daily_report(**context):
         logger.warning("No task instance available, generating basic report")
         return {"status": "basic_report", "message": "No task instance for XCom data"}
 
-    fetch_stats = ti.xcom_pull(task_ids="fetch_daily_papers", key="fetch_results") or {}
+    download_stats = ti.xcom_pull(task_ids="download_papers", key="download_results") or {}
+    parse_stats = ti.xcom_pull(task_ids="parse_pdfs", key="parse_results") or {}
     hybrid_stats = ti.xcom_pull(task_ids="index_papers_hybrid", key="hybrid_index_stats") or {}
 
     report = {
         "execution_date": context.get("execution_date", datetime.now()).isoformat(),
-        "fetch_statistics": {
-            "papers_fetched": fetch_stats.get("papers_fetched", 0),
-            "papers_stored": fetch_stats.get("papers_stored", 0),
-            "target_date": fetch_stats.get("date", "unknown"),
+        "download_statistics": {
+            "papers_fetched": download_stats.get("papers_fetched", 0),
+            "pdfs_downloaded": download_stats.get("pdfs_downloaded", 0),
+            "target_date": download_stats.get("date", parse_stats.get("date", "unknown")),
+        },
+        "parse_statistics": {
+            "pdfs_parsed": parse_stats.get("pdfs_parsed", 0),
+            "papers_stored": parse_stats.get("papers_stored", 0),
         },
         "indexing_statistics": {
             "papers_processed": hybrid_stats.get("papers_processed", 0),
@@ -35,7 +40,7 @@ def generate_daily_report(**context):
             "chunks_indexed": hybrid_stats.get("total_chunks_indexed", 0),
             "embeddings_generated": hybrid_stats.get("total_embeddings_generated", 0),
         },
-        "pipeline_status": "success" if fetch_stats and hybrid_stats else "partial",
+        "pipeline_status": "success" if download_stats and parse_stats and hybrid_stats else "partial",
     }
 
     try:

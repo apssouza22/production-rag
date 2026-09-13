@@ -3,11 +3,11 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-
 from src.domain.arxiv_ingestion import (
-    fetch_daily_papers,
+    download_papers,
     generate_daily_report,
     index_papers_hybrid,
+    parse_pdfs,
     setup_environment,
 )
 
@@ -27,7 +27,7 @@ default_args = {
 dag = DAG(
     "arxiv_paper_ingestion",
     default_args=default_args,
-    description="Daily arXiv CS.AI paper pipeline: fetch → store to PostgreSQL → chunk & embed → hybrid OpenSearch indexing",
+    description="Daily arXiv CS.AI paper pipeline: download → parse → store → chunk & embed → hybrid OpenSearch indexing",
     schedule="0 6 * * 1-5",  # Monday-Friday at 6 AM UTC
     max_active_runs=1,
     catchup=False,
@@ -41,13 +41,18 @@ setup_task = PythonOperator(
     dag=dag,
 )
 
-fetch_task = PythonOperator(
-    task_id="fetch_daily_papers",
-    python_callable=fetch_daily_papers,
+download_task = PythonOperator(
+    task_id="download_papers",
+    python_callable=download_papers,
     dag=dag,
 )
 
-# Hybrid search indexing task (replaces old OpenSearch task)
+parse_task = PythonOperator(
+    task_id="parse_pdfs",
+    python_callable=parse_pdfs,
+    dag=dag,
+)
+
 index_hybrid_task = PythonOperator(
     task_id="index_papers_hybrid",
     python_callable=index_papers_hybrid,
@@ -72,5 +77,4 @@ cleanup_task = BashOperator(
 )
 
 # Task dependencies
-# Simplified pipeline: setup -> fetch -> hybrid index -> report -> cleanup
-setup_task >> fetch_task >> index_hybrid_task >> report_task >> cleanup_task
+setup_task >> download_task >> parse_task >> index_hybrid_task >> report_task >> cleanup_task

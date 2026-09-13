@@ -102,3 +102,40 @@ class TestMetadataFetcher:
 
         # Should complete quickly for empty result
         assert end_time - start_time < 1.0
+
+    @pytest.mark.asyncio
+    async def test_fetch_and_download_papers(self, metadata_fetcher, sample_arxiv_papers, tmp_path):
+        """Test download-only pipeline step."""
+        metadata_fetcher.arxiv_client.fetch_papers = AsyncMock(return_value=sample_arxiv_papers)
+        metadata_fetcher.arxiv_client.download_pdf = AsyncMock(side_effect=[tmp_path / "a.pdf", None])
+
+        result = await metadata_fetcher.fetch_and_download_papers(max_results=2)
+
+        assert result["papers_fetched"] == 2
+        assert result["pdfs_downloaded"] == 1
+        assert len(result["papers"]) == 2
+        assert result["papers"][0]["arxiv_id"] == "2024.0001v1"
+        assert len(result["downloaded_paths"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_parse_and_store_papers(self, metadata_fetcher, sample_arxiv_papers, sample_pdf_content, tmp_path):
+        """Test parse-and-store pipeline step."""
+        pdf_path = tmp_path / "2024.0001v1.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4")
+
+        metadata_fetcher.pdf_parser.parse_pdf = AsyncMock(return_value=sample_pdf_content)
+        mock_session = MagicMock()
+        mock_repo = MagicMock()
+        mock_repo.upsert.return_value = MagicMock()
+
+        with patch("src.domain.arxiv_ingestion.service.PaperRepository", return_value=mock_repo):
+            result = await metadata_fetcher.parse_and_store_papers(
+                papers=sample_arxiv_papers[:1],
+                downloaded_paths={sample_arxiv_papers[0].arxiv_id: str(pdf_path)},
+                db_session=mock_session,
+            )
+
+        assert result["pdfs_parsed"] == 1
+        assert result["papers_stored"] == 1
+        mock_repo.upsert.assert_called_once()
+        mock_session.commit.assert_called_once()

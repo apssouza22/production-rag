@@ -2,9 +2,23 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+from src.domain.arxiv.paper import ArxivPaper
+
 from .common import get_cached_services
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_target_date(context: dict) -> str:
+    """Resolve the target ingestion date from Airflow execution context."""
+    execution_date = context.get("execution_date")
+    if execution_date:
+        target_dt = execution_date - timedelta(days=1)
+        return target_dt.strftime("%Y%m%d")
+
+    yesterday = datetime.now() - timedelta(days=1)
+    return yesterday.strftime("%Y%m%d")
+
 
 async def run_paper_ingestion_pipeline(
     target_date: str,
@@ -32,41 +46,89 @@ async def run_paper_ingestion_pipeline(
         )
 
 
-def fetch_daily_papers(**context):
-    """Fetch daily papers from arXiv and store in PostgreSQL.
+def download_papers(**context):
+    """Fetch daily papers from arXiv and download PDFs.
 
     This task:
     1. Determines the target date (defaults to yesterday)
-    2. Fetches papers from arXiv API
-    3. Downloads and processes PDFs using Docling
-    4. Stores metadata and parsed content in PostgreSQL
+    2. Fetches paper metadata from the arXiv API
+    3. Downloads PDFs to the local cache
 
-    Note: OpenSearch indexing is handled by a separate dedicated task
+    Parsing and database storage are handled by the parse_pdfs task.
     """
-    logger.info("Starting daily paper fetching task")
+    logger.info("Starting daily paper download task")
 
-    execution_date = context.get("execution_date")
-    if execution_date:
-        target_dt = execution_date - timedelta(days=1)
-        target_date = target_dt.strftime("%Y%m%d")
-    else:
-        yesterday = datetime.now() - timedelta(days=1)
-        target_date = yesterday.strftime("%Y%m%d")
+    target_date = _resolve_target_date(context)
+    logger.info(f"Downloading papers for date: {target_date}")
 
-    logger.info(f"Fetching papers for date: {target_date}")
+    arxiv_client, _, _, metadata_fetcher, _ = get_cached_services()
+    max_results = arxiv_client.max_results
 
     results = asyncio.run(
-        run_paper_ingestion_pipeline(
-            target_date=target_date,
-            process_pdfs=True,
+        metadata_fetcher.fetch_and_download_papers(
+            max_results=max_results,
+            from_date=target_date,
+            to_date=target_date,
         )
     )
 
-    logger.info(f"Daily fetch complete: {results['papers_fetched']} papers for {target_date}")
-
     results["date"] = target_date
+    logger.info(
+        f"Daily download complete: {results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs for {target_date}"
+    )
+
     ti = context.get("ti")
     if ti:
-        ti.xcom_push(key="fetch_results", value=results)
+        ti.xcom_push(key="download_results", value=results)
+
+    return results
+
+
+def parse_pdfs(**context):
+    """Parse downloaded PDFs and store papers in PostgreSQL.
+
+    This task:
+    1. Reads paper metadata and download paths from the download_papers task
+    2. Parses PDFs using Docling
+    3. Stores metadata and parsed content in PostgreSQL
+    """
+    logger.info("Starting PDF parsing task")
+
+    ti = context.get("ti")
+    download_results = {}
+    if ti:
+        download_results = ti.xcom_pull(task_ids="download_papers", key="download_results") or {}
+
+    papers_data = download_results.get("papers", [])
+    if not papers_data:
+        logger.info("No papers to parse")
+        results = {
+            "pdfs_parsed": 0,
+            "papers_stored": 0,
+            "errors": [],
+            "date": download_results.get("date"),
+        }
+        if ti:
+            ti.xcom_push(key="parse_results", value=results)
+        return results
+
+    papers = [ArxivPaper(**paper_data) for paper_data in papers_data]
+    downloaded_paths = download_results.get("downloaded_paths", {})
+
+    _, _, database, metadata_fetcher, _ = get_cached_services()
+    with database.get_session() as session:
+        results = asyncio.run(
+            metadata_fetcher.parse_and_store_papers(
+                papers=papers,
+                downloaded_paths=downloaded_paths,
+                db_session=session,
+            )
+        )
+
+    results["date"] = download_results.get("date")
+    logger.info(f"PDF parsing complete: {results['pdfs_parsed']} parsed, {results['papers_stored']} stored for {results['date']}")
+
+    if ti:
+        ti.xcom_push(key="parse_results", value=results)
 
     return results

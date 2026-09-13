@@ -40,7 +40,7 @@ def index_papers_hybrid(**context):
     """Index papers with chunking and vector embeddings for hybrid search.
 
     This task:
-    1. Fetches recently processed papers from PostgreSQL
+    1. Fetches recently stored papers from PostgreSQL (via parse_pdfs XCom)
     2. Chunks them into overlapping segments (600 words, 100 overlap)
     3. Generates embeddings using Jina AI
     4. Indexes chunks with embeddings into OpenSearch
@@ -52,15 +52,15 @@ def index_papers_hybrid(**context):
 
         fetch_results = None
         if ti:
-            fetch_results = ti.xcom_pull(task_ids="fetch_daily_papers", key="fetch_results")
+            parse_results = ti.xcom_pull(task_ids="parse_pdfs", key="parse_results")
 
         with database.get_session() as session:
             from src.domain.paper import Paper
 
-            if fetch_results and fetch_results.get("papers_stored", 0) > 0:
+            if parse_results and parse_results.get("papers_stored", 0) > 0:
                 from sqlalchemy import desc
 
-                papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(fetch_results["papers_stored"]).all()
+                papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(parse_results["papers_stored"]).all()
             else:
                 cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
                 papers = session.query(Paper).filter(Paper.created_at >= cutoff_date).all()
