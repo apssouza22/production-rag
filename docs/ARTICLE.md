@@ -139,7 +139,9 @@ flowchart LR
 
 The chunker respects document structure rather than counting characters. Sections of 100-800 words become a single chunk; small sections merge with neighbours; oversized sections fall back to a sliding window with 100 words of overlap. If the parser found no sections at all, it degrades to paragraph chunking. Fixed-size splitting is easy to implement and reliably cuts sentences in half at the point where the useful information was.
 
-Three things happen on top of the split that matter more than the split itself.
+The PDF parser walks the document tree and assigns each section a **breadcrumb path** (e.g. `Methods > Training`). That hierarchy is what makes the chunking strategy hierarchical rather than flat: when a section exceeds 800 words, it is split into smaller overlapping child chunks (~600 words, 100-word overlap) for retrieval precision, while every child still carries the paper's title and abstract as a header plus the section breadcrumb. See §4.2 for how those fields are stored and how sibling chunks can be reassembled.
+
+Four things happen on top of the split that matter more than the split itself.
 
 **Section-based chunks carry the paper's title and abstract as a header.** A chunk that reads "we improve on the baseline by 4.1 points" is unattributable on its own. Prepending the title and abstract, plus the section name, gives every chunk a minimum identity even before any LLM touches it. The chunker also filters the junk that PDF parsers reliably produce: sections whose word overlap with the abstract exceeds 80% are dropped as duplicates, and short sections that are mostly emails, affiliations and arXiv IDs are dropped as metadata. Indexing boilerplate does not just waste space, it creates chunks that match many queries weakly and crowd out the ones that match strongly.
 
@@ -172,6 +174,22 @@ It is off by default (`contextualization_enabled: false`) and that is the honest
 The index itself is a single OpenSearch index holding both the text fields and a 1024-dimension `knn_vector` on the same document. One document, both signals, one query. The vector field uses HNSW with cosine similarity, `ef_construction: 512` and `m: 16`. Text fields get a custom analyzer with lowercasing, stopword removal and snowball stemming, so "learning" and "learned" collapse to the same stem, which measurably helps BM25 recall. Authors deliberately use a plain analyzer, because stemming surnames produces nonsense.
 
 The mapping is `dynamic: "strict"`. An unexpected field is a rejected write rather than a silently mistyped one. Prefer loud failures at the boundary.
+
+### 4.2 Hierarchical chunking with section breadcrumbs
+
+Classic hierarchical RAG indexes small child chunks for precision and retrieves a larger parent for generation context. This system achieves the indexing half of that pattern through section breadcrumbs and split metadata.
+
+When `TextChunker` encounters a section larger than 800 words, it splits the content into smaller overlapping child chunks. Each child is indexed as its own OpenSearch document, but carries metadata that ties it back to the parent section:
+
+| Field | Role |
+|---|---|
+| `section_breadcrumb` | Shared across all parts of the same section — the grouping key (e.g. `Methods > Training`) |
+| `section_title` | Disambiguated per part (`Training (Part 1)`, `Training (Part 2)`) |
+| `chunk_index` | Global sequential order within the paper; sibling parts get consecutive indices |
+
+Every child chunk also inherits the paper-level header (title + abstract) prepended at chunk time, so generation gets minimum document identity even without parent expansion.
+
+The design intent is clear: search hits a tight child chunk where the relevant sentence lives; generation can later pull the full section when broader context is needed. A post-retrieval step can query `arxiv_id` + `section_breadcrumb`, sort siblings by `chunk_index`, and concatenate their `chunk_text` values into the parent section. `OpenSearchClient.get_chunks_by_paper()` already returns all chunks for a paper sorted by `chunk_index`. That parent expansion is not wired into the agentic RAG path today — retrieval returns the matched child chunk only — but the indexed fields exist to support it without reindexing.
 
 ---
 
@@ -736,6 +754,7 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Stage | Technique | What it buys | What it costs | On by default |
 |---|---|---|---|---|
 | Index | Structure-aware chunking | Chunks end at section boundaries instead of mid-sentence | None; harder code | Yes |
+| Index | Hierarchical child chunks + `section_breadcrumb` | Large sections split into precise children; siblings groupable for parent expansion | Extra index fields per chunk | Yes |
 | Index | Title + abstract header per chunk | Every chunk is attributable without retrieval context | ~50 tokens per chunk of index size | Yes |
 | Index | Abstract-duplicate and metadata section filtering | Fewer weak-matching junk chunks competing for slots | None | Yes |
 | Index | **Contextual retrieval** | Chunks become findable by the vocabulary that describes them, not just the words inside them | One LLM call per chunk at index time | **No** |
@@ -797,7 +816,7 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 ## 16. If you take one thing from each layer
 
 - **Ingestion:** make it idempotent and let partial failures through. Upsert on a natural key, store what you managed to parse.
-- **Chunking:** respect document structure, and match your embedding model's asymmetric tasks. This is where quality is won.
+- **Chunking:** respect document structure, split oversized sections into breadcrumb-linked child chunks for precision, and match your embedding model's asymmetric tasks. This is where quality is won.
 - **Contextual retrieval:** give the retriever an enriched chunk and the generator the original one. A chunk that says "the second variant improves recall by 12%" is unfindable until something puts the paper back around it.
 - **Retrieval:** keyword and vector are peers, fuse them by rank not score, then rerank with a cross-encoder. Cheap recall, expensive precision, in that order.
 - **Generation:** put a gateway in front of providers, configure an explicit model fallback chain per provider (`BIFROST_FALLBACK_MODELS`, `OLLAMA_FALLBACK_MODELS`), seed virtual keys with budgets and rate limits per agent workload, and stop paying tokens for metadata the model doesn't need.

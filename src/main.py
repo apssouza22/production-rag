@@ -100,4 +100,5 @@ app.include_router(knowledge_router.router)  # Knowledge router across retrieval
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, port=8000, host="0.0.0.0")
+    # Import string is required for reload — uvicorn re-imports the module in a child process.
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)
