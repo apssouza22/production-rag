@@ -1,10 +1,10 @@
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
-from src.main import app
-from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+import pytest
+from fastapi.testclient import TestClient
 from src import dependencies
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.main import app
 
 
 @pytest.fixture

@@ -1,11 +1,11 @@
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 
-from src.main import app
-from src.agents.knowledgerouter.service import KnowledgeRouterService
-from src.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
+import pytest
+from fastapi.testclient import TestClient
 from src import dependencies
+from src.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
+from src.agents.knowledgerouter.service import KnowledgeRouterService
+from src.main import app
 
 
 @pytest.fixture

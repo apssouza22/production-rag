@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
-
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 
 

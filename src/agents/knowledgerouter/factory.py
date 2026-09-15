@@ -1,11 +1,10 @@
 from typing import Optional
 
-from src.config import get_settings
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.texttosql.service import TextToSQLService
+from src.config import get_settings
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.protocol import LlmProviderClient
-
 from .config import KnowledgeRouterConfig
 from .service import KnowledgeRouterService
 

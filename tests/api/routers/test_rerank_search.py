@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi.testclient import TestClient
-
 from src import dependencies
 from src.domain.rerank.schemas import RerankSearchResult, SearchDocument
 from src.main import app

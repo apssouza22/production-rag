@@ -1,14 +1,14 @@
 """Tests for AgenticRAGGraph node methods."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
-from langchain_core.messages import AIMessage, HumanMessage
 
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.graph import AgenticRAGGraph
-from src.agents.fusionsearch.utils import get_latest_query, get_latest_context
-from src.agents.fusionsearch.models import GradeDocuments
+from src.agents.fusionsearch.models import AnswerJudgement, GradeDocuments, SourceItem
 from src.agents.fusionsearch.state import AgentState
+from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
 
 
 @pytest.fixture
@@ -51,7 +51,8 @@ class TestRetrieveNode:
         result = await graph.retrieve(state)
 
         content_lower = result["messages"][0].content.lower()
-        assert "apologize" in content_lower or "couldn't find" in content_lower
+        assert "don't have enough information" in content_lower
+        assert result["abstained"] is True
 
 
 class TestGradeDocumentsNode:
@@ -118,6 +119,129 @@ class TestRewriteQueryNode:
 
         assert isinstance(result["messages"][0], HumanMessage)
         assert result["rewritten_query"]
+
+
+class TestAssessRetrievalNode:
+    @pytest.mark.asyncio
+    async def test_assess_retrieval_passes_confident_results(self, graph, sample_human_message):
+        import json
+
+        from langchain_core.messages import ToolMessage
+
+        payload = {
+            "formatted_context": "Transformers paper content",
+            "retrieval_confidence": 0.82,
+            "document_count": 2,
+            "sources": [
+                {
+                    "arxiv_id": "1706.03762",
+                    "title": "Attention Is All You Need",
+                    "authors": ["Vaswani"],
+                    "url": "https://arxiv.org/pdf/1706.03762.pdf",
+                    "relevance_score": 0.82,
+                }
+            ],
+        }
+        state: AgentState = {
+            "messages": [
+                sample_human_message,
+                ToolMessage(content=json.dumps(payload), tool_call_id="retrieve_1", name="retrieve_papers"),
+            ],
+            "retrieval_attempts": 1,
+        }
+
+        result = await graph.assess_retrieval(state)
+
+        assert result["routing_decision"] == "grade_documents"
+        assert result["retrieval_confidence"] == 0.82
+        assert len(result["relevant_sources"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_assess_retrieval_abstains_on_low_confidence(self, graph, sample_human_message):
+        import json
+
+        from langchain_core.messages import ToolMessage
+
+        payload = {
+            "formatted_context": "",
+            "retrieval_confidence": 0.1,
+            "document_count": 0,
+            "sources": [],
+        }
+        state: AgentState = {
+            "messages": [
+                sample_human_message,
+                ToolMessage(content=json.dumps(payload), tool_call_id="retrieve_1", name="retrieve_papers"),
+            ],
+            "retrieval_attempts": 1,
+        }
+
+        result = await graph.assess_retrieval(state)
+
+        assert result["routing_decision"] == "abstain"
+        assert result["abstained"] is True
+
+
+class TestValidateAnswerNode:
+    @pytest.mark.asyncio
+    async def test_validate_answer_abstains_on_invalid_citations(self, graph, sample_human_message):
+        sources = [
+            SourceItem(
+                arxiv_id="1706.03762",
+                title="Attention Is All You Need",
+                authors=["Vaswani"],
+                url="https://arxiv.org/pdf/1706.03762.pdf",
+                relevance_score=0.9,
+            )
+        ]
+        state: AgentState = {
+            "messages": [
+                sample_human_message,
+                AIMessage(content="Unsupported claim [Source: Unknown Paper]."),
+            ],
+            "relevant_sources": sources,
+        }
+
+        result = await graph.validate_answer(state)
+
+        assert result["abstained"] is True
+        assert result["response_status"] == "abstained_citation"
+
+    @pytest.mark.asyncio
+    async def test_validate_answer_passes_with_supported_judgement(self, graph, sample_human_message):
+        sources = [
+            SourceItem(
+                arxiv_id="1706.03762",
+                title="Attention Is All You Need",
+                authors=["Vaswani"],
+                url="https://arxiv.org/pdf/1706.03762.pdf",
+                relevance_score=0.9,
+            )
+        ]
+        mock_structured_llm = Mock()
+        mock_structured_llm.ainvoke = AsyncMock(
+            return_value=AnswerJudgement(
+                verdict="supported",
+                confidence=0.92,
+                reasoning="Answer is grounded in the retrieved context",
+            )
+        )
+        mock_llm = Mock()
+        mock_llm.with_structured_output = Mock(return_value=mock_structured_llm)
+        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
+
+        state: AgentState = {
+            "messages": [
+                sample_human_message,
+                AIMessage(content="Transformers use attention [Source: Attention Is All You Need]."),
+            ],
+            "relevant_sources": sources,
+        }
+
+        result = await graph.validate_answer(state)
+
+        assert result["abstained"] is False
+        assert result["response_status"] == "answered"
 
 
 class TestGenerateAnswerNode:

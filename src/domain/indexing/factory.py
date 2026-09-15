@@ -2,9 +2,8 @@ from typing import Optional
 
 from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
-from src.platform.llm.factory import make_agent_llm_client, make_llm_client
 from src.domain.opensearch.factory import make_opensearch_client_fresh
-
+from src.platform.llm.factory import make_agent_llm_client, make_llm_client
 from .chunk_contextualizer import ChunkContextualizer
 from .hybrid_indexer import HybridIndexingService
 from .text_chunker import TextChunker

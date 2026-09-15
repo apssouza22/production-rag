@@ -47,11 +47,46 @@ class AskResponse(BaseModel):
         }
 
 
+class SourceDetail(BaseModel):
+    """Structured source metadata returned by confidence-aware retrieval."""
+
+    arxiv_id: str = Field(..., description="arXiv paper ID")
+    title: str = Field(..., description="Paper title")
+    authors: List[str] = Field(default_factory=list, description="Paper authors")
+    url: str = Field(..., description="PDF URL for the paper")
+    relevance_score: float = Field(default=0.0, description="Normalized retrieval relevance score")
+
+
 class AgenticAskResponse(AskResponse):
     """Response model for agentic RAG question answering."""
 
     reasoning_steps: List[str] = Field(..., description="Agent's decision-making steps")
     retrieval_attempts: int = Field(..., description="Number of document retrieval attempts")
+    retrieval_confidence: Optional[float] = Field(
+        None,
+        description="Aggregate retrieval confidence score between 0 and 1",
+    )
+    answer_confidence: Optional[float] = Field(
+        None,
+        description="LLM judge confidence for the final answer between 0 and 1",
+    )
+    citation_valid: Optional[bool] = Field(
+        None,
+        description="Whether all citations in the answer were verified against retrieved sources",
+    )
+    abstained: bool = Field(False, description="Whether the pipeline abstained from answering")
+    abstention_reason: Optional[str] = Field(
+        None,
+        description="Machine-readable abstention reason when abstained is true",
+    )
+    response_status: str = Field(
+        "answered",
+        description="Pipeline outcome: answered or abstained_retrieval|citation|judge",
+    )
+    source_details: List[SourceDetail] = Field(
+        default_factory=list,
+        description="Structured source metadata with relevance scores",
+    )
     trace_id: Optional[str] = Field(None, description="Langfuse trace ID for feedback and debugging")
     trajectory: Optional[GraphTrajectoryResponse] = Field(
         None,

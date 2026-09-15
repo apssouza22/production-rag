@@ -4,8 +4,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from opensearchpy import OpenSearch
-from src.config import Settings
 
+from src.config import Settings
 from .index_config_hybrid import ARXIV_PAPERS_CHUNKS_MAPPING, HYBRID_RRF_PIPELINE
 from .query_builder import QueryBuilder
 

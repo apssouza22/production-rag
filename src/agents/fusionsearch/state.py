@@ -3,7 +3,15 @@ from typing import Annotated, Any, Dict, List, Optional, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
-from .models import GradingResult, GuardrailScoring, RoutingDecision, SourceItem, ToolArtefact
+from .models import (
+    AnswerJudgement,
+    CitationValidationResult,
+    GradingResult,
+    GuardrailScoring,
+    RoutingDecision,
+    SourceItem,
+    ToolArtefact,
+)
 
 
 class AgentState(TypedDict):
@@ -56,6 +64,30 @@ class AgentState(TypedDict):
     :cvar metadata:
         Runtime metadata for tracing and analytics.
     :type metadata: Dict[str, Any]
+
+    :cvar retrieval_confidence:
+        Aggregate retrieval confidence score between 0 and 1.
+    :type retrieval_confidence: Optional[float]
+
+    :cvar citation_validation:
+        Result of post-generation citation validation.
+    :type citation_validation: Optional[CitationValidationResult]
+
+    :cvar answer_judgement:
+        LLM judge verdict for answer grounding.
+    :type answer_judgement: Optional[AnswerJudgement]
+
+    :cvar abstained:
+        Whether the pipeline abstained from providing a grounded answer.
+    :type abstained: bool
+
+    :cvar abstention_reason:
+        Machine-readable abstention reason (e.g. abstained_retrieval).
+    :type abstention_reason: Optional[str]
+
+    :cvar response_status:
+        Final pipeline status (answered or abstained_*).
+    :type response_status: Optional[str]
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
@@ -69,3 +101,9 @@ class AgentState(TypedDict):
     relevant_tool_artefacts: Optional[List[ToolArtefact]]
     grading_results: List[GradingResult]
     metadata: Dict[str, Any]
+    retrieval_confidence: Optional[float]
+    citation_validation: Optional[CitationValidationResult]
+    answer_judgement: Optional[AnswerJudgement]
+    abstained: bool
+    abstention_reason: Optional[str]
+    response_status: Optional[str]

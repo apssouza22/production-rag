@@ -1,5 +1,4 @@
 import pytest
-
 from src.platform.llm.fallback import build_fallback_models, build_model_chain
 
 

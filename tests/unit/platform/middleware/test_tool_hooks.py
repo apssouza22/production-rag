@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import ToolMessage
-
 from src.platform.middleware.pipeline import MiddlewareManager
 from src.platform.middleware.tool_hooks import middleware_tool_wrappers
 from src.platform.middleware.types import AgentContext, AgentMiddleware

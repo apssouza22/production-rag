@@ -3,8 +3,8 @@ from typing import Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from sqlalchemy import text
-from src.platform.llm.factory import make_llm_client
 
+from src.platform.llm.factory import make_llm_client
 from ..dependencies import DatabaseDep, OpenSearchDep, SettingsDep
 
 router = APIRouter()

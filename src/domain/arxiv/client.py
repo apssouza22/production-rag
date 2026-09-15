@@ -4,12 +4,19 @@ import time
 import xml.etree.ElementTree as ET
 from functools import cached_property
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 from urllib.parse import quote, urlencode
 
 import httpx
+
 from src.config import ArxivSettings
-from src.domain.arxiv.exceptions import ArxivAPIException, ArxivAPITimeoutError, ArxivParseError, PDFDownloadException, PDFDownloadTimeoutError
+from src.domain.arxiv.exceptions import (
+    ArxivAPIException,
+    ArxivAPITimeoutError,
+    ArxivParseError,
+    PDFDownloadException,
+    PDFDownloadTimeoutError,
+)
 from .paper import ArxivPaper
 
 logger = logging.getLogger(__name__)

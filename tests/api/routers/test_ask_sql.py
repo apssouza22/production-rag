@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi.testclient import TestClient
-
 from src import dependencies
 from src.agents.texttosql.service import TextToSQLService
 from src.main import app

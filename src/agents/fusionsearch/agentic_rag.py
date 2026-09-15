@@ -16,7 +16,6 @@ from src.platform.middleware import (
     LoggingMiddleware,
     TrajectoryMiddleware,
 )
-
 from .config import GraphConfig
 from .context import Context
 from .graph import AgenticRAGGraph
@@ -82,6 +81,9 @@ class AgenticRAGService:
         logger.info(f"  Reranking: {self.graph_config.rerank_enabled}")
         logger.info(f"  Max retrieval attempts: {self.graph_config.max_retrieval_attempts}")
         logger.info(f"  Guardrail threshold: {self.graph_config.guardrail_threshold}")
+        logger.info(f"  Retrieval confidence threshold: {self.graph_config.retrieval_confidence_threshold}")
+        logger.info(f"  Citation validation: {self.graph_config.enable_citation_validation}")
+        logger.info(f"  Abstention judge: {self.graph_config.enable_abstention_judge}")
         logger.info("✓ AgenticRAGService initialized successfully")
 
     async def ask(
@@ -153,6 +155,12 @@ class AgenticRAGService:
             "metadata": {},
             "original_query": None,
             "rewritten_query": None,
+            "retrieval_confidence": None,
+            "citation_validation": None,
+            "answer_judgement": None,
+            "abstained": False,
+            "abstention_reason": None,
+            "response_status": None,
         }
 
         trace_id = getattr(trace, "trace_id", None) if trace else None
@@ -255,15 +263,25 @@ class AgenticRAGService:
             logger.info(f"Langfuse trace ID: {trace_id}")
         logger.info("=" * 80)
 
+        source_details = sources
+        source_urls = self._extract_source_urls(graph_result) if graph_result else []
+
         return {
             "query": query,
             "answer": answer,
-            "sources": sources,
+            "sources": source_urls or source_details,
+            "source_details": source_details,
             "reasoning_steps": reasoning_steps,
             "retrieval_attempts": retrieval_attempts,
             "rewritten_query": graph_result.get("rewritten_query") if graph_result else None,
             "execution_time": execution_time,
             "guardrail_score": guardrail_result.score if guardrail_result else None,
+            "retrieval_confidence": graph_result.get("retrieval_confidence") if graph_result else None,
+            "answer_confidence": self._extract_answer_confidence(graph_result),
+            "citation_valid": self._extract_citation_valid(graph_result),
+            "abstained": bool(graph_result.get("abstained")) if graph_result else False,
+            "abstention_reason": graph_result.get("abstention_reason") if graph_result else None,
+            "response_status": graph_result.get("response_status", "answered") if graph_result else "answered",
             "trace_id": trace_id,
             "fault_tolerance": fault_tolerance,
             "trajectory": trajectory.to_api_dict() if trajectory else None,
@@ -291,6 +309,43 @@ class AgenticRAGService:
 
         return sources
 
+    def _extract_source_urls(self, result: dict) -> List[str]:
+        """Extract PDF URLs from structured source items."""
+        relevant_sources = result.get("relevant_sources", [])
+        urls: List[str] = []
+        for source in relevant_sources:
+            if hasattr(source, "url"):
+                urls.append(source.url)
+            elif isinstance(source, dict) and source.get("url"):
+                urls.append(source["url"])
+        return urls
+
+    @staticmethod
+    def _extract_answer_confidence(result: Optional[dict]) -> Optional[float]:
+        if not result:
+            return None
+        judgement = result.get("answer_judgement")
+        if judgement is None:
+            return None
+        if hasattr(judgement, "confidence"):
+            return judgement.confidence
+        if isinstance(judgement, dict):
+            return judgement.get("confidence")
+        return None
+
+    @staticmethod
+    def _extract_citation_valid(result: Optional[dict]) -> Optional[bool]:
+        if not result:
+            return None
+        citation_validation = result.get("citation_validation")
+        if citation_validation is None:
+            return None
+        if hasattr(citation_validation, "is_trustworthy"):
+            return citation_validation.is_trustworthy
+        if isinstance(citation_validation, dict):
+            return citation_validation.get("is_trustworthy")
+        return None
+
     def _extract_reasoning_steps(self, result: dict, guardrail_result=None) -> List[str]:
         """Extract reasoning steps from graph result."""
         steps = []
@@ -309,6 +364,15 @@ class AgenticRAGService:
             else:
                 steps.append(f"Retrieved documents ({retrieval_attempts} attempt(s))")
 
+        retrieval_confidence = result.get("retrieval_confidence")
+        if retrieval_confidence is not None:
+            steps.append(f"Retrieval confidence: {retrieval_confidence:.2f}")
+
+        if result.get("abstained"):
+            reason = result.get("abstention_reason") or result.get("response_status") or "unknown"
+            steps.append(f"Abstained from answering ({reason})")
+            return steps
+
         if grading_results:
             relevant_count = sum(1 for g in grading_results if g.is_relevant)
             steps.append(f"Graded documents ({relevant_count} relevant)")
@@ -318,6 +382,25 @@ class AgenticRAGService:
 
         if result.get("messages"):
             steps.append("Generated answer from context")
+
+        citation_validation = result.get("citation_validation")
+        if citation_validation is not None:
+            is_valid = (
+                citation_validation.is_trustworthy
+                if hasattr(citation_validation, "is_trustworthy")
+                else citation_validation.get("is_trustworthy")
+            )
+            steps.append(f"Citation validation: {'passed' if is_valid else 'failed'}")
+
+        answer_judgement = result.get("answer_judgement")
+        if answer_judgement is not None:
+            verdict = answer_judgement.verdict if hasattr(answer_judgement, "verdict") else answer_judgement.get("verdict")
+            confidence = (
+                answer_judgement.confidence
+                if hasattr(answer_judgement, "confidence")
+                else answer_judgement.get("confidence")
+            )
+            steps.append(f"Answer judge: {verdict} (confidence {confidence:.2f})")
 
         return steps
 

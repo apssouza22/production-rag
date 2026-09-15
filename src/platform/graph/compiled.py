@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict, Any
+from typing import Any, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph

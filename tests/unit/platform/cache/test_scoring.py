@@ -1,5 +1,4 @@
 import pytest
-
 from src.platform.cache.scoring import compute_confidence, fuzzy_ratio
 
 

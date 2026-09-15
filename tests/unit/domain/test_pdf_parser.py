@@ -2,10 +2,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
-from src.domain.pdf_parser.models import PaperSection, ParserType, PdfContent
 from src.domain.pdf_parser.docling import DoclingParser
+from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 from src.domain.pdf_parser.factory import make_pdf_parser_service
+from src.domain.pdf_parser.models import PaperSection, ParserType, PdfContent
 from src.domain.pdf_parser.parser import PDFParserService
 
 

@@ -1,8 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from src.platform.graph import Command, END, NodeError
-
+from src.platform.graph import END, Command, NodeError
 from src.platform.graph.metadata import fault_metadata
 
 if TYPE_CHECKING:

@@ -6,7 +6,6 @@ from contextlib import ExitStack
 from typing import Any, Callable, Optional
 
 from src.platform.langfuse.client import LangfuseTracer
-
 from src.platform.middleware.types import AgentContext, AgentMiddleware, InvokeResult
 
 logger = logging.getLogger(__name__)

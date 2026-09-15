@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 
 from .types import AgentContext, AgentMiddleware, InvokeResult
+
 logger = logging.getLogger(__name__)
 
 class ErrorHandlingMiddleware(AgentMiddleware):

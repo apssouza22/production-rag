@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
-
 from src.config import Settings
 from src.platform.bifrost.client import BifrostClient
 

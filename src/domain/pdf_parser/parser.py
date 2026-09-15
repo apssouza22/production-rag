@@ -4,9 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
-from .models import PdfContent
-
 from .docling import DoclingParser
+from .models import PdfContent
 
 logger = logging.getLogger(__name__)
 

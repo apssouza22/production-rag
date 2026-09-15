@@ -25,6 +25,11 @@ class GraphConfig(BaseModel):
 
     max_retrieval_attempts: int = 2
     guardrail_threshold: int = 60
+    retrieval_confidence_threshold: float = 0.35
+    min_document_score: float = 0.25
+    abstention_judge_threshold: float = 0.6
+    enable_citation_validation: bool = True
+    enable_abstention_judge: bool = True
     model: str = "gpt-4o-mini"
     temperature: float = 0.0
     top_k: int = 3

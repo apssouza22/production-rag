@@ -5,12 +5,11 @@ from uuid import uuid4
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import Generation, LLMResult
-
 from src.platform.graph.callback_utils import extend_graph_callbacks
-from src.platform.tracing import TrajectoryCallback
 from src.platform.middleware.pipeline import AgentPipeline
 from src.platform.middleware.trajectory_middleware import TrajectoryMiddleware
 from src.platform.middleware.types import AgentContext
+from src.platform.tracing import TrajectoryCallback
 
 
 def _make_ctx() -> AgentContext:
@@ -194,9 +193,7 @@ class TestTrajectoryCallback:
     @pytest.mark.asyncio
     async def test_sanitizes_langgraph_send_objects(self):
         from langgraph.types import Send
-
         from pydantic import TypeAdapter
-
         from src.platform.tracing.schemas import GraphTrajectoryResponse
 
         callback = TrajectoryCallback()

@@ -3,10 +3,16 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import httpx
 import pytest
-from src.domain.arxiv.exceptions import ArxivAPIException, ArxivAPITimeoutError, ArxivParseError, PDFDownloadException, PDFDownloadTimeoutError
-from src.domain.arxiv.paper import ArxivPaper
 from src.domain.arxiv.client import ArxivClient
+from src.domain.arxiv.exceptions import (
+    ArxivAPIException,
+    ArxivAPITimeoutError,
+    ArxivParseError,
+    PDFDownloadException,
+    PDFDownloadTimeoutError,
+)
 from src.domain.arxiv.factory import make_arxiv_client
+from src.domain.arxiv.paper import ArxivPaper
 
 
 class TestArxivClient:

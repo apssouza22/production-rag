@@ -2,6 +2,7 @@ import logging
 from typing import List
 
 import httpx
+
 from .jina import JinaEmbeddingRequest, JinaEmbeddingResponse
 
 logger = logging.getLogger(__name__)

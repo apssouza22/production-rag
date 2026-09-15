@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.texttosql.service import TextToSQLService
 from src.platform.langfuse.client import LangfuseTracer
+from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware import (
     AgentContext,
@@ -15,11 +16,9 @@ from src.platform.middleware import (
     LoggingMiddleware,
     TrajectoryMiddleware,
 )
-
 from .config import KnowledgeRouterConfig
 from .graph import build_knowledge_router_graph
 from .schemas import AgentResultItem, ClassificationItem, classification_to_schema
-from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 
 logger = logging.getLogger(__name__)
 

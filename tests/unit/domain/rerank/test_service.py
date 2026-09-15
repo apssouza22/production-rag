@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from src.domain.jinaai.jina import JinaRerankResult
 from src.domain.rerank.config import RerankSearchConfig
 from src.domain.rerank.service import RERANK_CANDIDATE_MULTIPLIER, RerankSearchService

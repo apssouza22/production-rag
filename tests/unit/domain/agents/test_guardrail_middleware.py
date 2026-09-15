@@ -1,9 +1,9 @@
 """Tests for GuardrailMiddleware."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
-from langchain_core.messages import AIMessage, HumanMessage
 
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.middleware.guardrail_middleware import GuardrailMiddleware
 from src.agents.fusionsearch.models import GuardrailScoring

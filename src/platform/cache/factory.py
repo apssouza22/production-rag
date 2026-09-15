@@ -3,9 +3,9 @@ import logging
 import redis
 
 from src.config import Settings
+from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.platform.cache.client import CacheClient, ExactCacheClient
 from src.platform.cache.semantic import SemanticCacheClient
-from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 
 logger = logging.getLogger(__name__)
 

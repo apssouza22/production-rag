@@ -108,10 +108,52 @@ User Question: {question}
 
 Instructions:
 - Provide a comprehensive, accurate answer based ONLY on the retrieved papers
-- Cite specific papers when making claims (use paper titles or arxiv IDs)
-- If the papers don't contain enough information to fully answer the question, acknowledge this
+- Every factual claim MUST include a citation in the format [Source: <paper title>] or the arXiv ID (e.g. 1706.03762)
+- If the papers don't contain enough information to fully answer the question, respond with:
+  "I don't have sufficient information to answer this question."
+- If the context only partially answers the question, state what you know and explicitly note what is missing
 - Structure your answer clearly and professionally
 - Focus on the key insights and findings from the papers
-- Do NOT make up information or cite papers not in the retrieved context
+- Do NOT infer, assume, or cite papers not in the retrieved context
 
 Answer:"""
+
+# LLM abstention judge prompt (used in validate_answer node)
+ABSTENTION_JUDGE_PROMPT = """You are an answer quality judge. Given a question, retrieved context, and a generated answer, evaluate whether the answer is fully supported by the context.
+
+Respond ONLY in JSON format with these fields:
+- verdict: "supported" | "partial" | "unsupported"
+- confidence: float between 0.0 and 1.0
+- reasoning: brief explanation
+
+Question: {question}
+Context: {context}
+Answer: {answer}"""
+
+# Abstention response messages
+ABSTENTION_RETRIEVAL_MESSAGE = (
+    "I don't have enough information in the knowledge base to answer this question confidently. "
+    "The retrieved papers do not appear sufficiently relevant. "
+    "Please try rephrasing with more specific technical terms."
+)
+
+ABSTENTION_CITATION_MESSAGE = (
+    "I found related information but cannot provide a reliable answer based on the available sources. "
+    "The citations in the generated response could not be verified against the retrieved papers."
+)
+
+ABSTENTION_JUDGE_MESSAGE = (
+    "I don't have sufficient information to answer this question confidently. "
+    "The available papers do not fully support an answer to your question."
+)
+
+ABSTENTION_MAX_ATTEMPTS_MESSAGE = (
+    "I don't have enough information in the knowledge base to answer this question. "
+    "I could not find sufficiently relevant research papers after multiple retrieval attempts. "
+    "Please try rephrasing your question with more specific technical terms."
+)
+
+PARTIAL_ANSWER_NOTE = (
+    "\n\nNote: This answer may be incomplete. "
+    "Some aspects of your question were not fully covered in the available papers."
+)

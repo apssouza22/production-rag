@@ -5,14 +5,21 @@ from typing import Dict, List, Optional, Union
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
+from src.agents.fusionsearch.citations import answer_indicates_insufficient_information, validate_citations
 from src.agents.fusionsearch.handlers import route_agentic_rag_failure
-from src.agents.fusionsearch.models import GradeDocuments, GradingResult
+from src.agents.fusionsearch.models import AnswerJudgement, GradeDocuments, GradingResult, SourceItem
 from src.agents.fusionsearch.prompts import (
+    ABSTENTION_CITATION_MESSAGE,
+    ABSTENTION_JUDGE_MESSAGE,
+    ABSTENTION_JUDGE_PROMPT,
+    ABSTENTION_MAX_ATTEMPTS_MESSAGE,
+    ABSTENTION_RETRIEVAL_MESSAGE,
     GENERATE_ANSWER_PROMPT,
     GRADE_DOCUMENTS_PROMPT,
+    PARTIAL_ANSWER_NOTE,
     REWRITE_PROMPT,
 )
-from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
+from src.agents.fusionsearch.utils import get_latest_context, get_latest_query, get_latest_retrieval_payload
 from src.domain.rerank.service import RerankSearchService
 from src.platform.graph import END, START, GraphBuilder, tools_condition
 from src.platform.graph.policies import (
@@ -24,7 +31,6 @@ from src.platform.graph.policies import (
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware import MiddlewareManager
-
 from .config import GraphConfig
 from .context import Context
 from .state import AgentState
@@ -137,20 +143,20 @@ class AgenticRAGGraph:
 
         if current_attempts >= max_attempts:
             logger.warning("Max retrieval attempts (%s) reached", max_attempts)
-            fallback_msg = (
-                f"I apologize, but I couldn't find relevant research papers after {max_attempts} attempts.\n"
-                "This may be because:\n"
-                "1. No papers in the database contain relevant information\n"
-                "2. The query terms don't match the indexed content\n\n"
-                "Please try rephrasing your question with more specific technical terms."
-            )
             if span:
                 self._end_node_span(
                     span,
-                    {"status": "max_attempts_reached", "fallback": True},
+                    {"status": "max_attempts_reached", "abstained": True},
                     {"execution_time_ms": (time.time() - start_time) * 1000},
                 )
-            return {**updates, "messages": [AIMessage(content=fallback_msg)]}
+            return {
+                **updates,
+                "messages": [AIMessage(content=ABSTENTION_MAX_ATTEMPTS_MESSAGE)],
+                "abstained": True,
+                "abstention_reason": "max_retrieval_attempts_exhausted",
+                "response_status": "abstained_retrieval",
+                "retrieval_confidence": 0.0,
+            }
 
         new_attempt_count = current_attempts + 1
         updates["retrieval_attempts"] = new_attempt_count
@@ -251,6 +257,62 @@ class AgenticRAGGraph:
             )
 
         return {"routing_decision": route, "grading_results": [grading_result]}
+
+    async def assess_retrieval(self, state: AgentState) -> Dict[str, Union[str, float, list, bool]]:
+        """Score retrieval confidence and gate low-quality results before grading."""
+        logger.info("NODE: assess_retrieval")
+        start_time = time.time()
+        payload = get_latest_retrieval_payload(state["messages"])
+        retrieval_confidence = float(payload.get("retrieval_confidence", 0.0))
+        document_count = int(payload.get("document_count", 0))
+        raw_sources = payload.get("sources", [])
+        relevant_sources = [
+            SourceItem(**source) if isinstance(source, dict) else source for source in raw_sources
+        ]
+
+        span = self._create_node_span(
+            "retrieval_confidence_assessment",
+            {
+                "retrieval_confidence": retrieval_confidence,
+                "document_count": document_count,
+                "threshold": self.config.retrieval_confidence_threshold,
+            },
+            {"node": "assess_retrieval"},
+        )
+
+        below_threshold = (
+            document_count == 0
+            or retrieval_confidence < self.config.retrieval_confidence_threshold
+        )
+        route = "abstain" if below_threshold else "grade_documents"
+
+        if span:
+            self._end_node_span(
+                span,
+                {
+                    "routing_decision": route,
+                    "retrieval_confidence": retrieval_confidence,
+                    "document_count": document_count,
+                    "below_threshold": below_threshold,
+                },
+                {"execution_time_ms": (time.time() - start_time) * 1000},
+            )
+
+        updates: Dict[str, Union[str, float, list, bool]] = {
+            "retrieval_confidence": retrieval_confidence,
+            "relevant_sources": relevant_sources,
+            "routing_decision": route,
+        }
+        if below_threshold:
+            updates.update(
+                {
+                    "abstained": True,
+                    "abstention_reason": "abstained_retrieval",
+                    "response_status": "abstained_retrieval",
+                }
+            )
+
+        return updates
 
     async def rewrite_query(self, state: AgentState) -> Dict[str, str | List]:
         """Rewrite the original query for better document retrieval."""
@@ -368,6 +430,144 @@ class AgenticRAGGraph:
 
         return {"messages": [AIMessage(content=answer)]}
 
+    async def validate_answer(self, state: AgentState) -> Dict[str, Union[List[AIMessage], str, bool, dict]]:
+        """Validate citations and judge answer grounding before returning to the user."""
+        logger.info("NODE: validate_answer")
+        start_time = time.time()
+        question = get_latest_query(state["messages"])
+        context = get_latest_context(state["messages"])
+        relevant_sources = state.get("relevant_sources", [])
+        answer = self._get_latest_ai_answer(state["messages"])
+
+        span = self._create_node_span(
+            "answer_validation",
+            {
+                "query": question,
+                "context_length": len(context),
+                "sources_count": len(relevant_sources),
+                "enable_citation_validation": self.config.enable_citation_validation,
+                "enable_abstention_judge": self.config.enable_abstention_judge,
+            },
+            {"node": "validate_answer", "model": self.model_name},
+        )
+
+        citation_result = None
+        if self.config.enable_citation_validation and not answer_indicates_insufficient_information(answer):
+            citation_result = validate_citations(answer, relevant_sources)
+            if not citation_result.is_trustworthy:
+                if span:
+                    self._end_node_span(
+                        span,
+                        {
+                            "status": "abstained_citation",
+                            "citation_validation": citation_result.model_dump(),
+                        },
+                        {"execution_time_ms": (time.time() - start_time) * 1000},
+                    )
+                return {
+                    "messages": [AIMessage(content=ABSTENTION_CITATION_MESSAGE)],
+                    "citation_validation": citation_result,
+                    "abstained": True,
+                    "abstention_reason": "abstained_citation",
+                    "response_status": "abstained_citation",
+                }
+
+        judgement = None
+        if self.config.enable_abstention_judge:
+            judgement = await self._judge_answer(question, context, answer)
+            unsupported = judgement.verdict == "unsupported"
+            low_confidence = judgement.confidence < self.config.abstention_judge_threshold
+            if unsupported or low_confidence:
+                if span:
+                    self._end_node_span(
+                        span,
+                        {
+                            "status": "abstained_judge",
+                            "answer_judgement": judgement.model_dump(),
+                            "citation_validation": citation_result.model_dump() if citation_result else None,
+                        },
+                        {"execution_time_ms": (time.time() - start_time) * 1000},
+                    )
+                return {
+                    "messages": [AIMessage(content=ABSTENTION_JUDGE_MESSAGE)],
+                    "citation_validation": citation_result,
+                    "answer_judgement": judgement,
+                    "abstained": True,
+                    "abstention_reason": "abstained_judge",
+                    "response_status": "abstained_judge",
+                }
+
+            if judgement.verdict == "partial":
+                answer = f"{answer}{PARTIAL_ANSWER_NOTE}"
+
+        if span:
+            self._end_node_span(
+                span,
+                {
+                    "status": "answered",
+                    "citation_validation": citation_result.model_dump() if citation_result else None,
+                    "answer_judgement": judgement.model_dump() if judgement else None,
+                },
+                {"execution_time_ms": (time.time() - start_time) * 1000},
+            )
+
+        updates: Dict[str, Union[List[AIMessage], str, bool, dict]] = {
+            "response_status": "answered",
+            "abstained": False,
+        }
+        if citation_result is not None:
+            updates["citation_validation"] = citation_result
+        if judgement is not None:
+            updates["answer_judgement"] = judgement
+        if judgement is not None and judgement.verdict == "partial":
+            updates["messages"] = [AIMessage(content=answer)]
+
+        return updates
+
+    async def abstain(self, state: AgentState) -> Dict[str, List[AIMessage]]:
+        """Return a structured abstention message when confidence checks fail."""
+        logger.info("NODE: abstain")
+        reason = state.get("abstention_reason") or "abstained_retrieval"
+        message_by_reason = {
+            "abstained_retrieval": ABSTENTION_RETRIEVAL_MESSAGE,
+            "abstained_citation": ABSTENTION_CITATION_MESSAGE,
+            "abstained_judge": ABSTENTION_JUDGE_MESSAGE,
+            "max_retrieval_attempts_exhausted": ABSTENTION_MAX_ATTEMPTS_MESSAGE,
+        }
+        message = message_by_reason.get(reason, ABSTENTION_RETRIEVAL_MESSAGE)
+        return {
+            "messages": [AIMessage(content=message)],
+            "abstained": True,
+            "abstention_reason": reason,
+            "response_status": reason if reason.startswith("abstained") else "abstained_retrieval",
+        }
+
+    async def _judge_answer(self, question: str, context: str, answer: str) -> AnswerJudgement:
+        """Run the LLM abstention judge on a generated answer."""
+        try:
+            judge_prompt = ABSTENTION_JUDGE_PROMPT.format(
+                question=question,
+                context=context,
+                answer=answer,
+            )
+            llm = self.llm_client.get_langchain_model(model=self.model_name, temperature=0.0)
+            structured_llm = llm.with_structured_output(AnswerJudgement)
+            return await structured_llm.ainvoke(judge_prompt)
+        except Exception as exc:
+            logger.error("Answer judge failed: %s, defaulting to partial/low-confidence", exc)
+            return AnswerJudgement(
+                verdict="partial",
+                confidence=0.5,
+                reasoning=f"Judge fallback after error: {exc}",
+            )
+
+    @staticmethod
+    def _get_latest_ai_answer(messages: list) -> str:
+        for message in reversed(messages):
+            if isinstance(message, AIMessage) and message.content:
+                return message.content if isinstance(message.content, str) else str(message.content)
+        return ""
+
     async def handle_failure(self, state: AgentState) -> Dict[str, List[AIMessage]]:
         """Return a graceful fallback message after a node exhausts its retries."""
         logger.info("NODE: handle_failure")
@@ -423,9 +623,12 @@ class AgenticRAGGraph:
             workflow
             .add_node("retrieve", self.retrieve)
             .add_tool_node("tool_retrieve", [retriever_tool])
+            .add_node("assess_retrieval", self.assess_retrieval)
             .add_node("grade_documents", self.grade_documents)
             .add_node("rewrite_query", self.rewrite_query)
             .add_node("generate_answer", self.generate_answer)
+            .add_node("validate_answer", self.validate_answer)
+            .add_node("abstain", self.abstain)
             .add_node("handle_failure", self.handle_failure, **no_fault_tolerance)
             .add_edge(START, "retrieve")
             .add_conditional_edges(
@@ -436,7 +639,15 @@ class AgenticRAGGraph:
                     END: END,
                 },
             )
-            .add_edge("tool_retrieve", "grade_documents")
+            .add_edge("tool_retrieve", "assess_retrieval")
+            .add_conditional_edges(
+                "assess_retrieval",
+                lambda state: state.get("routing_decision", "grade_documents"),
+                {
+                    "grade_documents": "grade_documents",
+                    "abstain": "abstain",
+                },
+            )
             .add_conditional_edges(
                 "grade_documents",
                 lambda state: state.get("routing_decision", "generate_answer"),
@@ -446,7 +657,9 @@ class AgenticRAGGraph:
                 },
             )
             .add_edge("rewrite_query", "retrieve")
-            .add_edge("generate_answer", END)
+            .add_edge("generate_answer", "validate_answer")
+            .add_edge("validate_answer", END)
+            .add_edge("abstain", END)
             .add_edge("handle_failure", END)
         )
 

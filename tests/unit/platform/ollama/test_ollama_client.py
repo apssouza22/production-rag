@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from src.config import Settings
 from src.platform.ollama import OllamaClient
 

@@ -92,19 +92,22 @@ Retrieval quality is capped by what you managed to index. This is the least glam
 ```mermaid
 flowchart TD
     A["Airflow DAG: arxiv_paper_ingestion<br/>Mon-Fri 06:00 UTC, max_active_runs = 1"] --> B["setup_environment"]
-    B --> C["fetch_daily_papers"]
+    B --> C["download_papers"]
     C --> C1["arXiv Atom API<br/>3s delay between requests"]
     C1 --> C2["PDF download<br/>5 concurrent, 3 retries, 5s backoff base"]
-    C2 --> C3["Docling parse<br/>1 at a time, max 30 pages / 20 MB"]
-    C3 -->|"success"| D[("PostgreSQL<br/>upsert on arxiv_id")]
-    C3 -->|"parse fails"| C4["Keep metadata, mark unprocessed"]
-    C4 --> D
+    C2 --> P["parse_pdfs"]
+    P --> P1["Docling parse<br/>1 at a time, max 30 pages / 20 MB"]
+    P1 -->|"success"| D[("PostgreSQL<br/>upsert on arxiv_id")]
+    P1 -->|"parse fails"| P2["Keep metadata, mark unprocessed"]
+    P2 --> D
     D --> E["index_papers_hybrid"]
     E --> F["generate_daily_report"]
     F --> G["cleanup_temp_files<br/>delete PDFs older than 30 days"]
 ```
 
 A few design choices here that took real thought:
+
+**Download and parse are separate Airflow tasks.** `download_papers` fetches metadata and writes PDFs to a local cache; `parse_pdfs` reads those paths via XCom and runs Docling. Network-bound work and CPU-bound work get different retry boundaries — a parse failure retries only the parse step, not the arXiv fetch or the PDF download.
 
 **Concurrency is asymmetric on purpose.** Downloads run five at a time; PDF parsing runs one at a time (`max_concurrent_parsing: 1`). Docling is CPU-bound and memory-hungry, so parallelising it turns a working pipeline into an OOM loop. Network waits and CPU work need different concurrency limits, and treating them the same is a common mistake.
 

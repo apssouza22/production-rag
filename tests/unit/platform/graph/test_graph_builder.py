@@ -5,8 +5,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
-
-from src.platform.graph import END, GraphBuilder, MessagesState, START, ToolNode
+from src.platform.graph import END, START, GraphBuilder, MessagesState, ToolNode
 from src.platform.middleware.pipeline import MiddlewareManager
 from src.platform.middleware.types import AgentContext, AgentMiddleware
 

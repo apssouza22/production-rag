@@ -1,9 +1,9 @@
 """Tests for AgenticRAGService using LangGraph 2.0 Runtime pattern."""
 
-import pytest
 from unittest.mock import AsyncMock
-from langchain_core.messages import AIMessage, HumanMessage
 
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.factory import _build_rerank_search_config, make_agentic_rag_graph

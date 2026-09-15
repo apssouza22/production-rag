@@ -1,5 +1,4 @@
 import pytest
-
 from src.config import RedisSettings
 from src.platform.cache.semantic import SemanticCacheClient
 

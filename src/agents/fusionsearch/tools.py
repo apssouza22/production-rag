@@ -1,32 +1,15 @@
 import logging
+from typing import Any
 
-from langchain_core.documents import Document
 from langchain_core.tools import tool
 
+from src.agents.fusionsearch.confidence import compute_retrieval_confidence, filter_confident_documents
 from src.agents.fusionsearch.config import GraphConfig
+from src.agents.fusionsearch.utils import build_source_items, format_documents_for_context
 from src.domain.rerank.schemas import SearchDocument
 from src.domain.rerank.service import RerankSearchService
 
 logger = logging.getLogger(__name__)
-
-
-def _to_langchain_document(document: SearchDocument, *, search_mode: str, top_k: int, reranked: bool) -> Document:
-    return Document(
-        page_content=document.chunk_text,
-        metadata={
-            "arxiv_id": document.arxiv_id,
-            "title": document.title,
-            "authors": document.authors,
-            "score": document.score,
-            "source": f"https://arxiv.org/pdf/{document.arxiv_id}.pdf",
-            "section": document.section_name,
-            "search_mode": search_mode,
-            "top_k": top_k,
-            "reranked": reranked,
-            "rerank_score": document.rerank_score,
-            "original_rank": document.original_rank,
-        },
-    )
 
 
 def create_retriever_tool(rerank_search_service: RerankSearchService, graph_config: GraphConfig):
@@ -38,7 +21,7 @@ def create_retriever_tool(rerank_search_service: RerankSearchService, graph_conf
     """
 
     @tool
-    async def retrieve_papers(query: str) -> list[Document]:
+    async def retrieve_papers(query: str) -> dict[str, Any]:
         """Search and return relevant arXiv research papers.
 
         Use this tool when the user asks about:
@@ -50,32 +33,59 @@ def create_retriever_tool(rerank_search_service: RerankSearchService, graph_conf
         - Specific algorithms or models
 
         :param query: The search query describing what papers to find
-        :returns: List of relevant paper excerpts with metadata
+        :returns: Structured retrieval payload with formatted context and confidence metadata
         """
         top_k = graph_config.top_k
 
         logger.info(f"Retrieving papers for query: {query[:100]}...")
 
         search_result = await rerank_search_service.search(query=query, top_k=top_k)
+        rerank_applied = search_result.rerank_applied
 
-        documents = [
-            _to_langchain_document(
-                document,
-                search_mode=search_result.search_mode,
-                top_k=top_k,
-                reranked=search_result.rerank_applied and document.rerank_score is not None,
-            )
-            for document in search_result.after_rerank
-        ]
+        confident_documents = filter_confident_documents(
+            search_result.after_rerank,
+            min_document_score=graph_config.min_document_score,
+            rerank_applied=rerank_applied,
+        )
+        retrieval_confidence = compute_retrieval_confidence(confident_documents, rerank_applied=rerank_applied)
+        sources = build_source_items(confident_documents, rerank_applied=rerank_applied)
+        formatted_context = format_documents_for_context(confident_documents)
 
-        logger.debug(
-            "Retrieval complete: before_rerank=%d, after_rerank=%d, rerank_applied=%s",
+        logger.info(
+            "Retrieval complete: before_rerank=%d, after_rerank=%d, confident=%d, confidence=%.3f, rerank_applied=%s",
             len(search_result.before_rerank),
             len(search_result.after_rerank),
+            len(confident_documents),
+            retrieval_confidence,
             search_result.rerank_applied,
         )
-        logger.info(f"✓ Retrieved {len(documents)} papers successfully")
+        logger.info(
+            "✓ Retrieved %d papers (%d above confidence threshold, score=%.3f)",
+            len(search_result.after_rerank),
+            len(confident_documents),
+            retrieval_confidence,
+        )
 
-        return documents
+        return {
+            "formatted_context": formatted_context,
+            "retrieval_confidence": retrieval_confidence,
+            "document_count": len(confident_documents),
+            "search_mode": search_result.search_mode,
+            "rerank_applied": rerank_applied,
+            "sources": [source.to_dict() for source in sources],
+            "documents": [_serialize_document(document) for document in confident_documents],
+        }
 
     return retrieve_papers
+
+
+def _serialize_document(document: SearchDocument) -> dict[str, Any]:
+    return {
+        "arxiv_id": document.arxiv_id,
+        "title": document.title,
+        "authors": document.authors,
+        "section_name": document.section_name,
+        "score": document.score,
+        "rerank_score": document.rerank_score,
+        "chunk_text": document.chunk_text,
+    }

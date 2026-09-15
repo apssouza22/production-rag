@@ -1,5 +1,4 @@
 import pytest
-
 from src.domain.indexing.chunk_contextualizer import ChunkContextualizer
 from src.domain.indexing.models import ChunkMetadata, TextChunk
 

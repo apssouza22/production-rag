@@ -1,6 +1,6 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class GuardrailScoring(BaseModel):
@@ -74,10 +74,49 @@ class RoutingDecision(BaseModel):
     :param reason: Explanation for the routing decision
     """
 
-    route: Literal["retrieve", "out_of_scope", "generate_answer", "rewrite_query"] = Field(
-        description="Next node to route to"
-    )
+    route: Literal[
+        "retrieve",
+        "out_of_scope",
+        "generate_answer",
+        "rewrite_query",
+        "abstain",
+        "validate_answer",
+    ] = Field(description="Next node to route to")
     reason: str = Field(default="", description="Reason for routing decision")
+
+
+class CitationValidationResult(BaseModel):
+    """Result of post-generation citation validation."""
+
+    total_citations: int = Field(default=0, description="Total citations found in the answer")
+    valid_citations: List[str] = Field(default_factory=list, description="Citations matching retrieved sources")
+    invalid_citations: List[str] = Field(default_factory=list, description="Citations not found in retrieved sources")
+    is_trustworthy: bool = Field(default=False, description="Whether all citations are valid and present")
+
+
+class AnswerJudgement(BaseModel):
+    """LLM judge verdict for answer grounding."""
+
+    verdict: Literal["supported", "partial", "unsupported"] = Field(
+        description="Whether the answer is supported by the retrieved context"
+    )
+    confidence: float = Field(ge=0.0, le=1.0, description="Judge confidence between 0 and 1")
+    reasoning: str = Field(default="", description="Brief explanation for the verdict")
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def clamp_confidence(cls, value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
+
+
+class ResponseStatus(BaseModel):
+    """Final response status for confidence-aware RAG."""
+
+    status: Literal["answered", "abstained_retrieval", "abstained_citation", "abstained_judge"] = Field(
+        description="Pipeline outcome status"
+    )
+    abstained: bool = Field(default=False, description="Whether the pipeline abstained from answering")
+    reason: str = Field(default="", description="Human-readable abstention or status reason")
 
 
 class GradingResult(BaseModel):

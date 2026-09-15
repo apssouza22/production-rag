@@ -4,23 +4,22 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-
-from src.platform.graph import END, GraphBuilder, NodeError, START
+from src.agents.fusionsearch.config import GraphConfig
+from src.agents.fusionsearch.context import Context
+from src.agents.fusionsearch.graph import AgenticRAGGraph
+from src.agents.fusionsearch.handlers import route_agentic_rag_failure
+from src.agents.fusionsearch.state import AgentState
+from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
+from src.agents.knowledgerouter.state import RouterState
+from src.agents.texttosql.config import TextToSQLConfig
+from src.agents.texttosql.handlers import text_to_sql_error_handler
+from src.platform.graph import END, START, GraphBuilder, NodeError
 from src.platform.graph.config import FaultToleranceConfig
 from src.platform.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
     is_transient_error,
 )
-from src.agents.fusionsearch.handlers import route_agentic_rag_failure
-from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
-from src.agents.texttosql.handlers import text_to_sql_error_handler
-from src.agents.texttosql.config import TextToSQLConfig
-from src.agents.fusionsearch.context import Context
-from src.agents.fusionsearch.config import GraphConfig
-from src.agents.fusionsearch.graph import AgenticRAGGraph
-from src.agents.fusionsearch.state import AgentState
-from src.agents.knowledgerouter.state import RouterState
 from src.platform.llm.exceptions import LLMConnectionError, LLMTimeoutError
 
 
@@ -154,7 +153,6 @@ class TestTextToSqlGraphCompilation:
         from unittest.mock import AsyncMock, MagicMock
 
         from langchain.tools import tool
-
         from src.agents.texttosql.graph import build_text_to_sql_graph
 
         @tool("sql_db_list_tables")

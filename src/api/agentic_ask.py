@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from src.dependencies import AgenticRAGDep, LangfuseDep
+
 from src.agents.fusionsearch.schemas import AgenticAskResponse, AskRequest, FeedbackRequest, FeedbackResponse
+from src.dependencies import AgenticRAGDep, LangfuseDep
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-rag"])
 
@@ -52,6 +53,13 @@ async def ask_agentic(
             search_mode="hybrid" if request.use_hybrid else "bm25",
             reasoning_steps=result.get("reasoning_steps", []),
             retrieval_attempts=result.get("retrieval_attempts", 0),
+            retrieval_confidence=result.get("retrieval_confidence"),
+            answer_confidence=result.get("answer_confidence"),
+            citation_valid=result.get("citation_valid"),
+            abstained=result.get("abstained", False),
+            abstention_reason=result.get("abstention_reason"),
+            response_status=result.get("response_status", "answered"),
+            source_details=result.get("source_details", []),
             trace_id=result.get("trace_id"),
             trajectory=result.get("trajectory"),
         )

@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from src.agents.knowledgerouter.config import KnowledgeRouterConfig
 from src.agents.knowledgerouter.schemas import AgentResultItem, ClassificationItem
 from src.agents.knowledgerouter.service import KnowledgeRouterService

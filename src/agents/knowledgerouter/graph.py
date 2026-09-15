@@ -3,16 +3,14 @@ import logging
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field
 
-from src.platform.graph import END, GraphBuilder, Send, START
-
+from src.agents.fusionsearch.agentic_rag import AgenticRAGService
+from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
+from src.agents.texttosql.service import TextToSQLService
+from src.platform.graph import END, START, GraphBuilder, Send
 from src.platform.graph.policies import (
     build_llm_timeout,
     build_retry_policy,
 )
-from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
-from src.agents.fusionsearch.agentic_rag import AgenticRAGService
-from src.agents.texttosql.service import TextToSQLService
-
 from .config import KnowledgeRouterConfig
 from .prompts import CLASSIFY_SYSTEM_PROMPT, SYNTHESIZE_SYSTEM_PROMPT
 from .schemas import ClassificationItem

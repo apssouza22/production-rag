@@ -1,11 +1,11 @@
-from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from src.domain.paper.model import Paper
+
 from src.domain.arxiv.paper import PaperCreate
+from src.domain.paper.model import Paper
 
 
 class PaperRepository:

@@ -1,7 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, Mock
-from langchain_core.documents import Document
 
+import pytest
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.tools import create_retriever_tool
 
@@ -29,15 +28,12 @@ async def test_create_retriever_tool_basic(
 
     result = await tool.ainvoke({"query": "machine learning"})
 
-    assert isinstance(result, list)
-    assert len(result) == 2
-    assert all(isinstance(doc, Document) for doc in result)
-
-    first_doc = result[0]
-    assert first_doc.page_content == "Transformers are neural network architectures based on self-attention mechanisms."
-    assert first_doc.metadata["arxiv_id"] == "1706.03762"
-    assert first_doc.metadata["title"] == "Attention Is All You Need"
-    assert first_doc.metadata["score"] == 0.95
+    assert isinstance(result, dict)
+    assert "formatted_context" in result
+    assert "retrieval_confidence" in result
+    assert result["document_count"] == 2
+    assert len(result["sources"]) == 2
+    assert "1706.03762" in result["formatted_context"]
 
     mock_jina_embeddings_client.embed_query.assert_called_once_with("machine learning")
 
@@ -64,8 +60,10 @@ async def test_retriever_tool_empty_results(
 
     result = await tool.ainvoke({"query": "nonexistent topic"})
 
-    assert isinstance(result, list)
-    assert len(result) == 0
+    assert isinstance(result, dict)
+    assert result["document_count"] == 0
+    assert result["retrieval_confidence"] == 0.0
+    assert result["formatted_context"] == ""
 
 
 @pytest.mark.asyncio
@@ -96,7 +94,7 @@ async def test_retriever_tool_metadata_fields(
     mock_rerank_search_service,
     graph_config,
 ):
-    """Test that all expected metadata fields are present."""
+    """Test that structured source metadata is present."""
     mock_opensearch_client.search_unified = Mock(
         return_value={
             "hits": [
@@ -119,13 +117,10 @@ async def test_retriever_tool_metadata_fields(
 
     result = await tool.ainvoke({"query": "test"})
 
-    doc = result[0]
-    assert "arxiv_id" in doc.metadata
-    assert "title" in doc.metadata
-    assert "authors" in doc.metadata
-    assert "score" in doc.metadata
-    assert "source" in doc.metadata
-    assert "section" in doc.metadata
+    source = result["sources"][0]
+    assert source["arxiv_id"] == "2301.00001"
+    assert source["title"] == "Test Paper"
+    assert source["url"] == "https://arxiv.org/pdf/2301.00001.pdf"
 
 
 @pytest.mark.asyncio
@@ -154,9 +149,8 @@ async def test_retriever_tool_reranks_candidates(
     assert rerank_kwargs["top_n"] == 2
     assert len(rerank_kwargs["documents"]) == 2
 
-    assert len(result) == 2
-    assert result[0].metadata["reranked"] is True
-    assert result[0].metadata["rerank_score"] == 0.98
+    assert result["document_count"] == 2
+    assert result["rerank_applied"] is True
 
 
 @pytest.mark.asyncio
@@ -176,5 +170,5 @@ async def test_retriever_tool_rerank_failure_falls_back(
 
     result = await tool.ainvoke({"query": "machine learning"})
 
-    assert len(result) == 2
-    assert result[0].metadata["reranked"] is False
+    assert result["document_count"] == 2
+    assert result["rerank_applied"] is False
