@@ -150,7 +150,7 @@ class TestAssessRetrievalNode:
             "retrieval_attempts": 1,
         }
 
-        result = await graph.assess_retrieval(state)
+        result = await graph.check_retrieval_score(state)
 
         assert result["routing_decision"] == "grade_documents"
         assert result["retrieval_confidence"] == 0.82
@@ -176,7 +176,7 @@ class TestAssessRetrievalNode:
             "retrieval_attempts": 1,
         }
 
-        result = await graph.assess_retrieval(state)
+        result = await graph.check_retrieval_score(state)
 
         assert result["routing_decision"] == "abstain"
         assert result["abstained"] is True

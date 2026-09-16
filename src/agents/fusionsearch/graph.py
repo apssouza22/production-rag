@@ -258,7 +258,7 @@ class AgenticRAGGraph:
 
         return {"routing_decision": route, "grading_results": [grading_result]}
 
-    async def assess_retrieval(self, state: AgentState) -> Dict[str, Union[str, float, list, bool]]:
+    async def check_retrieval_score(self, state: AgentState) -> Dict[str, Union[str, float, list, bool]]:
         """Score retrieval confidence and gate low-quality results before grading."""
         logger.info("NODE: assess_retrieval")
         start_time = time.time()
@@ -623,7 +623,7 @@ class AgenticRAGGraph:
             workflow
             .add_node("retrieve", self.retrieve)
             .add_tool_node("tool_retrieve", [retriever_tool])
-            .add_node("assess_retrieval", self.assess_retrieval)
+            .add_node("check_retrieval_score", self.check_retrieval_score)
             .add_node("grade_documents", self.grade_documents)
             .add_node("rewrite_query", self.rewrite_query)
             .add_node("generate_answer", self.generate_answer)
@@ -639,9 +639,9 @@ class AgenticRAGGraph:
                     END: END,
                 },
             )
-            .add_edge("tool_retrieve", "assess_retrieval")
+            .add_edge("tool_retrieve", "check_retrieval_score")
             .add_conditional_edges(
-                "assess_retrieval",
+                "check_retrieval_score",
                 lambda state: state.get("routing_decision", "grade_documents"),
                 {
                     "grade_documents": "grade_documents",

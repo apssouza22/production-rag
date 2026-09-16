@@ -288,7 +288,7 @@ The system defines two keys, mapped to the two agent workloads:
 | **agent-1** | `sk-bf-agent-1-dev` | Agentic RAG (fusion search) + chunk contextualization at index time | $10 / month | 10k tokens/hour, 100 requests/minute |
 | **agent-2** | `sk-bf-agent-2-dev` | Knowledge router + text-to-SQL | $5 / month | 5k tokens/hour, 50 requests/minute |
 
-Agent-1 owns the heavier graph: guardrail, grading, rewriting, and answer generation over retrieved chunks. Agent-2 owns routing decisions and SQL generation — lighter calls, tighter caps. The plain `/ask` endpoint and health checks use the default `BIFROST_API_KEY` (also `sk-bf-agent-1-dev` by default).
+Agent-1 owns the heavier graph: guardrail, grading, rewriting, answer generation, citation validation, and the abstention judge over retrieved chunks. Agent-2 owns routing decisions and SQL generation — lighter calls, tighter caps. The plain `/ask` endpoint and health checks use the default `BIFROST_API_KEY` (also `sk-bf-agent-1-dev` by default).
 
 Wiring is explicit in code, not implicit in a shared client. `make_agent_llm_client("agent_1")` and `make_agent_llm_client("agent_2")` build separate `BifrostClient` instances with the matching virtual key. FastAPI dependencies inject the right client per service:
 
@@ -368,7 +368,7 @@ The governance block in config looks like this (abbreviated):
 
 This is gateway-level governance, not application middleware. It caps spend and throughput per agent workload and blocks model escalation (agent-2 cannot call `gpt-4o` even if the application code asks for it). It does not replace API authentication on the FastAPI surface — that gap is still open — but it is the right layer for LLM budget control because every model call, including LangChain traffic through `/langchain`, passes through Bifrost.
 
-Prompt construction is worth one specific note: the chunks sent to the model are stripped down to `arxiv_id` and `chunk_text`. Titles, abstracts and search metadata are useful for ranking and for citations, and they are pure token cost inside the prompt. Trimming that metadata cut prompt size by roughly 80% compared to passing search hits through untouched. Tokens are latency and money, and prompt padding is the easiest place to waste both.
+Prompt construction is worth one specific note. The plain `/ask` path still trims chunks to `arxiv_id` and `chunk_text` — titles and search metadata are useful for ranking but pure token cost inside the prompt, and trimming cut prompt size by roughly 80% compared to passing search hits through untouched. The agentic path is different: `retrieve_papers` formats each chunk with title, arXiv ID, authors, and section name so the generator can produce verifiable `[Source: <title>]` citations and the citation validator has a stable identifier space to check against. That is a deliberate trade — a few extra tokens per chunk in exchange for programmatic citation validation on the way out. Tokens are latency and money, but unverifiable citations are trust debt.
 
 ---
 
@@ -386,22 +386,33 @@ flowchart TD
         G["guardrail<br/>LLM scores scope 0-100"]
         R["retrieve"]
         T["tool_retrieve<br/>hybrid search + rerank"]
+        AR["assess_retrieval<br/>confidence gate"]
         GD["grade_documents<br/>binary relevance"]
         RW["rewrite_query"]
         GA["generate_answer"]
+        VA["validate_answer<br/>citations + judge"]
     end
 
     G --> GC{"score >= 60?"}
     GC -->|"no"| OOS["out_of_scope<br/>polite refusal"]
     GC -->|"yes"| R
     R --> TC{"tool call issued?"}
-    TC -->|"no: attempts exhausted"| E(["end"])
+    TC -->|"no: attempts exhausted"| AB1["abstain<br/>max attempts"]
     TC -->|"yes"| T
-    T --> GD
+    T --> AR
+    AR --> CF{"confidence >= 0.35<br/>and docs > 0?"}
+    CF -->|"no"| AB2["abstain<br/>retrieval"]
+    CF -->|"yes"| GD
     GD -->|"relevant"| GA
     GD -->|"not relevant"| RW
     RW --> R
-    GA --> E
+    GA --> VA
+    VA --> CV{"citations valid<br/>and judge OK?"}
+    CV -->|"no"| AB3["abstain<br/>citation or judge"]
+    CV -->|"yes"| E(["end"])
+    AB1 --> E
+    AB2 --> E
+    AB3 --> E
     OOS --> E
     retryable -.->|"any node exhausts retries"| HF["handle_failure"]
     HF --> E
@@ -411,7 +422,18 @@ Each node does one job and returns a state update.
 
 `guardrail` asks an LLM to score how well the query fits the system's domain, 0 to 100, with structured output. Below 60 the request is refused without touching retrieval. This is cheap insurance against the most common production embarrassment: confidently answering a question you have no grounding for.
 
-`grade_documents` asks an LLM whether the retrieved context can actually answer the question, and routes on the answer. If not, `rewrite_query` reformulates and retrieval runs again. The loop is bounded by `max_retrieval_attempts: 2`, enforced structurally rather than by a counter check: once attempts are exhausted the retrieve node returns a message with no tool calls, and LangGraph's `tools_condition` routes it straight to the end. Bounded loops matter. An unbounded self-improving agent is a way to convert your API budget into heat.
+`tool_retrieve` no longer returns raw `Document` objects. It returns a structured payload — formatted context, per-source metadata, and an aggregate `retrieval_confidence` score computed from rerank scores (or normalized OpenSearch scores when reranking is off). Chunks below `min_document_score` (default `0.25`) are filtered out before the context is built. The confidence function weights the top hit at 70% and the mean of the top three at 30%, so a single strong match with a weak tail still produces a moderate score rather than a false positive.
+
+`assess_retrieval` is the first confidence checkpoint. If no documents survive the per-chunk filter, or aggregate confidence falls below `retrieval_confidence_threshold` (default `0.35`), the graph routes to `abstain` with `response_status: abstained_retrieval` instead of handing weak context to the generator. This is the layer that catches "we retrieved something, but it is not really about your question" before you pay for answer generation.
+
+`grade_documents` asks an LLM whether the retrieved context can actually answer the question, and routes on the answer. If not, `rewrite_query` reformulates and retrieval runs again. The loop is bounded by `max_retrieval_attempts: 2`, enforced structurally rather than by a counter check: once attempts are exhausted the retrieve node returns an abstention message with no tool calls, and LangGraph's `tools_condition` routes it straight to the end. Bounded loops matter. An unbounded self-improving agent is a way to convert your API budget into heat.
+
+`validate_answer` is the post-generation defence. It runs two checks in sequence:
+
+1. **Citation validation** — the answer must cite retrieved sources as `[Source: <paper title>]` or by arXiv ID. Every citation is verified against the `relevant_sources` set populated at retrieval time. If the model appropriately declines (`"I don't have sufficient information…"`), citation validation is skipped — a correct refusal should not fail for lacking citations.
+2. **LLM abstention judge** — a second structured LLM call scores whether the answer is `supported`, `partial`, or `unsupported` relative to the retrieved context, with a confidence between 0 and 1. Unsupported answers, or supported answers below `abstention_judge_threshold` (default `0.6`), are replaced with an abstention message. `partial` verdicts pass through with an explicit incompleteness note appended.
+
+Both layers are toggleable via `enable_citation_validation` and `enable_abstention_judge` in `GraphConfig`. The judge adds one LLM call (~1-3s) on every answered request; citation validation is regex post-processing and costs nothing at runtime.
 
 Now the detail I find most instructive in this whole codebase, because it looks like an inconsistency and isn't. **The two LLM judgement nodes fail in opposite directions.**
 
@@ -423,7 +445,66 @@ That asymmetry is correct. A broken guardrail that fails open is a safety hole, 
 
 The graph also gets dependency injection from LangGraph's `context_schema`. Clients (OpenSearch, LLM, embeddings, tracer) arrive in a typed `Runtime[Context]` rather than being captured in closures, which is what makes the nodes plain testable functions.
 
-### 7.1 Registering a request trajectory
+### 7.1 Confidence-aware verification
+
+Most RAG tutorials stop at "retrieve, prompt, generate." Production systems need a third property: knowing when **not** to answer. A confident-sounding response grounded in loosely related chunks is worse than no response — the user trusts the citation format and acts on it. This is sometimes called hallucination laundering: the architecture creates the appearance of grounding while the answer is not actually supported.
+
+The pattern here follows a defence-in-depth model with three explicit checkpoints, each catching failures the previous one may miss:
+
+```mermaid
+flowchart LR
+    Q["User query"] --> L1["Layer 1<br/>Retrieval confidence"]
+    L1 --> L2["Layer 2<br/>Citation validation"]
+    L2 --> L3["Layer 3<br/>LLM abstention judge"]
+    L3 --> OUT["Answer or abstain"]
+```
+
+| Layer | Where | Mechanism | Cost | Catches |
+|---|---|---|---|---|
+| Retrieval confidence | `assess_retrieval` after `tool_retrieve` | Aggregate score from rerank/OpenSearch signals; per-chunk floor | None beyond existing search scores | Loosely related documents, empty result sets |
+| Citation validation | `validate_answer` after `generate_answer` | Regex extraction of `[Source: title]` and arXiv IDs; verify against retrieved set | Negligible | Claims citing papers that were not retrieved |
+| Abstention judge | `validate_answer` | Structured LLM verdict: supported / partial / unsupported | One extra LLM call | Answers that read well but are not grounded in context |
+
+The implementation lives in `src/agents/fusionsearch/confidence.py` and `src/agents/fusionsearch/citations.py`. Thresholds are env-configurable through `GraphConfig`:
+
+```python
+# src/agents/fusionsearch/config.py
+retrieval_confidence_threshold: float = 0.35   # aggregate gate
+min_document_score: float = 0.25               # per-chunk floor
+abstention_judge_threshold: float = 0.6      # judge confidence floor
+enable_citation_validation: bool = True
+enable_abstention_judge: bool = True
+```
+
+The API surfaces the outcome explicitly so clients and evals do not have to infer abstention from answer prose:
+
+```json
+{
+  "answer": "I don't have enough information in the knowledge base…",
+  "abstained": true,
+  "abstention_reason": "abstained_retrieval",
+  "response_status": "abstained_retrieval",
+  "retrieval_confidence": 0.18,
+  "answer_confidence": null,
+  "citation_valid": null,
+  "source_details": [
+    {
+      "arxiv_id": "1706.03762",
+      "title": "Attention Is All You Need",
+      "relevance_score": 0.18,
+      "url": "https://arxiv.org/pdf/1706.03762.pdf"
+    }
+  ]
+}
+```
+
+`response_status` takes one of four values: `answered`, `abstained_retrieval`, `abstained_citation`, or `abstained_judge`. That distinction matters for dashboards: a spike in `abstained_retrieval` means your index or embeddings need work; a spike in `abstained_judge` means your generator is synthesising beyond what retrieval provides.
+
+Threshold tuning is empirical, not architectural. Start at the defaults above, run `rag_evals` at multiple threshold values, and pick the point on the precision/abstention curve that matches your domain. Higher retrieval thresholds reduce false positives but increase abstention on edge cases; lowering the judge threshold lets more partial answers through. The right values depend on whether a wrong answer or a refused answer is more costly in your product — healthcare and compliance lean toward refusal; research assistants may tolerate more partial answers with the incompleteness note.
+
+When the abstention judge's LLM call fails, it defaults to `verdict: partial` at `confidence: 0.5` — below the 0.6 threshold, so the request **fails closed** and abstains. That is the opposite of document grading's fail-open behaviour, and for the same reason as the guardrail: a broken judge that fails open would let ungrounded answers through at exactly the moment you cannot verify them.
+
+### 7.2 Registering a request trajectory
 
 Langfuse tells you what happened inside spans. That is the right system of record for production. It is still the wrong place to look when you are iterating on a single bad answer in a notebook, writing an eval script, or staring at a CI failure and need to know *which graph node ran* without clicking through a trace UI.
 
@@ -470,9 +551,11 @@ TrajectoryMiddleware(),  # in the pipeline, after Langfuse, before guardrail
 "steps": [
   "node:retrieve",
   "tool:retrieve_papers({\"query\": \"transformer attention\"})",
+  "node:assess_retrieval",
   "node:grade_documents",
   "llm:ChatOpenAI",
-  "node:generate_answer"
+  "node:generate_answer",
+  "node:validate_answer"
 ]
 ```
 
@@ -571,6 +654,9 @@ Here is the full degradation ladder, which is the artefact I'd want on the wall:
 | Langfuse down | Tracing skipped | No user impact, blind debugging |
 | Guardrail LLM fails | Score 50, refuse | False refusal, fails safe |
 | Grading LLM fails | Length heuristic, answer | Possibly ungrounded answer |
+| Abstention judge LLM fails | `partial` at confidence 0.5, abstain | False refusal, fails safe |
+| Citation validation fails | Abstention message, `abstained_citation` | Honest refusal, no hallucinated citations |
+| Retrieval confidence below threshold | Abstention message, `abstained_retrieval` | Honest refusal, no generation on weak context |
 | Node retries exhausted | `handle_failure` message | Honest error, no stack trace |
 | OpenSearch down | Request fails | Hard failure, no fallback |
 
@@ -615,7 +701,7 @@ The gap worth naming: entries expire on a 6-hour TTL, and nothing invalidates th
 
 Every request produces a trace with a span per stage: query embedding, search retrieval, prompt construction, generation. Agent requests add a span per node with inputs, outputs, timings and the routing decision. When something goes wrong, you can see which stage was slow and what the grader actually decided, instead of inferring it from log grep archaeology.
 
-Agentic requests also return a **trajectory** in the HTTP response (see §7.1). That gives you the same execution path in the payload you are already logging or storing for evals — no separate fetch from Langfuse required to answer "did `grade_documents` run?"
+Agentic requests also return a **trajectory** in the HTTP response (see §7.2). That gives you the same execution path in the payload you are already logging or storing for evals — no separate fetch from Langfuse required to answer "did `grade_documents` run?"
 
 Tracing overhead measured under 2%, which is the right ballpark. If your instrumentation costs more than a few percent, you will eventually be tempted to turn it off, and you will turn it off right before the incident where you needed it.
 
@@ -708,6 +794,17 @@ Re-run after any change to chunking, field boosts, contextual retrieval, or rera
 
 For agentic paths, store the `trajectory` field alongside the answer when you build eval fixtures. A judge can score relevancy from query and answer alone, but structural assertions are cheaper and more reliable: `assert "tool:retrieve_papers" in response["trajectory"]["steps"]`, `assert response["trajectory"]["summary"]["errors"] == []`, `assert response["trajectory"]["summary"]["nodes"].count("retrieve") <= 2` to enforce the bounded rewrite loop. When a hallucination score regresses, the trajectory tells you whether retrieval ran, whether grading passed, or whether the model answered from an empty context — without re-running the request.
 
+The confidence-aware fields add a second class of assertions that do not require parsing answer prose:
+
+```python
+assert response["response_status"] == "answered"
+assert response["retrieval_confidence"] >= 0.35
+assert response["citation_valid"] is True
+assert response["abstained"] is False
+```
+
+For queries that should be refused — off-corpus questions, trick prompts — assert the opposite: `assert response["abstained"] is True` and check `abstention_reason` matches the layer you expect (`abstained_retrieval` for weak search, `abstained_judge` for ungrounded synthesis). Golden datasets can encode both answer quality and abstention behaviour in the same fixture.
+
 Human feedback lands in the same place through a `/feedback` endpoint that attaches a score and comment to a trace ID. Model judgements and human judgements sitting on the same object is what lets you eventually check whether your judge agrees with your users, which is the question that decides whether any of the automated scoring means anything.
 
 What is missing from this loop, and I'd want it before calling the system finished: nothing gates deployment on eval results. The scores are computed and stored, but nothing fails a build when `context_recall` or hallucination regresses. Measurement without a gate is a dashboard nobody opens after week three.
@@ -746,7 +843,7 @@ The interesting number is hybrid search at 2-4s against vector search at 100ms. 
 
 Streaming's first token at 2-3s versus a 15-20s complete response is the other lever, and it is a perception fix rather than a throughput fix. Same total work, dramatically different feel. For any interactive surface, streaming is not optional.
 
-The agentic path is genuinely faster for questions that don't need retrieval, because it skips retrieval entirely. It is slower when it grades documents as irrelevant and loops, which is the trade you are making: extra LLM calls for the ability to notice bad retrieval. Whether that pays off depends on how much of your traffic is vague or off-topic, and that is an empirical question about your users, not an architectural preference.
+The agentic path is genuinely faster for questions that don't need retrieval, because it skips retrieval entirely. It is slower when it grades documents as irrelevant and loops, and slower still when an answer passes grading but triggers the abstention judge — an extra LLM call on every non-abstained response. That is the trade you are making: extra LLM calls for the ability to notice bad retrieval and ungrounded synthesis. Whether that pays off depends on how much of your traffic is vague, off-topic, or asks questions the corpus cannot answer, and that is an empirical question about your users, not an architectural preference.
 
 ---
 
@@ -770,15 +867,19 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Retrieve | RRF fusion, `rank_constant = 60` | Combines incomparable score scales without tuning weights | One OpenSearch pipeline | Yes |
 | Retrieve | Over-fetch `size * 2` per leg | Fusion and reranking get a real candidate pool | 2x candidates scored | Yes |
 | Retrieve | Cross-encoder reranking on raw `chunk_text` | Precision at the top of the list, where it matters | One network call, ~100-300ms | Yes, in the agent path |
+| Retrieve | **Retrieval confidence scoring + per-chunk floor** | Weakly related documents are filtered before generation | None beyond existing search scores | Yes, agentic path |
 | Reason | Guardrail scope score (0-100, threshold 60) | Off-topic queries are refused instead of answered from noise | One LLM call per request | Yes |
+| Reason | **Retrieval confidence gate (threshold 0.35)** | The pipeline abstains when search scores are too low | None; routes before generation | Yes, agentic path |
 | Reason | Binary document grading | The system notices when retrieval failed | One LLM call per retrieval round | Yes |
 | Reason | Query rewriting loop, bounded at 2 attempts | A vague question gets a second, better-phrased search | Up to 2 extra retrieval rounds | Yes |
+| Verify | **Citation validation against retrieved sources** | Claims must map to papers that were actually retrieved | Regex post-processing, negligible | Yes, agentic path |
+| Verify | **LLM abstention judge (threshold 0.6)** | Ungrounded synthesis is caught after generation | One LLM call per answered request (~1-3s) | Yes, agentic path |
 | Reason | Query decomposition and source routing | "How many X and what do they say?" gets a SQL answer and a retrieval answer | One classification call, parallel branches | Yes |
 | Reason | SQL review node before execution | Generated SQL is checked by a second model before it touches the database | One LLM call per query attempt | Yes |
 | Generate | Bifrost virtual keys per agent workload | Spend and throughput caps at the gateway; model allow-lists per agent | Two keys to manage; `enforce_auth` breaks `dummy-key` dev shortcuts | Yes, when `LLM_PROVIDER=bifrost` |
 | Generate | Model fallback chain (`BIFROST_FALLBACK_MODELS` / `OLLAMA_FALLBACK_MODELS`) | Primary model outage lands on the next model instead of a 500; covers `generate()` and LangGraph nodes | Lower answer quality on fallback; must be visible in metrics | Yes |
 | Generate | Prompt trimmed to `arxiv_id` + `chunk_text` | ~80% smaller prompts, less distraction | None | Yes |
-| Generate | Grounding instructions + citation requirement | Answers cite papers and admit insufficient context | Longer system prompt | Yes |
+| Generate | Grounding instructions + mandatory `[Source: title]` citations | Answers cite papers; validator enforces it post-generation | Longer system prompt + formatted retrieval context | Yes, agentic path |
 | Generate | Structured output for judgement nodes | Guardrail and grader return parseable scores, not prose | None | Yes |
 | Serve | Semantic cache with 0.90 confidence floor | Latency drops from 15-20s to 50-100ms without serving near-miss answers | Risk of a wrong hit if the threshold is lowered | Yes |
 | Measure | LLM-as-judge on production traces (`custom_evals`) | You find out whether live traffic got worse | Judge model calls, offline | Yes |
@@ -788,7 +889,7 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 
 Three things are worth reading out of that table.
 
-The techniques are not interchangeable, they compose in a specific direction. Contextual retrieval makes the candidate pool better; over-fetching makes the pool bigger; RRF orders it using two views of relevance; the cross-encoder reorders the top of it accurately; grading decides whether the whole thing worked. Skipping an early stage cannot be compensated for by a later one, because a reranker can only reorder what retrieval found. This is why "just add a reranker" is such a common disappointment: it is the last stage, and it inherits every recall failure upstream of it.
+The techniques are not interchangeable, they compose in a specific direction. Contextual retrieval makes the candidate pool better; over-fetching makes the pool bigger; RRF orders it using two views of relevance; the cross-encoder reorders the top of it accurately; retrieval confidence gates weak results before generation; grading decides whether the whole retrieval round worked; citation validation and the abstention judge catch failures that survive grading. Skipping an early stage cannot be compensated for by a later one, because a reranker can only reorder what retrieval found, and a citation validator can only verify citations against what retrieval returned. This is why "just add a reranker" is such a common disappointment: it is the last retrieval stage, and it inherits every recall failure upstream of it.
 
 Exactly one lever is off by default, and it is the one that costs money per chunk rather than per query. That asymmetry is not an accident. Query-time techniques scale with traffic and can be tuned or disabled per request; index-time techniques scale with corpus size and are committed to at ingestion. Getting contextual retrieval wrong means reindexing everything, which is the argument for keeping it behind a flag and enabling it after `rag_evals` exists rather than before — you need a way to measure whether `context_recall` actually moved before you pay to reindex the corpus.
 
@@ -823,7 +924,8 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Contextual retrieval:** give the retriever an enriched chunk and the generator the original one. A chunk that says "the second variant improves recall by 12%" is unfindable until something puts the paper back around it.
 - **Retrieval:** keyword and vector are peers, fuse them by rank not score, then rerank with a cross-encoder. Cheap recall, expensive precision, in that order.
 - **Generation:** put a gateway in front of providers, configure an explicit model fallback chain per provider (`BIFROST_FALLBACK_MODELS`, `OLLAMA_FALLBACK_MODELS`), seed virtual keys with budgets and rate limits per agent workload, and stop paying tokens for metadata the model doesn't need.
-- **Orchestration:** a state machine with explicit guardrail, grading and bounded retry beats a straight pipeline, and costs you extra LLM calls.
+- **Orchestration:** a state machine with explicit guardrail, grading, bounded retry, and confidence-aware abstention beats a straight pipeline, and costs you extra LLM calls.
+- **Verification:** score retrieval confidence before generation, require verifiable citations, and add an LLM judge for answers where being wrong is worse than saying "I don't know."
 - **Failure:** decide the direction each fallback fails in, and make sure your failure handler cannot fail.
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.
 - **Observability:** trace per stage, score production traffic with `custom_evals` and retrieval quality with `rag_evals`, and put human and model judgements in the same place.
