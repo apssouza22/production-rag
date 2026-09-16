@@ -10,8 +10,8 @@ from langfuse import Langfuse
 from langfuse.api import TraceWithDetails
 from tqdm import tqdm
 
-from custom_evals.config import build_openai_client_kwargs, get_settings
-from custom_evals.helpers import (
+from evals.custom_evals.config import build_openai_client_kwargs, get_settings
+from evals.custom_evals.helpers import (
     calculate_avg_scores,
     generate_report,
     get_input_output,
@@ -21,8 +21,8 @@ from custom_evals.helpers import (
     update_failure_metrics,
     update_success_metrics,
 )
-from custom_evals.metrics import metrics
-from custom_evals.schemas import ScoreSchema
+from evals.custom_evals.metrics import metrics
+from evals.custom_evals.schemas import ScoreSchema
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class Evaluator:
         """Initialize Evaluator with OpenAI and Langfuse clients."""
         self.settings = get_settings()
 
-        use_bifrost = self.settings.bifrost_enabled or self.settings.llm_provider == "bifrost"
+        use_bifrost = self.settings.bifrost_enabled or self.settings.evaluation_llm_provider == "bifrost"
         if use_bifrost:
             client_kwargs = build_openai_client_kwargs(self.settings)
         else:

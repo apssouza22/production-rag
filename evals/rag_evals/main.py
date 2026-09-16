@@ -9,8 +9,8 @@ import sys
 import colorama
 from colorama import Fore, Style
 
-from rag_evals.config import get_settings
-from rag_evals.evaluator import RagEvaluator
+from evals.rag_evals.config import get_settings
+from evals.rag_evals.evaluator import RagEvaluator
 
 settings = get_settings()
 

@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from custom_evals.helpers import get_input_output
+from evals.custom_evals.helpers import get_input_output
 
 
 def test_extracts_rag_query_and_answer():

@@ -1,4 +1,5 @@
-.PHONY: help start stop restart status logs health setup format lint test test-cov clean
+.PHONY: help start stop restart status logs health setup format lint test test-cov clean \
+	eval eval-quick eval-no-report rag-eval rag-eval-no-report
 
 # Default target
 help: ## Show this help message
@@ -46,6 +47,22 @@ test: ## Run tests
 
 test-cov: ## Run tests with coverage
 	uv run pytest --cov=src --cov-report=html
+
+# Evaluations (uses root .env)
+eval: ## Run Langfuse trace evaluation (interactive)
+	uv run python -m evals.custom_evals.main --interactive
+
+eval-quick: ## Run Langfuse trace evaluation with defaults
+	uv run python -m evals.custom_evals.main --quick
+
+eval-no-report: ## Run Langfuse trace evaluation without JSON report
+	uv run python -m evals.custom_evals.main --no-report
+
+rag-eval: ## Run Ragas retrieval evaluation
+	uv run python -m evals.rag_evals.main --quick
+
+rag-eval-no-report: ## Run Ragas retrieval evaluation without JSON report
+	uv run python -m evals.rag_evals.main --quick --no-report
 
 # Cleanup
 clean: ## Clean up everything

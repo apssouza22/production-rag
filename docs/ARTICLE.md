@@ -732,7 +732,7 @@ flowchart TB
     end
 ```
 
-Both packages live under `evals/` with their own `pyproject.toml` and virtualenv. That separation is deliberate: judge models, Ragas, API keys and eval libraries have no business being installed in the service that answers user traffic.
+Both packages live under `evals/` as part of the main project. Eval-specific dependencies (Ragas, judge LLM clients) are installed via the `evals` dependency group and are not required in the production API container image.
 
 ### 11.1 Production trace scoring (`custom_evals`)
 
@@ -749,7 +749,7 @@ Metrics are markdown prompt files in `custom_evals/metrics/prompts/`. Dropping i
 | `toxicity` | Is the response harmful or offensive? |
 
 ```bash
-cd evals && make eval-quick    # or: uv run python -m custom_evals.main --quick
+make eval-quick    # or: uv run python -m evals.custom_evals.main --quick
 ```
 
 Scoring production traffic rather than a static test set is what makes this useful for drift detection. Your golden dataset represents the queries you imagined; your traces are the queries you actually got. You want both, but only one of them tells you about the users you have.
@@ -759,7 +759,7 @@ Scoring production traffic rather than a static test set is what makes this usef
 `rag_evals` scores what you *intended* the retrieval stack to do. For each query in a JSON dataset with a reference answer, it calls the same `/api/v1/rerank-search` endpoint the production stack uses — hybrid search, RRF fusion, Jina reranking — and evaluates the returned `chunk_text` contexts with [Ragas](https://docs.ragas.io/) metrics. When a query has no pre-written `response`, the harness generates one from the retrieved contexts alone (same grounding instruction as the RAG prompt: answer only from excerpts, say you do not know otherwise).
 
 ```bash
-cd evals && make rag-eval    # or: uv run python -m rag_evals.main --quick
+make rag-eval    # or: uv run python -m evals.rag_evals.main --quick
 ```
 
 Six metrics, split by whether they need a reference answer:

@@ -5,8 +5,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).parent.parent
-ENV_FILE_PATH = PROJECT_ROOT / ".env"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE_PATH = REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         extra="ignore",
         frozen=True,
         case_sensitive=False,
+        populate_by_name=True,
     )
 
     evaluation_llm: str = "gpt-4o-mini"
@@ -30,7 +31,10 @@ class Settings(BaseSettings):
     bifrost_host: str = "http://localhost:8090"
     # Must match a Bifrost virtual key when enforce_auth_on_inference is enabled (see bifrost/config.json).
     bifrost_api_key: str = "sk-bf-agent-1-dev"
-    llm_provider: Literal["openai", "bifrost"] = "openai"
+    evaluation_llm_provider: Literal["openai", "bifrost"] = Field(
+        default="openai",
+        validation_alias="EVALUATION_LLM_PROVIDER",
+    )
 
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
 
@@ -43,7 +47,7 @@ def build_openai_client_kwargs(settings: Settings | None = None, **overrides) ->
     """Build kwargs for the OpenAI SDK client used by the judge LLM."""
     resolved = settings or get_settings()
 
-    use_bifrost = resolved.bifrost_enabled or resolved.llm_provider == "bifrost"
+    use_bifrost = resolved.bifrost_enabled or resolved.evaluation_llm_provider == "bifrost"
     if use_bifrost:
         virtual_key = overrides.pop("api_key", None) or resolved.bifrost_api_key
         return {

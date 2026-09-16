@@ -4,8 +4,8 @@ import logging
 
 import httpx
 
-from rag_evals.config import RagEvalSettings
-from rag_evals.schemas import RerankSearchResponse
+from evals.rag_evals.config import RagEvalSettings
+from evals.rag_evals.schemas import RerankSearchResponse
 
 logger = logging.getLogger(__name__)
 

@@ -14,8 +14,8 @@ from ragas.metrics.collections import (
     Faithfulness,
 )
 
-from rag_evals.config import RagEvalSettings, build_eval_openai_client_kwargs
-from rag_evals.schemas import EvalSample, MetricScore
+from evals.rag_evals.config import RagEvalSettings, build_eval_openai_client_kwargs
+from evals.rag_evals.schemas import EvalSample, MetricScore
 
 MetricScorer = Callable[[EvalSample], Awaitable[MetricScore]]
 

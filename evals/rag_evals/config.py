@@ -3,10 +3,10 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from custom_evals.config import build_openai_client_kwargs
+from evals.custom_evals.config import build_openai_client_kwargs
 
-PROJECT_ROOT = Path(__file__).parent.parent
-ENV_FILE_PATH = PROJECT_ROOT / ".env"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE_PATH = REPO_ROOT / ".env"
 DEFAULT_DATASET_PATH = Path(__file__).parent / "queries.json"
 
 
@@ -16,6 +16,7 @@ class RagEvalSettings(BaseSettings):
         extra="ignore",
         frozen=True,
         case_sensitive=False,
+        populate_by_name=True,
     )
 
     evaluation_llm: str = "gpt-4o-mini"
@@ -33,7 +34,7 @@ class RagEvalSettings(BaseSettings):
     bifrost_enabled: bool = False
     bifrost_host: str = "http://localhost:8090"
     bifrost_api_key: str = "sk-bf-agent-1-dev"
-    llm_provider: str = "openai"
+    evaluation_llm_provider: str = Field(default="openai", validation_alias="EVALUATION_LLM_PROVIDER")
 
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
 
@@ -45,7 +46,7 @@ def get_settings() -> RagEvalSettings:
 def build_eval_openai_client_kwargs(settings: RagEvalSettings | None = None) -> dict:
     """Build kwargs for the OpenAI SDK client used by Ragas metrics."""
     resolved = settings or get_settings()
-    use_bifrost = resolved.bifrost_enabled or resolved.llm_provider == "bifrost"
+    use_bifrost = resolved.bifrost_enabled or resolved.evaluation_llm_provider == "bifrost"
     if use_bifrost:
         return build_openai_client_kwargs(
             api_key=resolved.bifrost_api_key,

@@ -6,9 +6,9 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-from rag_evals.config import RagEvalSettings
-from rag_evals.retrieval import RerankSearchClient
-from rag_evals.schemas import EvalQuery, EvalSample
+from evals.rag_evals.config import RagEvalSettings
+from evals.rag_evals.retrieval import RerankSearchClient
+from evals.rag_evals.schemas import EvalQuery, EvalSample
 
 logger = logging.getLogger(__name__)
 

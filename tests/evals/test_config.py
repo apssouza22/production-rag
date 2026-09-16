@@ -1,6 +1,6 @@
 """Tests for evals configuration helpers."""
 
-from custom_evals.config import Settings, build_openai_client_kwargs
+from evals.custom_evals.config import Settings, build_openai_client_kwargs
 
 
 def test_build_openai_client_kwargs_uses_direct_openai_by_default():
@@ -8,7 +8,7 @@ def test_build_openai_client_kwargs_uses_direct_openai_by_default():
         evaluation_api_key="test-openai-key",
         evaluation_base_url="https://api.openai.com/v1",
         bifrost_enabled=False,
-        llm_provider="openai",
+        evaluation_llm_provider="openai",
     )
 
     kwargs = build_openai_client_kwargs(settings)
@@ -32,9 +32,9 @@ def test_build_openai_client_kwargs_routes_through_bifrost_with_virtual_key_head
     assert kwargs["default_headers"] == {"x-bf-vk": "sk-bf-agent-1-dev"}
 
 
-def test_build_openai_client_kwargs_uses_bifrost_when_llm_provider_is_bifrost():
+def test_build_openai_client_kwargs_uses_bifrost_when_evaluation_llm_provider_is_bifrost():
     settings = Settings(
-        llm_provider="bifrost",
+        evaluation_llm_provider="bifrost",
         bifrost_host="http://bifrost:8080",
         bifrost_api_key="sk-bf-agent-2-dev",
     )

@@ -183,10 +183,8 @@ data/
 test_output/
 test_data/
 
-# Evals project outputs
+# Evals outputs
 evals/reports/*.json
-evals/.venv/
-evals/.env
 
 /bifrost/logs.db-shm
 /bifrost/logs.db-wal

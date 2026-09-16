@@ -11,6 +11,9 @@ rm -f /opt/airflow/airflow-scheduler.pid
 # Wait a moment for processes to fully terminate
 sleep 2
 
+# Ensure PDF cache directory exists on the host-mounted data volume
+mkdir -p /opt/airflow/data/arxiv_pdfs
+
 # Initialize Airflow database
 echo "Initializing Airflow database..."
 airflow db init

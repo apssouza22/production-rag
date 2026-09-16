@@ -48,14 +48,23 @@ dev = [
     "testcontainers>=4.10.0",
     "types-sqlalchemy>=1.4.53.38",
 ]
+evals = [
+    "colorama>=0.4.6",
+    "openai>=1.0.0",
+    "ragas>=0.4.3",
+    "tqdm>=4.66.0",
+]
 viz = [
     "grandalf>=0.8",
 ]
 
+[tool.uv]
+default-groups = ["dev", "evals"]
+
 [tool.ruff]
 line-length = 130
 exclude = ["notebooks/**", ".venv/**"]
-src = ["src", "tests"]
+src = ["src", "tests", "evals"]
 lint.select = [
   "I",
 ]
@@ -64,6 +73,7 @@ lint.select = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 env_files = ".env.test"
+pythonpath = ["."]
 
 [tool.mypy]
 explicit_package_bases = true

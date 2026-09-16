@@ -137,7 +137,7 @@ make lint          # ruff + mypy
 - Use existing fixtures in `tests/conftest.py` and domain-specific `conftest.py` files
 - Add tests only when they cover meaningful behavior — avoid trivial assertions
 
-The `evals/` directory is a **standalone package** with its own `pyproject.toml`. Run evals from that directory (`cd evals && make eval-quick`).
+The `evals/` directory is part of the main project. Evals use the root virtualenv and `.env`, and can import from `src` like tests. Run evals from the repo root (`make eval-quick`, `make rag-eval`).
 
 ---
 

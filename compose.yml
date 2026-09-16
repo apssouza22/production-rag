@@ -121,11 +121,14 @@ services:
       - BIFROST_HOST=http://bifrost:8080
       - OLLAMA_HOST=http://ollama:11434
       - REDIS__HOST=redis
+      # Persist downloaded PDFs to host ./data/arxiv_pdfs (mounted at /opt/airflow/data)
+      - ARXIV__PDF_CACHE_DIR=/opt/airflow/data/arxiv_pdfs
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - airflow_logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./src:/opt/airflow/src
+      - ./data:/opt/airflow/data
     ports:
       - "8080:8080"
     # Command handled by entrypoint.sh

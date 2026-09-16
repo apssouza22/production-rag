@@ -1,11 +1,11 @@
-# Custom Evals
+# Evals
 
-Standalone evaluation frameworks for the API:
+Evaluation frameworks for the API, integrated with the main project:
 
 - **custom_evals** — scores Langfuse traces with LLM-as-judge metrics
 - **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
 
-Both packages share the same `pyproject.toml`, virtualenv, and `.env` file.
+Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.custom_evals.config import get_settings`).
 
 ## Prerequisites
 
@@ -15,12 +15,14 @@ Both packages share the same `pyproject.toml`, virtualenv, and `.env` file.
 
 ## Setup
 
+From the repo root:
+
 ```bash
-cd evals
 cp .env.example .env
+uv sync
 ```
 
-Edit `.env` with your credentials:
+Configure eval-related variables in the root `.env` (see `.env.example`):
 
 | Variable | Description |
 |----------|-------------|
@@ -32,10 +34,11 @@ Edit `.env` with your credentials:
 | `EVALUATION_BASE_URL` | OpenAI-compatible endpoint (default: `https://api.openai.com/v1`) |
 | `EVALUATION_SLEEP_TIME` | Seconds to wait between traces (default: `10`) |
 
-Optional Bifrost routing (when the main stack uses `LLM_PROVIDER=bifrost`):
+Optional Bifrost routing for the judge LLM:
 
 ```bash
 BIFROST_ENABLED=true
+# or: EVALUATION_LLM_PROVIDER=bifrost
 BIFROST_HOST=http://localhost:8090
 BIFROST_API_KEY=sk-bf-agent-1-dev   # virtual key from bifrost/config.json
 EVALUATION_LLM=openai/gpt-4o-mini   # optional; unprefixed names also work
@@ -43,13 +46,9 @@ EVALUATION_LLM=openai/gpt-4o-mini   # optional; unprefixed names also work
 
 With `enforce_auth_on_inference: true` in Bifrost, `dummy-key` is rejected — use a configured virtual key.
 
-Install dependencies:
-
-```bash
-uv sync
-```
-
 ## Usage
+
+From the repo root:
 
 ```bash
 make eval-quick      # run with defaults
@@ -60,15 +59,14 @@ make eval-no-report  # skip JSON report
 Or directly:
 
 ```bash
-uv run python -m custom_evals.main --quick
-uv run python -m custom_evals.main --interactive
-uv run python -m custom_evals.main --no-report
-uv run custom-eval --quick
+uv run python -m evals.custom_evals.main --quick
+uv run python -m evals.custom_evals.main --interactive
+uv run python -m evals.custom_evals.main --no-report
 ```
 
 ## Metrics
 
-Metric prompts live in `custom_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
+Metric prompts live in `evals/custom_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
 
 - `relevancy`
 - `helpfulness`
@@ -76,7 +74,7 @@ Metric prompts live in `custom_evals/metrics/prompts/`. Add a new `.md` file and
 - `hallucination`
 - `toxicity`
 
-Reports are written to `reports/`.
+Reports are written to `evals/reports/`.
 
 ## Ragas Retrieval Evaluation (`rag_evals`)
 
@@ -104,7 +102,7 @@ Evaluates retrieval and response quality with Ragas metrics. For each query in t
 | Variable | Description |
 |----------|-------------|
 | `RAG_API_BASE_URL` | RAG API base URL (default: `http://localhost:8000`) |
-| `RAG_EVAL_DATASET_PATH` | JSON file with queries (default: `rag_evals/queries.json`) |
+| `RAG_EVAL_DATASET_PATH` | JSON file with queries (default: `evals/rag_evals/queries.json`) |
 | `RAG_EVAL_TOP_K` | Documents to retrieve per query (default: `5`) |
 | `RAG_EVAL_USE_HYBRID` | Use hybrid search (default: `true`) |
 | `RAG_EVAL_RERANK_ENABLED` | Enable Jina reranking (default: `true`) |
@@ -133,11 +131,10 @@ Dataset format:
 ```bash
 make rag-eval
 make rag-eval-no-report
-uv run python -m rag_evals.main --quick
-uv run rag-eval --quick
+uv run python -m evals.rag_evals.main --quick
 ```
 
-Reports are written to `reports/ragas_evaluation_report_<timestamp>.json`.
+Reports are written to `evals/reports/ragas_evaluation_report_<timestamp>.json`.
 
 ## How custom_evals works
 
@@ -145,10 +142,14 @@ Reports are written to `reports/ragas_evaluation_report_<timestamp>.json`.
 2. Extracts `query` and `answer` from each trace (supports RAG API and LangGraph trace formats)
 3. Scores each trace against every metric using the configured judge LLM
 4. Pushes scores back to Langfuse
-5. Optionally writes a JSON summary report to `reports/evaluation_report_<timestamp>.json`
+5. Optionally writes a JSON summary report to `evals/reports/evaluation_report_<timestamp>.json`
 
 ## Tests
 
+From the repo root:
+
 ```bash
-uv run pytest tests/ -q
+uv run pytest tests/evals/ -q
 ```
+
+Evals tests are also included when running `make test`.

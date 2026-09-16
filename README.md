@@ -108,7 +108,7 @@ arxiv-paper-curator/
 │   ├── models/             # Database models (SQLAlchemy)
 │   ├── schemas/            # Pydantic validation schemas
 │   └── config.py           # Environment configuration
-├── evals/                  # Standalone Langfuse trace evaluation (own pyproject.toml)
+├── evals/                  # Langfuse trace + Ragas retrieval evaluation
 ├── docs/                   # Architecture deep dives and onboarding guide
 ├── airflow/                # Workflow orchestration (DAGs)
 ├── tests/                  # Test suite
@@ -160,13 +160,14 @@ make stop          # Stop services
 | `make test-cov` | Run tests with coverage |
 | `make clean` | Clean up everything |
 
-#### **Evals Commands** (run from `evals/` directory)
+#### **Evals Commands** (run from repo root; uses root `.env`)
 | Command | Description |
 |---------|-------------|
-| `make setup` | Install evals dependencies (`uv sync`) |
-| `make eval-quick` | Score traces with default settings |
-| `make eval` | Interactive evaluation mode |
+| `make eval-quick` | Score Langfuse traces with default settings |
+| `make eval` | Interactive Langfuse trace evaluation |
 | `make eval-no-report` | Run without writing a JSON report |
+| `make rag-eval` | Run Ragas retrieval evaluation |
+| `make rag-eval-no-report` | Ragas eval without JSON report |
 
 #### **Direct Commands** (Alternative)
 ```bash

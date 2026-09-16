@@ -222,10 +222,12 @@ docker exec -it rag-airflow airflow users reset-password --username admin --pass
 
 - Toggle the `arxiv_paper_ingestion` DAG on, then click **Trigger DAG** to run ingestion manually.
 - Open a task instance → **Log** to debug fetch, parse, or indexing failures.
-- PDFs are cached at `./data/arxiv_pdfs/` inside the container (`/opt/airflow/data/arxiv_pdfs/`):
+- PDFs are persisted on the host at `./data/arxiv_pdfs/` (mounted into the container at `/opt/airflow/data/arxiv_pdfs/`):
 
 ```bash
-docker exec rag-airflow ls ./data/arxiv_pdfs/
+ls ./data/arxiv_pdfs/
+# or from inside the container:
+docker exec rag-airflow ls /opt/airflow/data/arxiv_pdfs/
 ```
 
 **Health check:**
@@ -494,7 +496,7 @@ src/
     ├── db/ + paper/           # Persistence and repositories
     └── pdf_parser/            # Docling wrapper
 airflow/dags/                  # Ingestion pipeline
-evals/                         # Standalone LLM-as-judge evaluation
+evals/                         # Langfuse trace + Ragas retrieval evaluation
 compose.yml                    # Full stack definition
 ```
 

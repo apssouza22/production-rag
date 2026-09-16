@@ -9,11 +9,11 @@ from typing import Any
 
 from tqdm import tqdm
 
-from rag_evals.config import RagEvalSettings, get_settings
-from rag_evals.dataset import DatasetBuilder, load_queries
-from rag_evals.metrics import build_metrics, create_openai_client
-from rag_evals.retrieval import RerankSearchClient
-from rag_evals.schemas import EvalSample, MetricScore
+from evals.rag_evals.config import RagEvalSettings, get_settings
+from evals.rag_evals.dataset import DatasetBuilder, load_queries
+from evals.rag_evals.metrics import build_metrics, create_openai_client
+from evals.rag_evals.retrieval import RerankSearchClient
+from evals.rag_evals.schemas import EvalSample, MetricScore
 
 logger = logging.getLogger(__name__)
 
