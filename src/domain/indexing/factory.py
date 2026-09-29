@@ -3,7 +3,7 @@ from typing import Optional
 from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
 from src.domain.opensearch.factory import make_opensearch_client_fresh
-from src.platform.llm.factory import make_agent_llm_client, make_llm_client
+from src.platform.llm.factory import make_agent_llm_client
 from .chunk_contextualizer import ChunkContextualizer
 from .hybrid_indexer import HybridIndexingService
 from .text_chunker import TextChunker
@@ -12,9 +12,7 @@ from .text_chunker import TextChunker
 def _resolve_contextualization_model(settings: Settings) -> str:
     if settings.chunking.contextualization_model:
         return settings.chunking.contextualization_model
-    if settings.llm_provider == "bifrost":
-        return settings.agent_model
-    return settings.ollama_model
+    return settings.agent_model
 
 
 def make_hybrid_indexing_service(
@@ -43,11 +41,7 @@ def make_hybrid_indexing_service(
     contextualizer = None
     if settings.chunking.contextualization_enabled:
         contextualizer = ChunkContextualizer(
-            llm_client=(
-                make_agent_llm_client("agent_1", settings)
-                if settings.llm_provider == "bifrost"
-                else make_llm_client(settings)
-            ),
+            llm_client=make_agent_llm_client("agent_1", settings),
             model=_resolve_contextualization_model(settings),
             max_document_chars=settings.chunking.max_document_chars,
             max_concurrent_requests=settings.chunking.max_concurrent_context_requests,

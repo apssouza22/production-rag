@@ -11,9 +11,9 @@ from src.platform.middleware.types import AgentContext
 
 
 @pytest.fixture
-def middleware(mock_ollama_client):
+def middleware(mock_llm_client):
     return GuardrailMiddleware(
-        llm_client=mock_ollama_client,
+        llm_client=mock_llm_client,
         config=GraphConfig(guardrail_threshold=60),
     )
 

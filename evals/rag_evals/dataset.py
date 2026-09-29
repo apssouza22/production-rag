@@ -42,35 +42,48 @@ class DatasetBuilder:
         self.retrieval_client = retrieval_client
         self.openai_client = openai_client
 
+    async def build_sample_from_inputs(
+        self,
+        user_input: str,
+        reference: str = "",
+        response: str | None = None,
+    ) -> EvalSample | None:
+        """Retrieve contexts for one query and prepare a Ragas sample."""
+        search_result = await self.retrieval_client.search(user_input)
+        retrieved_contexts = RerankSearchClient.contexts_from_result(search_result)
+        if not retrieved_contexts:
+            logger.warning("Skipping query with no retrieved contexts: %s", user_input)
+            return None
+
+        resolved_response = response
+        if not resolved_response:
+            if not self.settings.rag_eval_generate_responses:
+                logger.warning(
+                    "Skipping query without response and generation disabled: %s",
+                    user_input,
+                )
+                return None
+            resolved_response = await self._generate_response(user_input, retrieved_contexts)
+
+        return EvalSample(
+            user_input=user_input,
+            reference=reference,
+            response=resolved_response,
+            retrieved_contexts=retrieved_contexts,
+            rerank_applied=search_result.rerank_applied,
+        )
+
     async def build_samples(self, queries: list[EvalQuery]) -> list[EvalSample]:
         """Retrieve contexts for each query and prepare Ragas samples."""
         samples: list[EvalSample] = []
         for query in queries:
-            search_result = await self.retrieval_client.search(query.user_input)
-            retrieved_contexts = RerankSearchClient.contexts_from_result(search_result)
-            if not retrieved_contexts:
-                logger.warning("Skipping query with no retrieved contexts: %s", query.user_input)
-                continue
-
-            response = query.response
-            if not response:
-                if not self.settings.rag_eval_generate_responses:
-                    logger.warning(
-                        "Skipping query without response and generation disabled: %s",
-                        query.user_input,
-                    )
-                    continue
-                response = await self._generate_response(query.user_input, retrieved_contexts)
-
-            samples.append(
-                EvalSample(
-                    user_input=query.user_input,
-                    reference=query.reference,
-                    response=response,
-                    retrieved_contexts=retrieved_contexts,
-                    rerank_applied=search_result.rerank_applied,
-                )
+            sample = await self.build_sample_from_inputs(
+                user_input=query.user_input,
+                reference=query.reference,
+                response=query.response,
             )
+            if sample is not None:
+                samples.append(sample)
         return samples
 
     async def _generate_response(self, user_input: str, retrieved_contexts: list[str]) -> str:

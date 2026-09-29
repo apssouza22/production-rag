@@ -136,6 +136,36 @@ uv run python -m evals.rag_evals.main --quick
 
 Reports are written to `evals/reports/ragas_evaluation_report_<timestamp>.json`.
 
+### Langfuse Experiments (`rag_evals` + Langfuse SDK)
+
+Runs the same retrieval + Ragas pipeline through [Langfuse experiments](https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk). Each dataset item becomes a traced task execution with Ragas scores attached in Langfuse for comparison across runs.
+
+**Prerequisites:** `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_HOST` in the root `.env` (same project as production traces).
+
+| Variable | Description |
+|----------|-------------|
+| `RAG_EVAL_EXPERIMENT_NAME` | Experiment name in Langfuse (default: `rag-retrieval-eval`) |
+| `RAG_EVAL_EXPERIMENT_DESCRIPTION` | Optional experiment description |
+| `RAG_EVAL_LANGFUSE_DATASET` | Optional hosted Langfuse dataset name; when set, skips the local JSON file |
+| `RAG_EVAL_MAX_CONCURRENCY` | Concurrent items processed by the experiment runner (default: `3`) |
+
+**Local dataset** (default): items are built from `RAG_EVAL_DATASET_PATH` with `input` = query and `expected_output` = reference.
+
+**Hosted Langfuse dataset**: create a dataset in Langfuse where each item has:
+
+- `input`: the question string (or `{"user_input": "..."}`)
+- `expected_output`: the reference answer
+- optional `metadata.response`: pre-generated answer to skip response generation
+
+```bash
+make rag-eval-experiment
+make rag-eval-experiment-no-report
+uv run python -m evals.rag_evals.main --langfuse-experiment --quick
+uv run python -m evals.rag_evals.main --langfuse-experiment --dataset-name my-rag-eval-set
+```
+
+Local summaries are written to `evals/reports/langfuse_experiment_report_<timestamp>.json`. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
+
 ## How custom_evals works
 
 1. Fetches unscored Langfuse traces from the last 24 hours

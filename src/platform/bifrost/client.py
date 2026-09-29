@@ -23,7 +23,7 @@ class BifrostClient(LlmProviderClient):
         self.api_key = api_key or settings.bifrost_api_key
         self.fallback_models = settings.bifrost_fallback_models
         self.reasoning_effort = settings.reasoning_effort
-        self.timeout = float(settings.ollama_timeout)
+        self.timeout = float(settings.llm_request_timeout)
 
     @property
     def langchain_base_url(self) -> str:
@@ -37,7 +37,7 @@ class BifrostClient(LlmProviderClient):
         if model.startswith(("gpt-", "o1", "o3", "o4", "chatgpt-")):
             return f"openai/{model}"
 
-        return f"ollama/{model}"
+        return model
 
     @classmethod
     def _supports_reasoning_effort(cls, model: str) -> bool:

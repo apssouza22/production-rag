@@ -11,7 +11,7 @@ A production-ready RAG platform for arXiv CS.AI papers, built with:
 - **OpenSearch** — Hybrid retrieval (BM25 + vector + RRF)
 - **PostgreSQL** — Paper metadata and content
 - **Redis** — Exact and semantic response caching
-- **Ollama / Bifrost** — LLM serving with provider fallback
+- **Bifrost** — LLM gateway with provider fallback
 - **Langfuse** — RAG pipeline observability
 - **Apache Airflow** — Ingestion orchestration
 
@@ -90,7 +90,7 @@ The `api/` layer should stay thin: validate input, call a service, map the respo
 ### LLM abstraction
 
 - Domain code depends on `LLMClient` (`src/domain/llm/protocol.py`), not a provider SDK.
-- Provider selection is env-driven (`LLM_PROVIDER=ollama|bifrost`) via `make_llm_client()`.
+- LLM access is via Bifrost (`make_llm_client()` / `make_agent_llm_client()`).
 - Shared RAG prompt logic lives in `src/domain/llm/rag.py`.
 
 ### Configuration
@@ -153,7 +153,7 @@ make format             # ruff format
 make lint               # ruff check + mypy
 ```
 
-Key env vars: `JINA_API_KEY` (required for hybrid search), `LLM_PROVIDER`, `LANGFUSE__*` (optional tracing).
+Key env vars: `JINA_API_KEY` (required for hybrid search), `OPENAI_API_KEY`, `BIFROST_HOST`, `LANGFUSE__*` (optional tracing).
 
 ---
 

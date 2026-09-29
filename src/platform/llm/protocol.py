@@ -3,7 +3,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 
 
 class LlmProviderClient(ABC):
-    """Low-level interface for direct Ollama and Bifrost-backed LLM backends."""
+    """Low-level interface for Bifrost-backed LLM requests."""
 
     @abstractmethod
     def get_langchain_model(self, model: str, temperature: float = 0.7):

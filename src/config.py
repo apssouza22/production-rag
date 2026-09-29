@@ -83,7 +83,7 @@ class ChunkingSettings(BaseConfigSettings):
 
     # Contextual Retrieval: LLM-generated context prepended to chunks for search/embedding
     contextualization_enabled: bool = False
-    contextualization_model: str = ""  # Empty = use agent_model (bifrost) or ollama_model
+    contextualization_model: str = ""  # Empty = use agent_model
     max_document_chars: int = 50_000  # Truncate full document sent to LLM
     max_concurrent_context_requests: int = 3
 
@@ -171,20 +171,15 @@ class Settings(BaseConfigSettings):
     postgres_pool_size: int = 20
     postgres_max_overflow: int = 0
 
-    llm_provider: Literal["ollama", "bifrost"] = "ollama"
-    ollama_host: str = "http://localhost:11434"
     bifrost_host: str = "http://localhost:8090"
     bifrost_api_key: str = "sk-bf-agent-1-dev"
     bifrost_api_key_agent_1: str = "sk-bf-agent-1-dev"
     bifrost_api_key_agent_2: str = "sk-bf-agent-2-dev"
-    # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-5.6-luna,ollama/llama3.2:1b)
-    bifrost_fallback_models: str = "openai/gpt-5.6-luna,ollama/llama3.2:1b"
-    # Comma-separated fallback models for direct Ollama (e.g. llama3.2:3b,llama3.2:1b)
-    ollama_fallback_models: str = ""
-    ollama_model: str = "llama3.2:1b"
+    # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-5.6-luna,openai/gpt-4o-mini)
+    bifrost_fallback_models: str = "openai/gpt-5.6-luna,openai/gpt-4o-mini"
     agent_model: str = "gpt-5.6-luna"
     reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
-    ollama_timeout: int = 300
+    llm_request_timeout: int = 300
 
     # Jina AI embeddings configuration
     jina_api_key: str = ""

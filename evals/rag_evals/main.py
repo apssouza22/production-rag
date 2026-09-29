@@ -11,6 +11,7 @@ from colorama import Fore, Style
 
 from evals.rag_evals.config import get_settings
 from evals.rag_evals.evaluator import RagEvaluator
+from evals.rag_evals.langfuse_experiment import RagLangfuseExperiment
 
 settings = get_settings()
 
@@ -58,6 +59,43 @@ def display_summary(report: dict) -> None:
         print(f"\n{Fore.CYAN}Report:{Style.RESET_ALL} {report['report_path']}")
 
 
+def display_langfuse_summary(result) -> None:
+    print_title("Langfuse Experiment Summary")
+    print(f"{Fore.CYAN}Experiment:{Style.RESET_ALL} {result.name}")
+    print(f"{Fore.CYAN}Run:{Style.RESET_ALL} {result.run_name}")
+    print(f"{Fore.CYAN}Items:{Style.RESET_ALL} {len(result.item_results)}")
+    if result.dataset_run_url:
+        print(f"{Fore.CYAN}Dataset run:{Style.RESET_ALL} {result.dataset_run_url}")
+    print("\n" + result.format())
+
+
+def run_langfuse_experiment(
+    generate_report: bool = True,
+    experiment_name: str | None = None,
+    run_name: str | None = None,
+    dataset_name: str | None = None,
+) -> None:
+    print_title("Starting Langfuse Experiment")
+    print_info(f"RAG API: {settings.rag_api_base_url}")
+    print_info(f"Dataset: {settings.rag_eval_langfuse_dataset or settings.rag_eval_dataset_path}")
+    print_info(f"Judge model: {settings.evaluation_llm}")
+
+    try:
+        runner = RagLangfuseExperiment(settings=settings)
+        result = runner.run(
+            experiment_name=experiment_name,
+            run_name=run_name,
+            dataset_name=dataset_name,
+            generate_report_file=generate_report,
+        )
+        print_success("Langfuse experiment completed successfully!")
+        display_langfuse_summary(result)
+    except Exception as exc:
+        print_error(f"Langfuse experiment failed: {exc}")
+        logging.exception("Langfuse experiment failed")
+        sys.exit(1)
+
+
 async def run_evaluation(generate_report: bool = True) -> None:
     print_title("Starting Ragas Evaluation")
     print_info(f"RAG API: {settings.rag_api_base_url}")
@@ -82,7 +120,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Ragas retrieval evaluation using rerank search contexts")
     parser.add_argument("--no-report", action="store_true", help="Skip writing a JSON report")
     parser.add_argument("--quick", action="store_true", help="Run with default settings")
+    parser.add_argument(
+        "--langfuse-experiment",
+        action="store_true",
+        help="Run as a Langfuse experiment (traces + scores in Langfuse UI)",
+    )
+    parser.add_argument("--experiment-name", help="Override RAG_EVAL_EXPERIMENT_NAME")
+    parser.add_argument("--run-name", help="Optional Langfuse experiment run name")
+    parser.add_argument(
+        "--dataset-name",
+        help="Use a hosted Langfuse dataset instead of the local JSON file (RAG_EVAL_LANGFUSE_DATASET)",
+    )
     args = parser.parse_args()
+
+    if args.langfuse_experiment:
+        run_langfuse_experiment(
+            generate_report=not args.no_report,
+            experiment_name=args.experiment_name,
+            run_name=args.run_name,
+            dataset_name=args.dataset_name,
+        )
+        return
 
     asyncio.run(run_evaluation(generate_report=not args.no_report))
 

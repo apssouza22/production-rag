@@ -77,7 +77,7 @@ def mock_rerank_search_service(
 
 
 @pytest.fixture
-def mock_ollama_client():
+def mock_llm_client():
     """Mock LLM client."""
     client = Mock()
     client.get_langchain_model = Mock(return_value=AsyncMock())

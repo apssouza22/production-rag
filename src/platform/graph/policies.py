@@ -3,15 +3,12 @@ from src.platform.bifrost.exceptions import BifrostConnectionError, BifrostTimeo
 from src.platform.graph.config import FaultToleranceConfig
 from src.platform.graph.types import RetryPolicy, TimeoutPolicy
 from src.platform.llm.exceptions import LLMConnectionError, LLMTimeoutError
-from src.platform.ollama import OllamaConnectionError, OllamaTimeoutError
 
 _TRANSIENT_EXCEPTIONS = (
     ConnectionError,
     TimeoutError,
     LLMConnectionError,
     LLMTimeoutError,
-    OllamaConnectionError,
-    OllamaTimeoutError,
     BifrostConnectionError,
     BifrostTimeoutError,
     OpenSearchException,

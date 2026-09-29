@@ -31,6 +31,14 @@ class RagEvalSettings(BaseSettings):
     rag_eval_generate_responses: bool = True
     rag_eval_request_timeout: float = 120.0
 
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+    rag_eval_experiment_name: str = "rag-retrieval-eval"
+    rag_eval_experiment_description: str = "Ragas retrieval evaluation via rerank search"
+    rag_eval_langfuse_dataset: str = ""
+    rag_eval_max_concurrency: int = Field(default=3, ge=1, le=50)
+
     bifrost_enabled: bool = False
     bifrost_host: str = "http://localhost:8090"
     bifrost_api_key: str = "sk-bf-agent-1-dev"

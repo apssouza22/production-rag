@@ -12,7 +12,7 @@ from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
 
 
 @pytest.fixture
-def graph(mock_ollama_client, mock_rerank_search_service):
+def graph(mock_llm_client, mock_rerank_search_service):
     """AgenticRAGGraph with mocked dependencies."""
     config = GraphConfig(
         model="gpt-4o-mini",
@@ -21,7 +21,7 @@ def graph(mock_ollama_client, mock_rerank_search_service):
         guardrail_threshold=60,
     )
     return AgenticRAGGraph(
-        llm_client=mock_ollama_client,
+        llm_client=mock_llm_client,
         rerank_search_service=mock_rerank_search_service,
         config=config,
     )

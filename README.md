@@ -90,7 +90,6 @@ cp .env.example .env
 | **OpenSearch 2.19** | Hybrid search engine (BM25 + Vector) | ✅ Ready |
 | **Apache Airflow 3.0** | Workflow automation | ✅ Ready |
 | **Jina AI** | Embedding generation and reranking | ✅ Ready |
-| **Ollama** | Local LLM serving | ✅ Ready |
 | **Bifrost** | LLM gateway with provider fallback | ✅ Ready |
 | **Redis Stack** | Exact and semantic response caching | ✅ Ready |
 | **Langfuse** | RAG pipeline observability via Langfuse Cloud | ✅ Ready |
@@ -104,7 +103,7 @@ cp .env.example .env
 arxiv-paper-curator/
 ├── src/                    # Main application code
 │   ├── api/            # API endpoints (search, ask, papers)
-│   ├── domain/           # Business logic (opensearch, ollama, agents, cache)
+│   ├── domain/           # Business logic (opensearch, agents, cache)
 │   ├── models/             # Database models (SQLAlchemy)
 │   ├── schemas/            # Pydantic validation schemas
 │   └── config.py           # Environment configuration

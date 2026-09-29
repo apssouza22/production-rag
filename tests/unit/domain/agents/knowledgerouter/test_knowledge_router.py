@@ -38,14 +38,14 @@ def mock_text_to_sql():
 
 
 @pytest.fixture
-def mock_ollama_client():
+def mock_llm_client():
     client = Mock()
     client.get_langchain_model.return_value = Mock()
     return client
 
 
 @pytest.fixture
-def router_service(mock_agentic_rag, mock_text_to_sql, mock_ollama_client, monkeypatch):
+def router_service(mock_agentic_rag, mock_text_to_sql, mock_llm_client, monkeypatch):
     monkeypatch.setattr(
         "src.agents.knowledgerouter.service.build_knowledge_router_graph",
         lambda **kwargs: AsyncMock(),
@@ -54,7 +54,7 @@ def router_service(mock_agentic_rag, mock_text_to_sql, mock_ollama_client, monke
     return KnowledgeRouterService(
         agentic_rag_service=mock_agentic_rag,
         text_to_sql_service=mock_text_to_sql,
-        llm_client=mock_ollama_client,
+        llm_client=mock_llm_client,
         langfuse_tracer=None,
         agent_config=KnowledgeRouterConfig(model="gpt-4o-mini"),
     )

@@ -92,11 +92,11 @@ async def health_check(settings: SettingsDep, database: DatabaseDep, opensearch_
     try:
         llm_client = make_llm_client(settings)
         llm_health = await llm_client.health_check()
-        services[settings.llm_provider] = ServiceStatus(status=llm_health["status"], message=llm_health["message"])
+        services["bifrost"] = ServiceStatus(status=llm_health["status"], message=llm_health["message"])
         if llm_health["status"] != "healthy":
             overall_status = "degraded"
     except Exception as e:
-        services[settings.llm_provider] = ServiceStatus(status="unhealthy", message=str(e))
+        services["bifrost"] = ServiceStatus(status="unhealthy", message=str(e))
         overall_status = "degraded"
 
     return HealthResponse(

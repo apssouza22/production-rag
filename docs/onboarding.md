@@ -31,8 +31,7 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 | **OpenSearch** | 9200 | BM25 + vector search |
 | **OpenSearch Dashboards** | 5601 | Search UI / debugging |
 | **Apache Airflow** | 8080 | Scheduled ingestion DAG |
-| **Ollama** | 11434 | Local LLM inference |
-| **Bifrost** | 8090 | Optional LLM gateway (OpenAI-compatible API → Ollama) |
+| **Bifrost** | 8090 | LLM gateway (OpenAI-compatible API) |
 | **Redis** | 6379 | RAG response cache |
 
 **Langfuse Cloud** — hosted tracing dashboard at [cloud.langfuse.com](https://cloud.langfuse.com); no local Docker services required.
@@ -85,14 +84,10 @@ Wait 2–3 minutes for health checks, then verify:
 
 ```bash
 curl http://localhost:8000/api/v1/health
-make health   # checks API, OpenSearch, Airflow, Ollama, Bifrost
+make health   # checks API, OpenSearch, Airflow, Bifrost
 ```
 
-Pull an Ollama model before running any generation (see [Ollama](#ollama)):
-
-```bash
-docker exec rag-ollama ollama pull llama3.2:1b
-```
+Set `OPENAI_API_KEY` in `.env` before running generation (see [Bifrost](#bifrost-llm-gateway)).
 
 ### Service URLs
 
@@ -102,7 +97,6 @@ docker exec rag-ollama ollama pull llama3.2:1b
 | http://localhost:8080 | Airflow web UI |
 | http://localhost:5601 | OpenSearch Dashboards |
 | https://cloud.langfuse.com | Langfuse Cloud tracing dashboard |
-| http://localhost:11434 | Ollama API |
 | http://localhost:8090 | Bifrost gateway (Web UI + `/v1` API) |
 
 ### Accessing PostgreSQL, OpenSearch, Airflow & Langfuse
@@ -309,79 +303,9 @@ Traces appear within a few seconds of each request (`LANGFUSE__FLUSH_INTERVAL` d
 - Send a non-cached query (identical queries may hit Redis cache and produce minimal tracing)
 - Enable `LANGFUSE__DEBUG=true` and check API logs for SDK errors
 
-#### Ollama
+#### Bifrost (LLM gateway)
 
-Local LLM inference runs in the **`rag-ollama`** container (`ollama/ollama:0.11.2`). Models are **not** bundled with the image — you pull them after the stack is up. Health checks only verify that the Ollama service is running, so generation and agentic flows will fail until a model is pulled.
-
-| Setting | Value |
-|---------|-------|
-| API | http://localhost:11434 |
-| Container | `rag-ollama` |
-| Default model | `llama3.2:1b` (`OLLAMA_MODEL` in `.env`) |
-| Timeout | 300s (`OLLAMA_TIMEOUT`) |
-
-**Recommended models** (pull only what you need — sizes are approximate):
-
-| Model | Size | Speed | Use case |
-|-------|------|-------|----------|
-| `llama3.2:1b` | ~1.3 GB | Fastest | **Course default** — dev, tests |
-| `llama3.2:3b` | ~2.0 GB | Balanced | Better answers, still reasonable on laptop |
-| `llama3.1:8b` | ~4.7 GB | Slower | Higher quality when you have RAM/VRAM |
-| `qwen2.5:7b` | ~4.7 GB | Slower | Alternative multilingual model |
-
-API requests can override the default via the `model` field on `/api/v1/ask` and `/api/v1/ask-agentic`.
-
-**Install the default model:**
-
-```bash
-docker exec rag-ollama ollama pull llama3.2:1b
-```
-
-**Alternative — HTTP API** (no `docker exec`; useful if Ollama runs outside Docker):
-
-```bash
-curl -X POST http://localhost:11434/api/pull -d '{"name":"llama3.2:1b"}'
-```
-
-**Verify installation:**
-
-```bash
-# List downloaded models
-docker exec rag-ollama ollama list
-
-# Quick generation test
-docker exec rag-ollama ollama run llama3.2:1b "What is machine learning in one sentence?"
-
-# See which model is loaded in memory (empty until first request)
-docker exec rag-ollama ollama ps
-```
-
-**Application configuration** — when the API runs on the host (default), point it at the published port:
-
-```bash
-LLM_PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=llama3.2:1b
-OLLAMA_TIMEOUT=300
-```
-
-To route through Bifrost instead, see [Bifrost](#bifrost-optional-llm-gateway).
-
-If the API service in `compose.yml` is enabled instead, use `OLLAMA_HOST=http://ollama:11434` (container DNS).
-
-**Pull additional models** (optional):
-
-```bash
-docker exec rag-ollama ollama pull llama3.2:3b
-docker exec rag-ollama ollama pull llama3.1:8b
-docker exec rag-ollama ollama pull qwen2.5:7b
-```
-
-Models persist in the `ollama_data` Docker volume across restarts.
-
-#### Bifrost (optional LLM gateway)
-
-[Bifrost](https://docs.getbifrost.ai/) is an optional OpenAI-compatible gateway in front of Ollama. The RAG API can talk to Ollama **directly** or **through Bifrost** — switch with `LLM_PROVIDER` in `.env`.
+[Bifrost](https://docs.getbifrost.ai/) is the OpenAI-compatible gateway used by the RAG API for all LLM calls.
 
 | Setting | Value |
 |---------|-------|
@@ -400,10 +324,10 @@ Models persist in the `ollama_data` Docker volume across restarts.
 **Start Bifrost:**
 
 ```bash
-docker compose up -d bifrost ollama
+docker compose up -d bifrost
 ```
 
-Bifrost depends on Ollama being healthy. Port **8090** is used because Airflow already occupies **8080**.
+Port **8090** is used because Airflow already occupies **8080**.
 
 **Verify Bifrost:**
 
@@ -413,8 +337,9 @@ curl http://localhost:8090/v1/models
 
 curl -X POST http://localhost:8090/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-bf-agent-1-dev" \
   -d '{
-    "model": "ollama/llama3.2:1b",
+    "model": "openai/gpt-4o-mini",
     "messages": [{"role": "user", "content": "Hello, Bifrost!"}]
   }'
 ```
@@ -422,54 +347,25 @@ curl -X POST http://localhost:8090/v1/chat/completions \
 **Application configuration** — host API talking to Bifrost on the published port:
 
 ```bash
-LLM_PROVIDER=bifrost
 BIFROST_HOST=http://localhost:8090
-BIFROST_API_KEY=dummy-key
-OLLAMA_MODEL=llama3.2:1b
-OLLAMA_TIMEOUT=300
+BIFROST_API_KEY=sk-bf-agent-1-dev
+AGENT_MODEL=gpt-5.6-luna
+LLM_REQUEST_TIMEOUT=300
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 If the API runs inside Docker Compose instead, use `BIFROST_HOST=http://bifrost:8080`.
-
-**Switch back to direct Ollama:**
-
-```bash
-LLM_PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-```
 
 **Code layout:**
 
 | Module | Role |
 |--------|------|
-| `src/domain/llm/` | `LLMClient` protocol + `make_llm_client()` factory |
-| `src/platform/ollama/` | Direct Ollama client (`ChatOllama`, native `/api/generate`) |
-| `src/domain/bifrost/` | Bifrost client (`ChatOpenAI` via `/langchain`) |
+| `src/platform/llm/` | `LlmProviderClient` protocol + `make_llm_client()` factory |
+| `src/platform/bifrost/` | Bifrost client (`ChatOpenAI` via `/langchain`) |
 
-Shared RAG prompt logic lives in `src/domain/llm/rag.py`; both clients implement the same interface.
+After editing `bifrost/config.json`, restart Bifrost. If the SQLite config DB was already seeded, remove `bifrost/config.db` and restart so the file changes are picked up.
 
-**Bifrost provider config** (`bifrost/config.json`) points at the Ollama container and allows private Docker network access:
-
-```json
-{
-  "providers": {
-    "ollama": {
-      "network_config": { "allow_private_network": true },
-      "keys": [{
-        "name": "ollama-docker",
-        "value": "",
-        "models": ["*"],
-        "weight": 1.0,
-        "ollama_key_config": { "url": "http://ollama:11434" }
-      }]
-    }
-  }
-}
-```
-
-After editing `config.json`, restart Bifrost. If the SQLite config DB was already seeded, remove `bifrost/config.db` and restart so the file changes are picked up.
-
-**Health check:** `/api/v1/health` reports the active provider (`ollama` or `bifrost`) based on `LLM_PROVIDER`.
+**Health check:** `/api/v1/health` reports Bifrost status under the `bifrost` service key.
 
 ### Project Layout
 
@@ -489,8 +385,7 @@ src/
     ├── indexing/              # Chunking, contextualization, hybrid indexing
     ├── opensearch/            # Index config, query builder, search client
     ├── jinaai/                # Embeddings + reranker clients
-    ├── llm/                   # LLMClient protocol + provider factory
-    ├── ollama/ + bifrost/     # Provider implementations
+    ├── platform/llm/ + platform/bifrost/   # LLM protocol and Bifrost client
     ├── cache/                 # Exact + semantic cache
     ├── langfuse/              # Tracing
     ├── db/ + paper/           # Persistence and repositories
@@ -519,7 +414,7 @@ flowchart LR
     I -->|Hit| J[Response]
     I -->|Miss| K[Hybrid Search]
     K --> G
-    K --> L[Ollama LLM]
+    K --> L[Bifrost LLM]
     L --> M[Cache Store]
     M --> N[Langfuse Trace]
     N --> J
@@ -551,12 +446,10 @@ Full interactive docs: http://localhost:8000/docs
 | `JINA_API_KEY` | Yes | Hybrid/vector search and reranking |
 | `LANGFUSE__PUBLIC_KEY` / `SECRET_KEY` | Optional | Tracing (create in Langfuse Cloud → Settings → API Keys) |
 | `LANGFUSE__HOST` | Optional | Langfuse Cloud URL (`https://cloud.langfuse.com` or `https://us.cloud.langfuse.com`) |
-| `LLM_PROVIDER` | Yes | `ollama` (direct) or `bifrost` (gateway) |
-| `OLLAMA_HOST` | If `LLM_PROVIDER=ollama` | Ollama API URL (`http://localhost:11434` on host; `http://ollama:11434` in compose) |
-| `BIFROST_HOST` | If `LLM_PROVIDER=bifrost` | Bifrost URL (`http://localhost:8090` on host; `http://bifrost:8080` in compose) |
-| `BIFROST_API_KEY` | If `LLM_PROVIDER=bifrost` | API key for Bifrost (use `dummy-key` for local dev) |
-| `OLLAMA_MODEL` | Yes | Default LLM (default `llama3.2:1b`; see [Ollama](#ollama)) |
-| `OLLAMA_TIMEOUT` | Optional | Generation timeout in seconds (default `300`) |
+| `BIFROST_HOST` | Yes | Bifrost URL (`http://localhost:8090` on host; `http://bifrost:8080` in compose) |
+| `BIFROST_API_KEY` | Yes | Default Bifrost virtual key (see `bifrost/config.json`) |
+| `OPENAI_API_KEY` | Yes | OpenAI provider key used by Bifrost |
+| `LLM_REQUEST_TIMEOUT` | Optional | Generation timeout in seconds (default `300`) |
 | `AGENT_MODEL` | Optional | Model used by agent graphs (default `gpt-5.6-luna`) |
 | `REASONING_EFFORT` | Optional | Reasoning effort for GPT-5.x models via Bifrost (default `low`) |
 | `CHUNKING__*` | Optional | Chunk size, overlap, and contextualization tuning |
@@ -584,9 +477,8 @@ compose.yml → src/config.py → src/main.py → src/dependencies.py
 → src/domain/indexing/text_chunker.py (chunking)
 → src/domain/opensearch/client.py (search)
 → src/domain/jinaai/jina_reranker_client.py (reranking)
-→ src/domain/llm/factory.py (LLM provider selection)
-→ src/platform/ollama/client.py (direct Ollama)
-→ src/domain/bifrost/client.py (Bifrost gateway)
+→ src/platform/llm/factory.py (LLM client factory)
+→ src/platform/bifrost/client.py (Bifrost gateway)
 → src/api/ask.py (RAG)
 → src/domain/langfuse/tracer.py (tracing)
 → src/domain/cache/client.py (caching)
@@ -626,11 +518,9 @@ uv run pytest
 |---------|-----|
 | Services won't start | Wait 2–3 min; check `docker compose logs <service>` |
 | Hybrid search returns BM25 only | Verify `JINA_API_KEY`; check API logs for embedding errors |
-| Ollama 404 / model not found | Pull model: `docker exec rag-ollama ollama pull llama3.2:1b`; verify with `docker exec rag-ollama ollama list` |
-| Bifrost 502 / private IP blocked | Ensure `allow_private_network: true` in `bifrost/config.json`; restart Bifrost |
+| Bifrost 401 / auth errors | Use a virtual key from `bifrost/config.json` (`BIFROST_API_KEY` / per-agent keys) |
 | Bifrost connection refused | `docker compose up -d bifrost`; verify with `curl http://localhost:8090/health` |
-| Wrong LLM backend in use | Check `LLM_PROVIDER` in `.env` and restart the API |
-| Ollama slow / OOM | Use `llama3.2:1b`; reduce `top_k`; check `docker exec rag-ollama ollama ps` for loaded model size |
+| OpenAI errors from Bifrost | Verify `OPENAI_API_KEY` in `.env` and restart Bifrost |
 | Empty search results | Run Airflow DAG to ingest + index; check `curl localhost:9200/arxiv-papers-chunks/_count` |
 | Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a non-cached query; enable `LANGFUSE__DEBUG=true` |
 | Port conflicts | Stop services on 8000, 8080, 8090, 5412, 9200 |

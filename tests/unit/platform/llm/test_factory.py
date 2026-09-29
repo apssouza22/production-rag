@@ -2,18 +2,10 @@ from src.config import Settings
 from src.platform.bifrost.client import BifrostClient
 from src.platform.llm.factory import make_agent_llm_client, make_llm_client
 from src.platform.llm.protocol import LlmProviderClient
-from src.platform.ollama import OllamaClient
 
 
-def test_make_llm_client_uses_ollama_by_default():
-    settings = Settings(llm_provider="ollama")
-    client = make_llm_client(settings)
-    assert isinstance(client, OllamaClient)
-    assert isinstance(client, LlmProviderClient)
-
-
-def test_make_llm_client_uses_bifrost_when_configured():
-    settings = Settings(llm_provider="bifrost")
+def test_make_llm_client_uses_bifrost():
+    settings = Settings()
     client = make_llm_client(settings)
     assert isinstance(client, BifrostClient)
     assert isinstance(client, LlmProviderClient)
@@ -21,7 +13,6 @@ def test_make_llm_client_uses_bifrost_when_configured():
 
 def test_make_agent_llm_client_uses_agent_specific_api_key():
     settings = Settings(
-        llm_provider="bifrost",
         bifrost_api_key_agent_1="sk-bf-agent-1-dev",
         bifrost_api_key_agent_2="sk-bf-agent-2-dev",
     )

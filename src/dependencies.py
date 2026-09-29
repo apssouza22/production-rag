@@ -77,11 +77,6 @@ def get_llm_client(request: Request) -> LlmProviderClient:
     return request.app.state.llm_client
 
 
-def get_ollama_client(request: Request) -> LlmProviderClient:
-    """Backward-compatible alias for get_llm_client."""
-    return get_llm_client(request)
-
-
 def get_langfuse_tracer(request: Request) -> LangfuseTracer:
     """Get Langfuse tracer from the request state."""
     return request.app.state.langfuse_tracer
@@ -117,7 +112,6 @@ EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
 RerankSearchDep = Annotated[RerankSearchService, Depends(get_rerank_search_service)]
 LLMDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
-OllamaDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]

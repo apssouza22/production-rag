@@ -28,7 +28,6 @@ health: ## Check all services health
 	@curl -s http://localhost:8000/health | jq . || echo "API not responding"
 	@curl -s http://localhost:9200/_cluster/health | jq . || echo "OpenSearch not responding"
 	@curl -s http://localhost:8080/health || echo "Airflow not responding"
-	@curl -s http://localhost:11434/api/version | jq . || echo "Ollama not responding"
 	@curl -s http://localhost:8090/health || echo "Bifrost not responding"
 
 # Development
@@ -63,6 +62,12 @@ rag-eval: ## Run Ragas retrieval evaluation
 
 rag-eval-no-report: ## Run Ragas retrieval evaluation without JSON report
 	uv run python -m evals.rag_evals.main --quick --no-report
+
+rag-eval-experiment: ## Run Ragas eval as a Langfuse experiment
+	uv run python -m evals.rag_evals.main --langfuse-experiment --quick
+
+rag-eval-experiment-no-report: ## Run Langfuse experiment without local JSON report
+	uv run python -m evals.rag_evals.main --langfuse-experiment --quick --no-report
 
 # Cleanup
 clean: ## Clean up everything
