@@ -10,7 +10,6 @@ A production-ready RAG platform for arXiv CS.AI papers, built with:
 - **LangGraph** — Agentic workflows (guardrails, grading, query rewrite)
 - **OpenSearch** — Hybrid retrieval (BM25 + vector + RRF)
 - **PostgreSQL** — Paper metadata and content
-- **Redis** — Exact and semantic response caching
 - **OpenAI** — Direct LLM API (Chat Completions)
 - **Langfuse** — RAG pipeline observability
 - **Apache Airflow** — Ingestion orchestration
@@ -36,7 +35,6 @@ src/
 │   └── texttosql/                # SQL agent
 └── domain/                       # Shared infrastructure & business domains
     ├── opensearch/               # Index config, query builder, client
-    ├── cache/                    # Exact + semantic caching
     ├── llm/                      # LLMClient protocol + factory
     ├── jinaai/                   # Embeddings + reranker
     ├── indexing/                 # Chunking, contextualization
@@ -104,11 +102,6 @@ The `api/` layer should stay thin: validate input, call a service, map the respo
 - One folder per agent under `src/agents/`.
 - Typical files: `graph.py`, `state.py`, `config.py`, `factory.py`, `schemas.py`, `prompts.py`, `nodes/`.
 - Fault-tolerance policies come from `src/domain/agent_fault_tolerance/`.
-
-### Caching
-
-- Only cache successful responses.
-- Use `src/domain/cache/` for exact and semantic cache logic.
 
 ---
 

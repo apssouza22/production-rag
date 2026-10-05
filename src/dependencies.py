@@ -21,7 +21,6 @@ from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.pdf_parser.parser import PDFParserService
 from src.domain.rerank.service import RerankSearchService
-from src.platform.cache.client import CacheClient
 from src.platform.langfuse.client import LangfuseTracer
 
 
@@ -76,11 +75,6 @@ def get_langfuse_tracer(request: Request) -> LangfuseTracer:
     return request.app.state.langfuse_tracer
 
 
-def get_cache_client(request: Request) -> CacheClient | None:
-    """Get cache client from the request state."""
-    return getattr(request.app.state, "cache_client", None)
-
-
 def get_agentic_rag_service(request: Request) -> AgenticRAGService:
     """Get agentic RAG service from the request state."""
     return request.app.state.agentic_rag_service
@@ -106,7 +100,6 @@ EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
 RerankSearchDep = Annotated[RerankSearchService, Depends(get_rerank_search_service)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
-CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]
 TextToSQLDep = Annotated[TextToSQLService, Depends(get_text_to_sql_service)]
 KnowledgeRouterDep = Annotated[KnowledgeRouterService, Depends(get_knowledge_router_service)]

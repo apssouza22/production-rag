@@ -91,7 +91,6 @@ cp .env.example .env
 | **Apache Airflow 3.0** | Workflow automation | ✅ Ready |
 | **Jina AI** | Embedding generation and reranking | ✅ Ready |
 | **OpenAI** | Direct LLM API for generation and agents | ✅ Ready |
-| **Redis Stack** | Exact and semantic response caching | ✅ Ready |
 | **Langfuse** | RAG pipeline observability via Langfuse Cloud | ✅ Ready |
 | **RAG Evals** | LLM-as-judge scoring of Langfuse traces | ✅ Ready |
 
@@ -103,7 +102,7 @@ cp .env.example .env
 arxiv-paper-curator/
 ├── src/                    # Main application code
 │   ├── api/            # API endpoints (search, ask, papers)
-│   ├── domain/           # Business logic (opensearch, agents, cache)
+│   ├── domain/           # Business logic (opensearch, agents, ingestion)
 │   ├── models/             # Database models (SQLAlchemy)
 │   ├── schemas/            # Pydantic validation schemas
 │   └── config.py           # Environment configuration

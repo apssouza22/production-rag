@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from src.dependencies import CacheDep, EmbeddingsDep, OpenSearchDep
+from src.dependencies import EmbeddingsDep, OpenSearchDep
 from src.domain.opensearch.schemas import HybridSearchRequest, SearchHit, SearchResponse
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,6 @@ async def hybrid_search(
     request: HybridSearchRequest,
     opensearch_client: OpenSearchDep,
     embeddings_service: EmbeddingsDep,
-    cache_client: CacheDep,
 ) -> SearchResponse:
     """Hybrid search endpoint supporting multiple search modes."""
     try:
@@ -52,18 +51,7 @@ async def hybrid_search(
             raise HTTPException(status_code=503, detail="Search service is currently unavailable")
 
         query_embedding = None
-        if cache_client:
-            try:
-                cache_result = await cache_client.lookup(request)
-                if cache_result.response:
-                    hit_label = "exact" if cache_result.hit_type == "exact" else "confidence-based"
-                    logger.info("Returning %s cached hybrid search response", hit_label)
-                    return cache_result.response
-                query_embedding = cache_result.query_embedding
-            except Exception as e:
-                logger.warning("Cache check failed, proceeding with normal search: %s", e)
-
-        if request.use_hybrid and query_embedding is None:
+        if request.use_hybrid:
             try:
                 query_embedding = await embeddings_service.embed_query(request.query)
                 logger.info("Generated query embedding for hybrid search")
@@ -86,12 +74,6 @@ async def hybrid_search(
 
         search_response = _build_search_response(request, results, query_embedding)
         logger.info("Search completed: %s results returned", search_response.total)
-
-        if cache_client:
-            try:
-                await cache_client.store(request, search_response, query_embedding=query_embedding)
-            except Exception as e:
-                logger.warning("Failed to store hybrid search response in cache: %s", e)
 
         return search_response
 

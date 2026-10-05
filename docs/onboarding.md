@@ -31,7 +31,6 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 | **OpenSearch** | 9200 | BM25 + vector search |
 | **OpenSearch Dashboards** | 5601 | Search UI / debugging |
 | **Apache Airflow** | 8080 | Scheduled ingestion DAG |
-| **Redis** | 6379 | RAG response cache |
 
 **Langfuse Cloud** — hosted tracing dashboard at [cloud.langfuse.com](https://cloud.langfuse.com); no local Docker services required.
 
@@ -256,7 +255,7 @@ Restart the API after updating `.env`:
 uv run python src/main.py
 ```
 
-**Generate traces** — send a request that runs the full pipeline (cache hits return early and produce minimal tracing):
+**Generate traces** — send a request that runs the full pipeline:
 
 ```bash
 # Standard RAG
@@ -289,7 +288,7 @@ Traces appear within a few seconds of each request (`LANGFUSE__FLUSH_INTERVAL` d
 **Useful dashboard filters:**
 
 - **Time range** — narrow to the last hour after a test run
-- **Latency** — compare cache miss (~15–20s) vs cache hit (~100ms)
+- **Latency** — inspect end-to-end request duration per span
 - **User ID** — standard RAG requests use `api_user`
 - **Search** — filter by query text in trace input/metadata
 
@@ -298,7 +297,7 @@ Traces appear within a few seconds of each request (`LANGFUSE__FLUSH_INTERVAL` d
 - Confirm `LANGFUSE__PUBLIC_KEY` and `LANGFUSE__SECRET_KEY` are set (double underscore)
 - Verify `LANGFUSE__HOST` matches your Langfuse Cloud region
 - Restart the API after changing `.env`
-- Send a non-cached query (identical queries may hit Redis cache and produce minimal tracing)
+- Send a fresh query after restarting the API
 - Enable `LANGFUSE__DEBUG=true` and check API logs for SDK errors
 
 #### OpenAI (LLM)
@@ -344,7 +343,6 @@ src/
     ├── opensearch/            # Index config, query builder, search client
     ├── jinaai/                # Embeddings + reranker clients
     ├── platform/llm/   # OpenAI ChatOpenAI factory
-    ├── cache/                 # Exact + semantic cache
     ├── langfuse/              # Tracing
     ├── db/ + paper/           # Persistence and repositories
     └── pdf_parser/            # Docling wrapper
@@ -423,7 +421,7 @@ All defaults work for local dev except external API keys. See [.env.example](../
 2. **Day 2:** Trace ingestion: Airflow DAG → `MetadataFetcher` → PostgreSQL. Trigger the DAG manually
 3. **Day 3:** Search layer: read `OpenSearchClient.search_unified()`, test all three modes via API
 4. **Day 4:** RAG path: follow `ask.py` end-to-end, test streaming
-5. **Day 5:** Ops layer: verify cache hit/miss, explore Langfuse traces
+5. **Day 5:** Ops layer: explore Langfuse traces and latency breakdowns
 6. **Day 6:** Agents: step through the LangGraph nodes, test `/ask-agentic` with guardrail and rewrite scenarios
 
 ### Key Files to Read in Order
@@ -437,9 +435,8 @@ compose.yml → src/config.py → src/main.py → src/dependencies.py
 → src/platform/llm/factory.py (LLM client factory)
 → src/platform/llm/chat_model.py (ChatOpenAI factory)
 → src/api/ask.py (RAG)
-→ src/domain/langfuse/tracer.py (tracing)
-→ src/domain/cache/client.py (caching)
-→ src/domain/agents/fusionsearch/agentic_rag.py (agentic RAG graph)
+→ src/platform/langfuse/client.py (tracing)
+→ src/agents/fusionsearch/agentic_rag.py (agentic RAG graph)
 → src/domain/agents/knowledgerouter/graph.py (multi-source routing)
 ```
 
@@ -478,7 +475,7 @@ uv run pytest
 | OpenAI 401 / auth errors | Verify `OPENAI_API_KEY` in `.env` and restart the API |
 | OpenAI connection / timeout errors | Check network; increase `LLM_REQUEST_TIMEOUT` if needed |
 | Empty search results | Run Airflow DAG to ingest + index; check `curl localhost:9200/arxiv-papers-chunks/_count` |
-| Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a non-cached query; enable `LANGFUSE__DEBUG=true` |
+| Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a new query; enable `LANGFUSE__DEBUG=true` |
 | Port conflicts | Stop services on 8000, 8080, 5412, 9200 |
 
 Full reset:

@@ -16,7 +16,6 @@ from src.domain.jinaai.factory import make_embeddings_service, make_reranker_cli
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
 from src.domain.rerank.factory import make_rerank_search_service
-from src.platform.cache.factory import make_cache_client
 from src.platform.langfuse.factory import make_langfuse_tracer
 
 # Setup logging
@@ -52,7 +51,6 @@ async def lifespan(app: FastAPI):
         reranker_client=app.state.reranker_service,
     )
     app.state.langfuse_tracer = make_langfuse_tracer()
-    app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
 
     app.state.agentic_rag_service = make_agentic_rag_service(
         opensearch_client=app.state.opensearch_client,
