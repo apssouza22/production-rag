@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from typing import List, Optional
+from typing import List
 
-from src.platform.llm.protocol import LlmProviderClient
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 
 from .models import TextChunk
 from .prompts import CHUNK_CONTEXT_PROMPT
@@ -20,21 +21,16 @@ class ChunkContextualizer:
 
     def __init__(
         self,
-        llm_client: LlmProviderClient,
-        model: str,
+        chat_model: BaseChatModel,
         max_document_chars: int = 50_000,
         max_concurrent_requests: int = 3,
-        temperature: float = 0.0,
     ):
-        self.llm_client = llm_client
-        self.model = model
+        self.chat_model = chat_model
         self.max_document_chars = max_document_chars
         self.max_concurrent_requests = max_concurrent_requests
-        self.temperature = temperature
 
         logger.info(
-            "Chunk contextualizer initialized: model=%s, max_document_chars=%d, max_concurrent=%d",
-            model,
+            "Chunk contextualizer initialized: max_document_chars=%d, max_concurrent=%d",
             max_document_chars,
             max_concurrent_requests,
         )
@@ -112,18 +108,9 @@ class ChunkContextualizer:
     async def _generate_context(self, document: str, chunk: str) -> str:
         """Call the LLM to generate situating context for a single chunk."""
         prompt = CHUNK_CONTEXT_PROMPT.format(document=document, chunk=chunk)
-        result = await self.llm_client.generate(
-            model=self.model,
-            prompt=prompt,
-            temperature=self.temperature,
-        )
-        context = self._extract_response(result)
+        response = await self.chat_model.ainvoke([HumanMessage(content=prompt)])
+        content = response.content if isinstance(response.content, str) else str(response.content)
+        context = content.strip()
         if not context:
             raise ValueError("LLM returned empty context")
         return context
-
-    @staticmethod
-    def _extract_response(result: Optional[dict]) -> str:
-        if not result:
-            return ""
-        return str(result.get("response", "")).strip()

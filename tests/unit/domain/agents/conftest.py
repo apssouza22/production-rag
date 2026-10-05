@@ -77,14 +77,6 @@ def mock_rerank_search_service(
 
 
 @pytest.fixture
-def mock_llm_client():
-    """Mock LLM client."""
-    client = Mock()
-    client.get_langchain_model = Mock(return_value=AsyncMock())
-    return client
-
-
-@pytest.fixture
 def sample_human_message():
     """Sample human message for node tests."""
     from langchain_core.messages import HumanMessage

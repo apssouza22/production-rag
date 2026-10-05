@@ -168,11 +168,6 @@ simple_auth_manager_passwords.json.generated
 # OpenSearch
 opensearch_data/
 
-# Bifrost runtime data
-bifrost/config.db
-bifrost/logs.db
-bifrost/*.db-journal
-
 # Data directories
 data/
 
@@ -183,5 +178,3 @@ test_data/
 # Evals outputs
 evals/reports/*.json
 
-/bifrost/logs.db-shm
-/bifrost/logs.db-wal

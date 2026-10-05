@@ -36,7 +36,7 @@ def test_settings_llm_defaults():
     """Test LLM provider default configuration."""
     settings = Settings()
 
-    assert settings.bifrost_host in ["http://localhost:8090", "http://bifrost:8080"]
+    assert settings.llm_fallback_models
     assert settings.agent_model == "gpt-5.6-luna"
     assert settings.reasoning_effort == "low"
     assert settings.llm_request_timeout == 300

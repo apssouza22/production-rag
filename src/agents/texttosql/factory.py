@@ -2,14 +2,13 @@ from typing import Optional
 
 from src.config import get_settings
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.protocol import LlmProviderClient
+from src.platform.llm.chat_model import make_chat_model
 
 from .config import TextToSQLConfig
 from .service import TextToSQLService
 
 
 def make_text_to_sql_service(
-    llm_client: LlmProviderClient,
     langfuse_tracer: Optional[LangfuseTracer] = None,
     model: Optional[str] = None,
     top_k: int = 5,
@@ -24,7 +23,7 @@ def make_text_to_sql_service(
     )
 
     return TextToSQLService(
-        llm_client=llm_client,
+        chat_model=make_chat_model(settings, agent_config.model, temperature=agent_config.temperature),
         langfuse_tracer=langfuse_tracer,
         agent_config=agent_config,
     )

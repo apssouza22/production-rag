@@ -1,6 +1,6 @@
 """Tests for AgenticRAGGraph node methods."""
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -12,7 +12,7 @@ from src.agents.fusionsearch.utils import get_latest_context, get_latest_query
 
 
 @pytest.fixture
-def graph(mock_llm_client, mock_rerank_search_service):
+def graph(mock_rerank_search_service):
     """AgenticRAGGraph with mocked dependencies."""
     config = GraphConfig(
         model="gpt-4o-mini",
@@ -21,7 +21,6 @@ def graph(mock_llm_client, mock_rerank_search_service):
         guardrail_threshold=60,
     )
     return AgenticRAGGraph(
-        llm_client=mock_llm_client,
         rerank_search_service=mock_rerank_search_service,
         config=config,
     )
@@ -65,14 +64,13 @@ class TestGradeDocumentsNode:
                 reasoning="Document discusses transformers which is relevant",
             )
         )
-        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
-
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
 
-        result = await graph.grade_documents(state)
+        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+            result = await graph.grade_documents(state)
 
         assert "grading_results" in result
 
@@ -85,14 +83,13 @@ class TestGradeDocumentsNode:
                 reasoning="Document is not relevant to the query",
             )
         )
-        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
-
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
 
-        result = await graph.grade_documents(state)
+        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+            result = await graph.grade_documents(state)
 
         assert "grading_results" in result
 
@@ -107,15 +104,14 @@ class TestRewriteQueryNode:
                 reasoning="Expanded technical terms",
             )
         )
-        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
-
         state: AgentState = {
             "messages": [sample_human_message],
             "retrieval_attempts": 1,
             "original_query": sample_human_message.content,
         }
 
-        result = await graph.rewrite_query(state)
+        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+            result = await graph.rewrite_query(state)
 
         assert isinstance(result["messages"][0], HumanMessage)
         assert result["rewritten_query"]
@@ -228,8 +224,6 @@ class TestValidateAnswerNode:
         )
         mock_llm = Mock()
         mock_llm.with_structured_output = Mock(return_value=mock_structured_llm)
-        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
-
         state: AgentState = {
             "messages": [
                 sample_human_message,
@@ -238,7 +232,8 @@ class TestValidateAnswerNode:
             "relevant_sources": sources,
         }
 
-        result = await graph.validate_answer(state)
+        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+            result = await graph.validate_answer(state)
 
         assert result["abstained"] is False
         assert result["response_status"] == "answered"
@@ -251,14 +246,13 @@ class TestGenerateAnswerNode:
         mock_llm.ainvoke = AsyncMock(
             return_value=Mock(content="Based on the papers, transformers are neural network architectures.")
         )
-        graph.llm_client.get_langchain_model = Mock(return_value=mock_llm)
-
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
 
-        result = await graph.generate_answer(state)
+        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+            result = await graph.generate_answer(state)
 
         assert isinstance(result["messages"][0], AIMessage)
         assert len(result["messages"][0].content) > 0

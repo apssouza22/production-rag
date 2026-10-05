@@ -18,7 +18,6 @@ from src.domain.pdf_parser.factory import make_pdf_parser_service
 from src.domain.rerank.factory import make_rerank_search_service
 from src.platform.cache.factory import make_cache_client
 from src.platform.langfuse.factory import make_langfuse_tracer
-from src.platform.llm.factory import make_agent_llm_client, make_llm_client
 
 # Setup logging
 logging.basicConfig(
@@ -52,26 +51,22 @@ async def lifespan(app: FastAPI):
         embeddings_client=app.state.embeddings_service,
         reranker_client=app.state.reranker_service,
     )
-    app.state.llm_client = make_llm_client()
     app.state.langfuse_tracer = make_langfuse_tracer()
     app.state.cache_client = make_cache_client(settings, embeddings_client=app.state.embeddings_service)
 
     app.state.agentic_rag_service = make_agentic_rag_service(
         opensearch_client=app.state.opensearch_client,
-        llm_client=make_agent_llm_client("agent_1", settings),
         embeddings_client=app.state.embeddings_service,
         reranker_client=app.state.reranker_service,
         langfuse_tracer=app.state.langfuse_tracer,
     )
     app.state.text_to_sql_service = make_text_to_sql_service(
-        llm_client=make_agent_llm_client("agent_2", settings),
         langfuse_tracer=app.state.langfuse_tracer,
         model=settings.agent_model,
     )
     app.state.knowledge_router_service = make_knowledge_router_service(
         agentic_rag_service=app.state.agentic_rag_service,
         text_to_sql_service=app.state.text_to_sql_service,
-        llm_client=make_agent_llm_client("agent_2", settings),
         langfuse_tracer=app.state.langfuse_tracer,
         model=settings.agent_model,
     )

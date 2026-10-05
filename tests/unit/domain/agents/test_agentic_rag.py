@@ -12,7 +12,7 @@ from src.domain.rerank.factory import make_rerank_search_service
 
 
 @pytest.fixture
-def test_service(mock_opensearch_client, mock_llm_client, mock_jina_embeddings_client, mock_jina_reranker_client):
+def test_service(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_reranker_client):
     """Create AgenticRAGService with mocked dependencies."""
     config = GraphConfig(
         model="gpt-4o-mini",
@@ -29,12 +29,10 @@ def test_service(mock_opensearch_client, mock_llm_client, mock_jina_embeddings_c
         config=_build_rerank_search_config(config),
     )
     graph_builder = make_agentic_rag_graph(
-        llm_client=mock_llm_client,
         graph_config=config,
         rerank_search_service=rerank_search_service,
     )
     return AgenticRAGService(
-        llm_client=mock_llm_client,
         graph_builder=graph_builder,
         rerank_search_service=rerank_search_service,
         langfuse_tracer=None,
@@ -56,7 +54,7 @@ class TestAgenticRAGServiceInitialization:
 
     def test_service_initialization(self, test_service):
         """Test that service initializes correctly."""
-        assert test_service.llm is not None
+        assert test_service.graph_builder is not None
         assert test_service.graph is not None
         assert test_service.graph_config is not None
         assert any(

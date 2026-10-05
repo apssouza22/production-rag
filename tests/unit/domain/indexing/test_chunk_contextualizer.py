@@ -1,4 +1,7 @@
+from unittest.mock import AsyncMock, Mock
+
 import pytest
+from langchain_core.messages import AIMessage
 from src.domain.indexing.chunk_contextualizer import ChunkContextualizer
 from src.domain.indexing.models import ChunkMetadata, TextChunk
 
@@ -19,20 +22,23 @@ def _make_chunk(text: str = "chunk body", chunk_index: int = 0) -> TextChunk:
     )
 
 
-class MockLLMClient:
-    def __init__(self, response: str = "Context about transformers in NLP."):
-        self.response = response
-        self.calls = []
+def _mock_chat_model(response: str) -> Mock:
+    model = Mock()
+    model.ainvoke = AsyncMock(return_value=AIMessage(content=response))
+    model.calls = []
 
-    async def generate(self, model: str, prompt: str, **kwargs):
-        self.calls.append({"model": model, "prompt": prompt, **kwargs})
-        return {"response": self.response}
+    async def tracked_ainvoke(messages):
+        model.calls.append(messages)
+        return AIMessage(content=response)
+
+    model.ainvoke = tracked_ainvoke
+    return model
 
 
 @pytest.mark.asyncio
 async def test_contextualize_chunks_attaches_context():
-    llm = MockLLMClient(response="BERT is a transformer model for language understanding.")
-    contextualizer = ChunkContextualizer(llm_client=llm, model="test-model", max_concurrent_requests=2)
+    llm = _mock_chat_model("BERT is a transformer model for language understanding.")
+    contextualizer = ChunkContextualizer(chat_model=llm, max_concurrent_requests=2)
 
     chunks = [_make_chunk("BERT uses bidirectional attention."), _make_chunk("Results on GLUE benchmark.")]
 
@@ -46,17 +52,17 @@ async def test_contextualize_chunks_attaches_context():
     assert len(result) == 2
     assert all(chunk.metadata.chunk_context == "BERT is a transformer model for language understanding." for chunk in result)
     assert len(llm.calls) == 2
-    assert "BERT: Pre-training" in llm.calls[0]["prompt"]
-    assert "bidirectional attention" in llm.calls[0]["prompt"]
+    prompt = llm.calls[0][0].content
+    assert "BERT: Pre-training" in prompt
+    assert "bidirectional attention" in prompt
 
 
 @pytest.mark.asyncio
 async def test_contextualize_chunks_continues_on_llm_failure():
-    class FailingLLM:
-        async def generate(self, model: str, prompt: str, **kwargs):
-            raise RuntimeError("LLM unavailable")
+    failing = Mock()
+    failing.ainvoke = AsyncMock(side_effect=RuntimeError("LLM unavailable"))
 
-    contextualizer = ChunkContextualizer(llm_client=FailingLLM(), model="test-model")
+    contextualizer = ChunkContextualizer(chat_model=failing)
     chunks = [_make_chunk()]
 
     result = await contextualizer.contextualize_chunks(chunks=chunks, document="doc")
@@ -74,7 +80,7 @@ def test_get_contextualized_text_with_and_without_context():
 
 
 def test_prepare_document_truncates_long_text():
-    contextualizer = ChunkContextualizer(llm_client=MockLLMClient(), model="test-model", max_document_chars=100)
+    contextualizer = ChunkContextualizer(chat_model=Mock(), max_document_chars=100)
     prepared = contextualizer._prepare_document(
         document="x" * 200,
         title="Short Title",
@@ -86,7 +92,7 @@ def test_prepare_document_truncates_long_text():
 
 
 def test_prepare_document_includes_title_and_abstract():
-    contextualizer = ChunkContextualizer(llm_client=MockLLMClient(), model="test-model")
+    contextualizer = ChunkContextualizer(chat_model=Mock())
     prepared = contextualizer._prepare_document(
         document="Body content here.",
         title="My Paper",

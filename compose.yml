@@ -12,8 +12,6 @@ services:
 #        condition: service_healthy
 #      redis:
 #        condition: service_healthy
-#      bifrost:
-#        condition: service_healthy
 #    healthcheck:
 #      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
 #      interval: 30s
@@ -26,7 +24,6 @@ services:
 #      # Container-specific overrides
 #      - OPENSEARCH_HOST=http://opensearch:9200
 #      - OPENSEARCH__HOST=http://opensearch:9200
-#      - BIFROST_HOST=http://bifrost:8080
 #      - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5412/rag_db
 #      - REDIS__HOST=redis
 #    networks:
@@ -115,7 +112,6 @@ services:
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
       - OPENSEARCH_HOST=http://opensearch:9200
       - OPENSEARCH__HOST=http://opensearch:9200
-      - BIFROST_HOST=http://bifrost:8080
       - REDIS__HOST=redis
       # Persist downloaded PDFs to host ./data/arxiv_pdfs (mounted at /opt/airflow/data)
       - ARXIV__PDF_CACHE_DIR=/opt/airflow/data/arxiv_pdfs
@@ -134,31 +130,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
-    networks:
-      - rag-network
-
-  bifrost:
-    image: maximhq/bifrost:v2.0.0
-    container_name: rag-bifrost
-    ports:
-      - "8090:8080"
-    env_file:
-      - .env
-    environment:
-      - APP_HOST=0.0.0.0
-      - APP_PORT=8080
-      - LOG_LEVEL=info
-      - LOG_STYLE=pretty
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    volumes:
-      - ./bifrost:/app/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
     networks:
       - rag-network
 

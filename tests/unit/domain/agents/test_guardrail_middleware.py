@@ -11,11 +11,8 @@ from src.platform.middleware.types import AgentContext
 
 
 @pytest.fixture
-def middleware(mock_llm_client):
-    return GuardrailMiddleware(
-        llm_client=mock_llm_client,
-        config=GraphConfig(guardrail_threshold=60),
-    )
+def middleware():
+    return GuardrailMiddleware(config=GraphConfig(guardrail_threshold=60))
 
 
 def _make_ctx(query: str = "What are transformers?") -> AgentContext:

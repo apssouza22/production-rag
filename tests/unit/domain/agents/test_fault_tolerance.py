@@ -54,7 +54,6 @@ class TestAgenticRagFailureFlow:
     @pytest.mark.asyncio
     async def test_retry_then_route_to_handle_failure(self):
         graph = AgenticRAGGraph(
-            llm_client=MagicMock(),
             rerank_search_service=MagicMock(),
             config=GraphConfig(),
         )
@@ -191,7 +190,6 @@ class TestAgenticRagGraphCompilation:
         from src.agents.fusionsearch.factory import make_agentic_rag_service
 
         service = make_agentic_rag_service(
-            llm_client=MagicMock(),
             opensearch_client=MagicMock(),
             embeddings_client=MagicMock(),
         )

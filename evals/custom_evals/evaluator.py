@@ -34,16 +34,11 @@ class Evaluator:
         """Initialize Evaluator with OpenAI and Langfuse clients."""
         self.settings = get_settings()
 
-        use_bifrost = self.settings.bifrost_enabled or self.settings.evaluation_llm_provider == "bifrost"
-        if use_bifrost:
-            client_kwargs = build_openai_client_kwargs(self.settings)
-        else:
-            client_kwargs = build_openai_client_kwargs(
-                self.settings,
-                api_key=self.settings.evaluation_api_key or self.settings.openai_api_key or None,
-                base_url=self.settings.evaluation_base_url or None,
-            )
-
+        client_kwargs = build_openai_client_kwargs(
+            self.settings,
+            api_key=self.settings.evaluation_api_key or self.settings.openai_api_key or None,
+            base_url=self.settings.evaluation_base_url or None,
+        )
         self.client = openai.AsyncOpenAI(**client_kwargs)
         self.langfuse = Langfuse(
             public_key=self.settings.langfuse_public_key,

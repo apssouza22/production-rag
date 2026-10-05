@@ -6,7 +6,6 @@ from typing import Optional
 from langchain_core.messages import AIMessage
 
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware.types import AgentContext, AgentMiddleware, InvokeResult
 
 from ..config import GraphConfig
@@ -26,11 +25,9 @@ class GuardrailMiddleware(AgentMiddleware):
 
     def __init__(
         self,
-        llm_client: LlmProviderClient,
         config: GraphConfig,
         langfuse_tracer: Optional[LangfuseTracer] = None,
     ) -> None:
-        self.llm_client = llm_client
         self.config = config
         self.langfuse_tracer = langfuse_tracer
 
@@ -41,7 +38,7 @@ class GuardrailMiddleware(AgentMiddleware):
 
         result = await evaluate_guardrail(
             query=query,
-            llm_client=self.llm_client,
+            settings=self.config.settings,
             model_name=model_name,
             threshold=self.config.guardrail_threshold,
             langfuse_tracer=self.langfuse_tracer,

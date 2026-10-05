@@ -4,6 +4,8 @@ Most RAG tutorials end where the interesting work starts. You load documents, sp
 
 This article walks through a system built to survive that. It is a real codebase (an arXiv research assistant), so every number, threshold, and file path below comes from working code rather than a whiteboard. Use it as a map of the decisions you have to make, not as a template to copy.
 
+> **Note (2026):** The codebase calls the OpenAI API via LangChain (`make_chat_model()` in `src/platform/llm/`, `OPENAI_API_KEY`, `LLM_FALLBACK_MODELS`). Sections that describe the Bifrost gateway are historical context; they no longer match the default deployment.
+
 The domain is deliberately boring: ingest arXiv CS.AI papers, index them, answer questions about them with citations. Boring domains are good for this because nothing about the architecture depends on the topic. Swap papers for contracts, support tickets, or internal wikis and the same problems show up in the same order.
 
 ---

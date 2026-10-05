@@ -39,11 +39,6 @@ class RagEvalSettings(BaseSettings):
     rag_eval_langfuse_dataset: str = ""
     rag_eval_max_concurrency: int = Field(default=3, ge=1, le=50)
 
-    bifrost_enabled: bool = False
-    bifrost_host: str = "http://localhost:8090"
-    bifrost_api_key: str = "sk-bf-agent-1-dev"
-    evaluation_llm_provider: str = Field(default="openai", validation_alias="EVALUATION_LLM_PROVIDER")
-
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
 
 
@@ -54,13 +49,6 @@ def get_settings() -> RagEvalSettings:
 def build_eval_openai_client_kwargs(settings: RagEvalSettings | None = None) -> dict:
     """Build kwargs for the OpenAI SDK client used by Ragas metrics."""
     resolved = settings or get_settings()
-    use_bifrost = resolved.bifrost_enabled or resolved.evaluation_llm_provider == "bifrost"
-    if use_bifrost:
-        return build_openai_client_kwargs(
-            api_key=resolved.bifrost_api_key,
-            base_url=f"{resolved.bifrost_host.rstrip('/')}/v1",
-        )
-
     return build_openai_client_kwargs(
         api_key=resolved.evaluation_api_key or resolved.openai_api_key or None,
         base_url=resolved.evaluation_base_url or None,

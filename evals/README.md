@@ -11,7 +11,7 @@ Evals share the root virtualenv and `.env` file. Import from `src` the same way 
 
 1. The main RAG API is running with Langfuse tracing enabled (`LANGFUSE__*` in the root `.env`)
 2. You have sent at least one query that produced an unscored trace in [Langfuse Cloud](https://cloud.langfuse.com)
-3. An OpenAI API key (or Bifrost gateway) for the judge LLM
+3. An OpenAI API key for the judge LLM
 
 ## Setup
 
@@ -29,22 +29,10 @@ Configure eval-related variables in the root `.env` (see `.env.example`):
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key (same project as the RAG API) |
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key |
 | `LANGFUSE_HOST` | `https://cloud.langfuse.com` or `https://us.cloud.langfuse.com` |
-| `EVALUATION_LLM` | Judge model (e.g. `gpt-4o-mini`; use `openai/gpt-4o-mini` with Bifrost) |
+| `EVALUATION_LLM` | Judge model (e.g. `gpt-4o-mini`) |
 | `EVALUATION_API_KEY` | API key for the judge LLM (falls back to `OPENAI_API_KEY`) |
 | `EVALUATION_BASE_URL` | OpenAI-compatible endpoint (default: `https://api.openai.com/v1`) |
 | `EVALUATION_SLEEP_TIME` | Seconds to wait between traces (default: `10`) |
-
-Optional Bifrost routing for the judge LLM:
-
-```bash
-BIFROST_ENABLED=true
-# or: EVALUATION_LLM_PROVIDER=bifrost
-BIFROST_HOST=http://localhost:8090
-BIFROST_API_KEY=sk-bf-agent-1-dev   # virtual key from bifrost/config.json
-EVALUATION_LLM=openai/gpt-4o-mini   # optional; unprefixed names also work
-```
-
-With `enforce_auth_on_inference: true` in Bifrost, `dummy-key` is rejected — use a configured virtual key.
 
 ## Usage
 
@@ -84,7 +72,7 @@ Evaluates retrieval and response quality with Ragas metrics. For each query in t
 
 1. The main RAG API stack is running (`make start` from the repo root)
 2. OpenSearch is indexed with papers
-3. An OpenAI API key (or Bifrost gateway) for Ragas judge metrics
+3. An OpenAI API key for Ragas judge metrics
 
 ### Metrics
 

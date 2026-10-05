@@ -31,7 +31,6 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 | **OpenSearch** | 9200 | BM25 + vector search |
 | **OpenSearch Dashboards** | 5601 | Search UI / debugging |
 | **Apache Airflow** | 8080 | Scheduled ingestion DAG |
-| **Bifrost** | 8090 | LLM gateway (OpenAI-compatible API) |
 | **Redis** | 6379 | RAG response cache |
 
 **Langfuse Cloud** — hosted tracing dashboard at [cloud.langfuse.com](https://cloud.langfuse.com); no local Docker services required.
@@ -84,10 +83,10 @@ Wait 2–3 minutes for health checks, then verify:
 
 ```bash
 curl http://localhost:8000/api/v1/health
-make health   # checks API, OpenSearch, Airflow, Bifrost
+make health   # checks API, OpenSearch, Airflow
 ```
 
-Set `OPENAI_API_KEY` in `.env` before running generation (see [Bifrost](#bifrost-llm-gateway)).
+Set `OPENAI_API_KEY` in `.env` before running generation (see [OpenAI](#openai-llm)).
 
 ### Service URLs
 
@@ -97,7 +96,6 @@ Set `OPENAI_API_KEY` in `.env` before running generation (see [Bifrost](#bifrost
 | http://localhost:8080 | Airflow web UI |
 | http://localhost:5601 | OpenSearch Dashboards |
 | https://cloud.langfuse.com | Langfuse Cloud tracing dashboard |
-| http://localhost:8090 | Bifrost gateway (Web UI + `/v1` API) |
 
 ### Accessing PostgreSQL, OpenSearch, Airflow & Langfuse
 
@@ -303,69 +301,29 @@ Traces appear within a few seconds of each request (`LANGFUSE__FLUSH_INTERVAL` d
 - Send a non-cached query (identical queries may hit Redis cache and produce minimal tracing)
 - Enable `LANGFUSE__DEBUG=true` and check API logs for SDK errors
 
-#### Bifrost (LLM gateway)
+#### OpenAI (LLM)
 
-[Bifrost](https://docs.getbifrost.ai/) is the OpenAI-compatible gateway used by the RAG API for all LLM calls.
+All generation and agent calls use the [OpenAI API](https://platform.openai.com/docs/api-reference) directly via `langchain-openai`.
 
-| Setting | Value |
-|---------|-------|
-| Web UI + API | http://localhost:8090 |
-| Container | `rag-bifrost` |
-| LangChain endpoint | `http://localhost:8090/langchain` |
-| Config file | `bifrost/config.json` |
-| Data volume | `./bifrost/` (SQLite config + logs) |
-
-**When to use Bifrost:**
-
-- Unified OpenAI-compatible API for LangChain clients
-- Request logging, metrics, and provider management via the Web UI
-- A stepping stone toward multi-provider routing in production
-
-**Start Bifrost:**
+**Application configuration:**
 
 ```bash
-docker compose up -d bifrost
-```
-
-Port **8090** is used because Airflow already occupies **8080**.
-
-**Verify Bifrost:**
-
-```bash
-curl http://localhost:8090/health
-curl http://localhost:8090/v1/models
-
-curl -X POST http://localhost:8090/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-bf-agent-1-dev" \
-  -d '{
-    "model": "openai/gpt-4o-mini",
-    "messages": [{"role": "user", "content": "Hello, Bifrost!"}]
-  }'
-```
-
-**Application configuration** — host API talking to Bifrost on the published port:
-
-```bash
-BIFROST_HOST=http://localhost:8090
-BIFROST_API_KEY=sk-bf-agent-1-dev
-AGENT_MODEL=gpt-5.6-luna
-LLM_REQUEST_TIMEOUT=300
 OPENAI_API_KEY=your_openai_api_key_here
+AGENT_MODEL=gpt-5.6-luna
+LLM_FALLBACK_MODELS=gpt-5.6-luna,gpt-4o-mini
+LLM_REQUEST_TIMEOUT=300
+REASONING_EFFORT=low
 ```
 
-If the API runs inside Docker Compose instead, use `BIFROST_HOST=http://bifrost:8080`.
+Optional: `OPENAI_BASE_URL` to point at an OpenAI-compatible proxy (default `https://api.openai.com/v1`).
 
 **Code layout:**
 
 | Module | Role |
 |--------|------|
-| `src/platform/llm/` | `LlmProviderClient` protocol + `make_llm_client()` factory |
-| `src/platform/bifrost/` | Bifrost client (`ChatOpenAI` via `/langchain`) |
+| `src/platform/llm/` | `make_chat_model()` — builds LangChain `ChatOpenAI` with fallbacks |
 
-After editing `bifrost/config.json`, restart Bifrost. If the SQLite config DB was already seeded, remove `bifrost/config.db` and restart so the file changes are picked up.
-
-**Health check:** `/api/v1/health` reports Bifrost status under the `bifrost` service key.
+**Health check:** `/api/v1/health` reports OpenAI status under the `openai` service key.
 
 ### Project Layout
 
@@ -385,7 +343,7 @@ src/
     ├── indexing/              # Chunking, contextualization, hybrid indexing
     ├── opensearch/            # Index config, query builder, search client
     ├── jinaai/                # Embeddings + reranker clients
-    ├── platform/llm/ + platform/bifrost/   # LLM protocol and Bifrost client
+    ├── platform/llm/   # OpenAI ChatOpenAI factory
     ├── cache/                 # Exact + semantic cache
     ├── langfuse/              # Tracing
     ├── db/ + paper/           # Persistence and repositories
@@ -414,7 +372,7 @@ flowchart LR
     I -->|Hit| J[Response]
     I -->|Miss| K[Hybrid Search]
     K --> G
-    K --> L[Bifrost LLM]
+    K --> L[OpenAI LLM]
     L --> M[Cache Store]
     M --> N[Langfuse Trace]
     N --> J
@@ -446,12 +404,11 @@ Full interactive docs: http://localhost:8000/docs
 | `JINA_API_KEY` | Yes | Hybrid/vector search and reranking |
 | `LANGFUSE__PUBLIC_KEY` / `SECRET_KEY` | Optional | Tracing (create in Langfuse Cloud → Settings → API Keys) |
 | `LANGFUSE__HOST` | Optional | Langfuse Cloud URL (`https://cloud.langfuse.com` or `https://us.cloud.langfuse.com`) |
-| `BIFROST_HOST` | Yes | Bifrost URL (`http://localhost:8090` on host; `http://bifrost:8080` in compose) |
-| `BIFROST_API_KEY` | Yes | Default Bifrost virtual key (see `bifrost/config.json`) |
-| `OPENAI_API_KEY` | Yes | OpenAI provider key used by Bifrost |
+| `OPENAI_API_KEY` | Yes | OpenAI API key for all LLM calls |
+| `LLM_FALLBACK_MODELS` | Optional | Comma-separated fallback models (default `gpt-5.6-luna,gpt-4o-mini`) |
 | `LLM_REQUEST_TIMEOUT` | Optional | Generation timeout in seconds (default `300`) |
 | `AGENT_MODEL` | Optional | Model used by agent graphs (default `gpt-5.6-luna`) |
-| `REASONING_EFFORT` | Optional | Reasoning effort for GPT-5.x models via Bifrost (default `low`) |
+| `REASONING_EFFORT` | Optional | Reasoning effort for GPT-5.x models (default `low`) |
 | `CHUNKING__*` | Optional | Chunk size, overlap, and contextualization tuning |
 | `REDIS__TTL_HOURS` | Optional | Cache expiration (default `6`) |
 
@@ -478,7 +435,7 @@ compose.yml → src/config.py → src/main.py → src/dependencies.py
 → src/domain/opensearch/client.py (search)
 → src/domain/jinaai/jina_reranker_client.py (reranking)
 → src/platform/llm/factory.py (LLM client factory)
-→ src/platform/bifrost/client.py (Bifrost gateway)
+→ src/platform/llm/chat_model.py (ChatOpenAI factory)
 → src/api/ask.py (RAG)
 → src/domain/langfuse/tracer.py (tracing)
 → src/domain/cache/client.py (caching)
@@ -518,12 +475,11 @@ uv run pytest
 |---------|-----|
 | Services won't start | Wait 2–3 min; check `docker compose logs <service>` |
 | Hybrid search returns BM25 only | Verify `JINA_API_KEY`; check API logs for embedding errors |
-| Bifrost 401 / auth errors | Use a virtual key from `bifrost/config.json` (`BIFROST_API_KEY` / per-agent keys) |
-| Bifrost connection refused | `docker compose up -d bifrost`; verify with `curl http://localhost:8090/health` |
-| OpenAI errors from Bifrost | Verify `OPENAI_API_KEY` in `.env` and restart Bifrost |
+| OpenAI 401 / auth errors | Verify `OPENAI_API_KEY` in `.env` and restart the API |
+| OpenAI connection / timeout errors | Check network; increase `LLM_REQUEST_TIMEOUT` if needed |
 | Empty search results | Run Airflow DAG to ingest + index; check `curl localhost:9200/arxiv-papers-chunks/_count` |
 | Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a non-cached query; enable `LANGFUSE__DEBUG=true` |
-| Port conflicts | Stop services on 8000, 8080, 8090, 5412, 9200 |
+| Port conflicts | Stop services on 8000, 8080, 5412, 9200 |
 
 Full reset:
 

@@ -8,7 +8,6 @@ from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.rerank.service import RerankSearchService
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
-from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware import (
     AgentContext,
     AgentPipeline,
@@ -16,6 +15,7 @@ from src.platform.middleware import (
     LoggingMiddleware,
     TrajectoryMiddleware,
 )
+
 from .config import GraphConfig
 from .context import Context
 from .graph import AgenticRAGGraph
@@ -29,7 +29,6 @@ class AgenticRAGService:
 
     def __init__(
         self,
-        llm_client: LlmProviderClient,
         graph_builder: AgenticRAGGraph,
         rerank_search_service: RerankSearchService,
         reranker_client: JinaRerankerClient | None = None,
@@ -38,14 +37,12 @@ class AgenticRAGService:
     ):
         """Initialize agentic RAG service.
 
-        :param llm_client: Client for LLM generation
         :param graph_builder: Graph builder used for per-request overrides
         :param rerank_search_service: Retrieval service with mutable search config
         :param reranker_client: Optional client for Jina reranking
         :param langfuse_tracer: Optional Langfuse tracer
         :param graph_config: Configuration for graph execution
         """
-        self.llm = llm_client
         self.graph_builder = graph_builder
         self.rerank_search_service = rerank_search_service
         self.reranker = reranker_client
@@ -63,7 +60,6 @@ class AgenticRAGService:
                 ),
                 TrajectoryMiddleware(),
                 GuardrailMiddleware(
-                    llm_client=llm_client,
                     config=self.graph_config,
                     langfuse_tracer=langfuse_tracer,
                 ),

@@ -13,7 +13,7 @@ opensearch-py>=2.4.0
 # Database drivers
 psycopg2-binary>=2.9.0
 
-# LLM dependencies (used by indexing contextualization and Bifrost client)
+# LLM dependencies (used by indexing contextualization and OpenAI client)
 langchain>=0.3.0
 langchain-core>=1.4.7
 langchain-community>=0.3.0

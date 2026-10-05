@@ -4,8 +4,9 @@ import logging
 import time
 from typing import Optional
 
+from src.config import Settings
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.protocol import LlmProviderClient
+from src.platform.llm.chat_model import make_chat_model
 
 from .models import GuardrailScoring
 from .prompts import GUARDRAIL_PROMPT
@@ -31,7 +32,7 @@ def build_out_of_scope_message(question: str) -> str:
 
 async def evaluate_guardrail(
     query: str,
-    llm_client: LlmProviderClient,
+    settings: Settings,
     model_name: str,
     threshold: int,
     *,
@@ -56,7 +57,7 @@ async def evaluate_guardrail(
 
     try:
         guardrail_prompt = GUARDRAIL_PROMPT.format(question=query)
-        llm = llm_client.get_langchain_model(model=model_name, temperature=0.0)
+        llm = make_chat_model(settings, model_name, temperature=0.0)
         structured_llm = llm.with_structured_output(GuardrailScoring)
         response = await structured_llm.ainvoke(guardrail_prompt)
         logger.info("Guardrail result - Score: %s, Reason: %s", response.score, response.reason)

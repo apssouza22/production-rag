@@ -2,17 +2,19 @@ import logging
 import time
 from typing import List, Optional
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
-from src.platform.llm.protocol import LlmProviderClient
+from src.platform.llm.chat_model import make_chat_model
 from src.platform.middleware import (
     AgentContext,
     AgentPipeline,
     ErrorHandlingMiddleware,
     LoggingMiddleware,
 )
+
 from .config import TextToSQLConfig
 from .graph import build_text_to_sql_graph
 from .tools import create_sql_tools
@@ -25,11 +27,10 @@ class TextToSQLService:
 
     def __init__(
         self,
-        llm_client: LlmProviderClient,
+        chat_model: BaseChatModel,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         agent_config: Optional[TextToSQLConfig] = None,
     ):
-        self.llm = llm_client
         self.langfuse_tracer = langfuse_tracer
         self.agent_config = agent_config or TextToSQLConfig()
 
@@ -38,10 +39,7 @@ class TextToSQLService:
             include_tables=self.agent_config.include_tables,
             sample_rows_in_table_info=self.agent_config.sample_rows_in_table_info,
         )
-        self.model = self.llm.get_langchain_model(
-            model=self.agent_config.model,
-            temperature=self.agent_config.temperature,
-        )
+        self.model = chat_model
 
         self.middleware_pipeline = AgentPipeline(
             middlewares=[
@@ -82,8 +80,9 @@ class TextToSQLService:
 
         model_to_use = model or self.agent_config.model
         if model_to_use != self.agent_config.model:
-            self.model = self.llm.get_langchain_model(
-                model=model_to_use,
+            self.model = make_chat_model(
+                self.agent_config.settings,
+                model_to_use,
                 temperature=self.agent_config.temperature,
             )
             self.graph = build_text_to_sql_graph(

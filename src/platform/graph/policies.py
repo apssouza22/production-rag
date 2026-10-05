@@ -1,5 +1,4 @@
 from src.domain.opensearch.exceptions import OpenSearchException
-from src.platform.bifrost.exceptions import BifrostConnectionError, BifrostTimeoutError
 from src.platform.graph.config import FaultToleranceConfig
 from src.platform.graph.types import RetryPolicy, TimeoutPolicy
 from src.platform.llm.exceptions import LLMConnectionError, LLMTimeoutError
@@ -9,8 +8,6 @@ _TRANSIENT_EXCEPTIONS = (
     TimeoutError,
     LLMConnectionError,
     LLMTimeoutError,
-    BifrostConnectionError,
-    BifrostTimeoutError,
     OpenSearchException,
 )
 

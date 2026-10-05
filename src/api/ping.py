@@ -4,7 +4,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from src.platform.llm.factory import make_llm_client
+from src.platform.llm.chat_model import check_openai_health
+
 from ..dependencies import DatabaseDep, OpenSearchDep, SettingsDep
 
 router = APIRouter()
@@ -90,13 +91,12 @@ async def health_check(settings: SettingsDep, database: DatabaseDep, opensearch_
     _check_service("opensearch", _check_opensearch)
 
     try:
-        llm_client = make_llm_client(settings)
-        llm_health = await llm_client.health_check()
-        services["bifrost"] = ServiceStatus(status=llm_health["status"], message=llm_health["message"])
+        llm_health = await check_openai_health(settings)
+        services["openai"] = ServiceStatus(status=llm_health["status"], message=llm_health["message"])
         if llm_health["status"] != "healthy":
             overall_status = "degraded"
     except Exception as e:
-        services["bifrost"] = ServiceStatus(status="unhealthy", message=str(e))
+        services["openai"] = ServiceStatus(status="unhealthy", message=str(e))
         overall_status = "degraded"
 
     return HealthResponse(

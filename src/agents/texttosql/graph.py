@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage
 
 from src.platform.graph import END, START, GraphBuilder, MessagesState
 from src.platform.middleware import MiddlewareManager
+
 from .config import TextToSQLConfig
 from .prompts import CHECK_QUERY_SYSTEM_PROMPT, GENERATE_QUERY_SYSTEM_PROMPT
 

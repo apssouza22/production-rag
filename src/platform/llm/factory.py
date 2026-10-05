@@ -1,23 +1,12 @@
-from typing import Literal
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from src.config import Settings, get_settings
-from src.platform.bifrost.factory import make_bifrost_client
-from src.platform.llm.protocol import LlmProviderClient
+from src.platform.llm.chat_model import check_openai_health, make_chat_model
 
-AgentKey = Literal["agent_1", "agent_2"]
-
-
-def make_llm_client(settings: Settings | None = None, api_key: str | None = None) -> LlmProviderClient:
-    """Create the Bifrost-backed LLM client."""
-    resolved_settings = settings or get_settings()
-    return make_bifrost_client(resolved_settings, api_key=api_key)
+__all__ = ["make_chat_model", "check_openai_health"]
 
 
-def make_agent_llm_client(agent: AgentKey, settings: Settings | None = None) -> LlmProviderClient:
-    """Create an LLM client using the Bifrost virtual key assigned to a LangGraph agent."""
-    resolved_settings = settings or get_settings()
-    api_key_by_agent = {
-        "agent_1": resolved_settings.bifrost_api_key_agent_1,
-        "agent_2": resolved_settings.bifrost_api_key_agent_2,
-    }
-    return make_llm_client(resolved_settings, api_key=api_key_by_agent[agent])
+def make_default_chat_model(settings: Settings | None = None) -> BaseChatModel:
+    """Create the default agent chat model from application settings."""
+    resolved = settings or get_settings()
+    return make_chat_model(resolved, resolved.agent_model, temperature=0.0)

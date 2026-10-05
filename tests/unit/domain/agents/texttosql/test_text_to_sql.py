@@ -10,14 +10,7 @@ from src.agents.texttosql.tools import _validate_read_only_query
 
 
 @pytest.fixture
-def mock_llm_client():
-    client = Mock()
-    client.get_langchain_model.return_value = Mock()
-    return client
-
-
-@pytest.fixture
-def test_service(mock_llm_client, monkeypatch):
+def test_service(monkeypatch):
     monkeypatch.setattr(
         "src.agents.texttosql.service.create_sql_tools",
         lambda **kwargs: ([Mock(name="sql_db_list_tables"), Mock(name="sql_db_schema"), Mock(name="sql_db_query")], Mock()),
@@ -28,7 +21,7 @@ def test_service(mock_llm_client, monkeypatch):
     )
 
     return TextToSQLService(
-        llm_client=mock_llm_client,
+        chat_model=Mock(),
         langfuse_tracer=None,
         agent_config=TextToSQLConfig(model="gpt-4o-mini", top_k=5),
     )
@@ -53,7 +46,7 @@ class TestQueryValidation:
 
 class TestTextToSQLService:
     def test_service_initialization(self, test_service):
-        assert test_service.llm is not None
+        assert test_service.model is not None
         assert test_service.graph is not None
         assert test_service.agent_config.model == "gpt-4o-mini"
 

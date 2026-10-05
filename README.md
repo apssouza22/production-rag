@@ -90,7 +90,7 @@ cp .env.example .env
 | **OpenSearch 2.19** | Hybrid search engine (BM25 + Vector) | ✅ Ready |
 | **Apache Airflow 3.0** | Workflow automation | ✅ Ready |
 | **Jina AI** | Embedding generation and reranking | ✅ Ready |
-| **Bifrost** | LLM gateway with provider fallback | ✅ Ready |
+| **OpenAI** | Direct LLM API for generation and agents | ✅ Ready |
 | **Redis Stack** | Exact and semantic response caching | ✅ Ready |
 | **Langfuse** | RAG pipeline observability via Langfuse Cloud | ✅ Ready |
 | **RAG Evals** | LLM-as-judge scoring of Langfuse traces | ✅ Ready |
@@ -219,7 +219,6 @@ uv run pytest                 # Run tests
 ---
 
 ## TODOs
-- [ ] Add governance with bifrost plugins
 
 
 ## 📄 License

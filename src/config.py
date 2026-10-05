@@ -171,12 +171,10 @@ class Settings(BaseConfigSettings):
     postgres_pool_size: int = 20
     postgres_max_overflow: int = 0
 
-    bifrost_host: str = "http://localhost:8090"
-    bifrost_api_key: str = "sk-bf-agent-1-dev"
-    bifrost_api_key_agent_1: str = "sk-bf-agent-1-dev"
-    bifrost_api_key_agent_2: str = "sk-bf-agent-2-dev"
-    # Comma-separated provider/model fallbacks for Bifrost (e.g. openai/gpt-5.6-luna,openai/gpt-4o-mini)
-    bifrost_fallback_models: str = "openai/gpt-5.6-luna,openai/gpt-4o-mini"
+    openai_api_key: str = ""
+    openai_base_url: str | None = None
+    # Comma-separated model fallbacks when the primary model fails (e.g. gpt-5.6-luna,gpt-4o-mini)
+    llm_fallback_models: str = "gpt-5.6-luna,gpt-4o-mini"
     agent_model: str = "gpt-5.6-luna"
     reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
     llm_request_timeout: int = 300

@@ -29,8 +29,9 @@ from src.platform.graph.policies import (
     build_tool_timeout,
 )
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.protocol import LlmProviderClient
+from src.platform.llm.chat_model import make_chat_model
 from src.platform.middleware import MiddlewareManager
+
 from .config import GraphConfig
 from .context import Context
 from .state import AgentState
@@ -55,12 +56,10 @@ class AgenticRAGGraph:
 
     def __init__(
         self,
-        llm_client: LlmProviderClient,
         rerank_search_service: RerankSearchService,
         config: GraphConfig,
         langfuse_tracer: Optional[LangfuseTracer] = None,
     ):
-        self.llm_client = llm_client
         self.rerank_search_service = rerank_search_service
         self.config = config
         self.langfuse_tracer = langfuse_tracer
@@ -215,7 +214,7 @@ class AgenticRAGGraph:
 
         try:
             grading_prompt = GRADE_DOCUMENTS_PROMPT.format(context=context, question=question)
-            llm = self.llm_client.get_langchain_model(model=self.model_name, temperature=0.0)
+            llm = make_chat_model(self.config.settings, self.model_name, temperature=0.0)
             structured_llm = llm.with_structured_output(GradeDocuments)
             grading_response = await structured_llm.ainvoke(grading_prompt)
 
@@ -329,7 +328,7 @@ class AgenticRAGGraph:
         )
 
         try:
-            llm = self.llm_client.get_langchain_model(model=self.model_name, temperature=0.3)
+            llm = make_chat_model(self.config.settings, self.model_name, temperature=0.3)
             structured_llm = llm.with_structured_output(QueryRewriteOutput)
             prompt = REWRITE_PROMPT.format(question=original_question)
             llm_start = time.time()
@@ -398,8 +397,9 @@ class AgenticRAGGraph:
 
         try:
             answer_prompt = GENERATE_ANSWER_PROMPT.format(context=context, question=question)
-            llm = self.llm_client.get_langchain_model(
-                model=self.model_name,
+            llm = make_chat_model(
+                self.config.settings,
+                self.model_name,
                 temperature=self.config.temperature,
             )
             response = await llm.ainvoke(answer_prompt)
@@ -550,7 +550,7 @@ class AgenticRAGGraph:
                 context=context,
                 answer=answer,
             )
-            llm = self.llm_client.get_langchain_model(model=self.model_name, temperature=0.0)
+            llm = make_chat_model(self.config.settings, self.model_name, temperature=0.0)
             structured_llm = llm.with_structured_output(AnswerJudgement)
             return await structured_llm.ainvoke(judge_prompt)
         except Exception as exc:

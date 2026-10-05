@@ -23,7 +23,6 @@ from src.domain.pdf_parser.parser import PDFParserService
 from src.domain.rerank.service import RerankSearchService
 from src.platform.cache.client import CacheClient
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.protocol import LlmProviderClient
 
 
 def get_request_settings(request: Request) -> Settings:
@@ -72,11 +71,6 @@ def get_rerank_search_service(request: Request) -> RerankSearchService:
     return request.app.state.rerank_search_service
 
 
-def get_llm_client(request: Request) -> LlmProviderClient:
-    """Get the configured LLM provider from the request state."""
-    return request.app.state.llm_client
-
-
 def get_langfuse_tracer(request: Request) -> LangfuseTracer:
     """Get Langfuse tracer from the request state."""
     return request.app.state.langfuse_tracer
@@ -111,7 +105,6 @@ PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
 RerankSearchDep = Annotated[RerankSearchService, Depends(get_rerank_search_service)]
-LLMDep = Annotated[LlmProviderClient, Depends(get_llm_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
 AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]

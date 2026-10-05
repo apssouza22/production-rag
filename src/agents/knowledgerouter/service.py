@@ -2,13 +2,13 @@ import logging
 import time
 from typing import List, Optional
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.texttosql.service import TextToSQLService
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
-from src.platform.llm.protocol import LlmProviderClient
 from src.platform.middleware import (
     AgentContext,
     AgentPipeline,
@@ -16,6 +16,7 @@ from src.platform.middleware import (
     LoggingMiddleware,
     TrajectoryMiddleware,
 )
+
 from .config import KnowledgeRouterConfig
 from .graph import build_knowledge_router_graph
 from .schemas import AgentResultItem, ClassificationItem, classification_to_schema
@@ -30,24 +31,18 @@ class KnowledgeRouterService:
         self,
         agentic_rag_service: AgenticRAGService,
         text_to_sql_service: TextToSQLService,
-        llm_client: LlmProviderClient,
+        router_model: BaseChatModel,
+        synthesis_model: BaseChatModel,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         agent_config: Optional[KnowledgeRouterConfig] = None,
     ):
         self.agentic_rag = agentic_rag_service
         self.text_to_sql = text_to_sql_service
-        self.llm = llm_client
         self.langfuse_tracer = langfuse_tracer
         self.agent_config = agent_config or KnowledgeRouterConfig()
 
-        self.router_model = self.llm.get_langchain_model(
-            model=self.agent_config.router_model,
-            temperature=self.agent_config.temperature,
-        )
-        self.synthesis_model = self.llm.get_langchain_model(
-            model=self.agent_config.model,
-            temperature=self.agent_config.temperature,
-        )
+        self.router_model = router_model
+        self.synthesis_model = synthesis_model
         self.graph = build_knowledge_router_graph(
             router_model=self.router_model,
             synthesis_model=self.synthesis_model,
