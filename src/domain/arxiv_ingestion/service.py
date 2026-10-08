@@ -303,12 +303,12 @@ class MetadataFetcher:
                 results["errors"].append(error_msg)
             elif result:
                 # Check if result is a tuple before unpacking
-                # Handle AirflowTaskTerminated and other non-tuple results
+                # Handle unexpected task termination and other non-tuple results
                 if isinstance(result, tuple) and len(result) == 2:
                     # Result is tuple: (download_success, parsed_paper)
                     download_success, parsed_paper = result
                 else:
-                    # Result is not a tuple (could be AirflowTaskTerminated or other error)
+                    # The result is not a tuple, so record it as an unexpected result.
                     error_msg = f"Pipeline error for {paper.arxiv_id}: Unexpected result type {type(result).__name__}"
                     logger.error(error_msg)
                     results["errors"].append(error_msg)

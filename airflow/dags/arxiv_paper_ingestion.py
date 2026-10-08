@@ -3,13 +3,8 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from src.domain.arxiv_ingestion import (
-    download_papers,
-    generate_daily_report,
-    index_papers_hybrid,
-    parse_pdfs,
-    setup_environment,
-)
+from arxiv_ingestion_tasks import download_papers, generate_daily_report, index_papers_hybrid, parse_pdfs
+from src.domain.arxiv_ingestion import setup_environment
 
 # Default DAG arguments
 default_args = {

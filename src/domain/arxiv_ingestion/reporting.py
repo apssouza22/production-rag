@@ -7,24 +7,17 @@ from .common import get_cached_services
 logger = logging.getLogger(__name__)
 
 
-def generate_daily_report(**context):
-    """Generate a daily report of the ingestion pipeline results.
-
-    Collects statistics from all previous tasks and generates a summary report.
-    """
+def generate_daily_report(
+    download_stats: dict,
+    parse_stats: dict,
+    hybrid_stats: dict,
+    execution_date: datetime | None = None,
+) -> dict:
+    """Build a daily report from ingestion results and current service statistics."""
     logger.info("Generating daily ingestion report")
 
-    ti = context.get("ti")
-    if not ti:
-        logger.warning("No task instance available, generating basic report")
-        return {"status": "basic_report", "message": "No task instance for XCom data"}
-
-    download_stats = ti.xcom_pull(task_ids="download_papers", key="download_results") or {}
-    parse_stats = ti.xcom_pull(task_ids="parse_pdfs", key="parse_results") or {}
-    hybrid_stats = ti.xcom_pull(task_ids="index_papers_hybrid", key="hybrid_index_stats") or {}
-
     report = {
-        "execution_date": context.get("execution_date", datetime.now()).isoformat(),
+        "execution_date": (execution_date or datetime.now()).isoformat(),
         "download_statistics": {
             "papers_fetched": download_stats.get("papers_fetched", 0),
             "pdfs_downloaded": download_stats.get("pdfs_downloaded", 0),
@@ -76,7 +69,5 @@ def generate_daily_report(**context):
 
     logger.info("Daily Ingestion Report:")
     logger.info(json.dumps(report, indent=2))
-
-    ti.xcom_push(key="daily_report", value=report)
 
     return report

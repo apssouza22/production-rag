@@ -9,17 +9,6 @@ from .common import get_cached_services
 logger = logging.getLogger(__name__)
 
 
-def _resolve_target_date(context: dict) -> str:
-    """Resolve the target ingestion date from Airflow execution context."""
-    execution_date = context.get("execution_date")
-    if execution_date:
-        target_dt = execution_date - timedelta(days=1)
-        return target_dt.strftime("%Y%m%d")
-
-    yesterday = datetime.now() - timedelta(days=1)
-    return yesterday.strftime("%Y%m%d")
-
-
 async def run_paper_ingestion_pipeline(
     target_date: str,
     process_pdfs: bool = True,
@@ -46,20 +35,9 @@ async def run_paper_ingestion_pipeline(
         )
 
 
-def download_papers(**context):
-    """Fetch daily papers from arXiv and download PDFs.
-
-    This task:
-    1. Determines the target date (defaults to yesterday)
-    2. Fetches paper metadata from the arXiv API
-    3. Downloads PDFs to the local cache
-
-    Parsing and database storage are handled by the parse_pdfs task.
-    """
-    logger.info("Starting daily paper download task")
-
-    target_date = _resolve_target_date(context)
-    logger.info(f"Downloading papers for date: {target_date}")
+def download_papers(target_date: str) -> dict:
+    """Fetch paper metadata and download PDFs for a date (YYYYMMDD)."""
+    logger.info("Downloading papers for date: %s", target_date)
 
     arxiv_client, _, _, metadata_fetcher, _ = get_cached_services()
     max_results = arxiv_client.max_results
@@ -77,27 +55,12 @@ def download_papers(**context):
         f"Daily download complete: {results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs for {target_date}"
     )
 
-    ti = context.get("ti")
-    if ti:
-        ti.xcom_push(key="download_results", value=results)
-
     return results
 
 
-def parse_pdfs(**context):
-    """Parse downloaded PDFs and store papers in PostgreSQL.
-
-    This task:
-    1. Reads paper metadata and download paths from the download_papers task
-    2. Parses PDFs using Docling
-    3. Stores metadata and parsed content in PostgreSQL
-    """
+def parse_pdfs(download_results: dict) -> dict:
+    """Parse downloaded PDFs and store papers in PostgreSQL."""
     logger.info("Starting PDF parsing task")
-
-    ti = context.get("ti")
-    download_results = {}
-    if ti:
-        download_results = ti.xcom_pull(task_ids="download_papers", key="download_results") or {}
 
     papers_data = download_results.get("papers", [])
     if not papers_data:
@@ -108,8 +71,6 @@ def parse_pdfs(**context):
             "errors": [],
             "date": download_results.get("date"),
         }
-        if ti:
-            ti.xcom_push(key="parse_results", value=results)
         return results
 
     papers = [ArxivPaper(**paper_data) for paper_data in papers_data]
@@ -127,8 +88,5 @@ def parse_pdfs(**context):
 
     results["date"] = download_results.get("date")
     logger.info(f"PDF parsing complete: {results['pdfs_parsed']} parsed, {results['papers_stored']} stored for {results['date']}")
-
-    if ti:
-        ti.xcom_push(key="parse_results", value=results)
 
     return results

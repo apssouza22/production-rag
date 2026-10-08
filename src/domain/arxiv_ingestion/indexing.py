@@ -36,23 +36,17 @@ async def _index_papers_with_chunks(papers):
     return stats
 
 
-def index_papers_hybrid(**context):
+def index_papers_hybrid(parse_results: dict | None = None) -> dict:
     """Index papers with chunking and vector embeddings for hybrid search.
 
-    This task:
-    1. Fetches recently stored papers from PostgreSQL (via parse_pdfs XCom)
+    This operation:
+    1. Fetches recently stored papers from PostgreSQL (using parse results when provided)
     2. Chunks them into overlapping segments (600 words, 100 overlap)
     3. Generates embeddings using Jina AI
     4. Indexes chunks with embeddings into OpenSearch
     """
     try:
         database = make_database()
-
-        ti = context.get("ti")
-
-        fetch_results = None
-        if ti:
-            parse_results = ti.xcom_pull(task_ids="parse_pdfs", key="parse_results")
 
         with database.get_session() as session:
             from src.domain.paper import Paper
@@ -79,9 +73,6 @@ def index_papers_hybrid(**context):
                 f"{stats['total_chunks_indexed']} chunks indexed"
             )
 
-            if ti:
-                ti.xcom_push(key="hybrid_index_stats", value=stats)
-
             return stats
 
     except Exception as e:
@@ -89,7 +80,7 @@ def index_papers_hybrid(**context):
         raise
 
 
-def verify_hybrid_index(**context):
+def verify_hybrid_index() -> dict:
     """Verify hybrid index health and get statistics."""
     try:
         opensearch_client = make_opensearch_client_fresh()
