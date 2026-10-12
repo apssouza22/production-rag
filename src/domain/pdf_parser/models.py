@@ -40,6 +40,7 @@ class PdfContent(BaseModel):
     figures: List[PaperFigure] = Field(default_factory=list, description="Figures")
     tables: List[PaperTable] = Field(default_factory=list, description="Tables")
     raw_text: str = Field(..., description="Full extracted text")
+    markdown: Optional[str] = Field(default=None, description="Full extracted content formatted as Markdown")
     references: List[str] = Field(default_factory=list, description="References")
     parser_used: ParserType = Field(..., description="Parser used for extraction")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Parser metadata")

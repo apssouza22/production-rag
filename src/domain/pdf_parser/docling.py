@@ -6,6 +6,7 @@ import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types import DoclingDocument
 from docling_core.types.doc import DocItemLabel
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
@@ -24,7 +25,7 @@ _CONTENT_LABELS = {
 }
 
 
-def extract_sections_from_document(doc: Any) -> list[PaperSection]:
+def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
     """Extract hierarchical sections with breadcrumbs from a Docling document.
 
     Walks the document tree via ``iterate_items`` and maintains a header stack so
@@ -169,7 +170,6 @@ class DoclingParser:
             # Warm up models on first use
             self._warm_up_models()
 
-            # Convert PDF using the modern API
             # Limit processing to avoid memory issues with large papers
             result = self._converter.convert(str(pdf_path), max_num_pages=self.max_pages, max_file_size=self.max_file_size_bytes)
 
@@ -183,6 +183,7 @@ class DoclingParser:
                 figures=[],  # Removed: basic metadata not useful
                 tables=[],  # Removed: basic metadata not useful
                 raw_text=doc.export_to_text(),
+                markdown=doc.export_to_markdown(),
                 references=[],
                 parser_used=ParserType.DOCLING,
                 metadata={"source": "docling", "note": "Content extracted from PDF, metadata comes from arXiv API"},

@@ -236,11 +236,11 @@ class MetadataFetcher:
                 logger.warning("No papers to parse")
                 return results
 
-            parse_results = await self._parse_pdfs_batch(papers, downloaded_paths)
+            parse_results = await self.parse_papers(papers, downloaded_paths)
             results["pdfs_parsed"] = parse_results["parsed"]
             results["errors"].extend(parse_results["errors"])
 
-            stored_count = self._store_papers_to_db(papers, parse_results["parsed_papers"], db_session)
+            stored_count = self.store_papers(papers, parse_results["parsed_papers"], db_session)
             results["papers_stored"] = stored_count
 
             results["processing_time"] = (datetime.now() - start_time).total_seconds()
@@ -254,6 +254,18 @@ class MetadataFetcher:
             logger.error(f"Parse step error: {e}")
             results["errors"].append(f"Parse step error: {str(e)}")
             raise PipelineException(f"Parse step failed: {e}") from e
+
+    async def parse_papers(self, papers: List[ArxivPaper], downloaded_paths: Dict[str, str]) -> Dict[str, Any]:
+        """Parse downloaded PDFs and return parsed papers without persisting them."""
+        if not papers:
+            logger.warning("No papers to parse")
+            return {"parsed": 0, "parsed_papers": {}, "errors": [], "parse_failures": []}
+
+        return await self._parse_pdfs_batch(papers, downloaded_paths)
+
+    def store_papers(self, papers: List[ArxivPaper], parsed_papers: Dict[str, ParsedPaper], db_session: Session) -> int:
+        """Persist parsed papers and metadata to PostgreSQL."""
+        return self._store_papers_to_db(papers, parsed_papers, db_session)
 
     async def _process_pdfs_batch(self, papers: List[ArxivPaper]) -> Dict[str, Any]:
         """
