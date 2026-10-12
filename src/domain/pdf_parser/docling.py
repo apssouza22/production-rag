@@ -7,10 +7,11 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types import DoclingDocument
-from docling_core.types.doc import DocItemLabel
+from docling_core.types.doc import DocItemLabel, PictureItem, TableItem
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
-from .models import PaperSection, ParserType, PdfContent
+from .artefact_extractor import ArtefactExtractor
+from .models import PaperFigure, PaperSection, PaperTable, ParserType, PdfContent
 
 logger = logging.getLogger(__name__)
 
@@ -31,27 +32,46 @@ def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
     Walks the document tree via ``iterate_items`` and maintains a header stack so
     nested sections retain their full path (e.g. ``Methods > Training``).
     """
+    sections, _, _ = _extract_sections_and_artifacts(doc)
+    return sections
+
+
+def _extract_sections_and_artifacts(
+    doc: DoclingDocument,
+    artifacts_dir: Optional[Path] = None,
+) -> tuple[list[PaperSection], list[PaperFigure], list[PaperTable]]:
     sections: list[PaperSection] = []
+    artefact_extractor = ArtefactExtractor(artifacts_dir)
     header_stack: list[tuple[int, str]] = []
-    current: Optional[dict[str, Any]] = {"title": "Content", "content": "", "level": 1, "breadcrumb": None}
+    current: Optional[dict[str, Any]] = {
+        "title": "Content",
+        "content": "",
+        "level": 1,
+        "breadcrumb": None,
+        "figure_paths": [],
+        "table_paths": [],
+    }
+
+    items = list(doc.iterate_items())
+    items_by_ref = {getattr(item, "self_ref", ""): item for item, _ in items}
 
     def flush_current() -> None:
         nonlocal current
-        if current and current["content"].strip():
+        if current and (current["content"].strip() or current["figure_paths"] or current["table_paths"]):
             sections.append(
                 PaperSection(
                     title=current["title"],
                     content=current["content"].strip(),
                     level=current["level"],
                     breadcrumb=current.get("breadcrumb"),
+                    figure_paths=current["figure_paths"],
+                    table_paths=current["table_paths"],
                 )
             )
 
-    for item, depth in doc.iterate_items():
+    for item, depth in items:
         label = getattr(item, "label", None)
         text = getattr(item, "text", "").strip()
-        if not text:
-            continue
 
         if label in _HEADER_LABELS:
             flush_current()
@@ -72,12 +92,19 @@ def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
                 "content": "",
                 "level": level,
                 "breadcrumb": breadcrumb,
+                "figure_paths": [],
+                "table_paths": [],
             }
+        elif isinstance(item, PictureItem):
+            artefact_extractor.save_figure(item, doc, current, items_by_ref)
+        elif isinstance(item, TableItem):
+            artefact_extractor.save_table(item, doc, current, items_by_ref)
         elif current is not None and label in _CONTENT_LABELS:
-            current["content"] += text + "\n"
+            if text:
+                current["content"] += text + "\n"
 
     flush_current()
-    return sections
+    return sections, artefact_extractor.figures, artefact_extractor.tables
 
 
 class DoclingParser:
@@ -95,6 +122,7 @@ class DoclingParser:
         pipeline_options = PdfPipelineOptions(
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
+            generate_picture_images=True,
         )
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
@@ -156,11 +184,12 @@ class DoclingParser:
             logger.error(f"Error validating PDF {pdf_path}: {e}")
             raise PDFValidationError(f"Error validating PDF {pdf_path}: {e}")
 
-    def parse_pdf(self, pdf_path: Path) -> Optional[PdfContent]:
+    def parse_pdf(self, pdf_path: Path, artifacts_dir: Optional[Path] = None) -> Optional[PdfContent]:
         """Parse PDF using Docling parser.
         Limited to 20 pages to avoid memory issues with large papers.
 
         :param pdf_path: Path to PDF file
+        :param artifacts_dir: Directory for extracted figure images and table Markdown; defaults beside the PDF
         :returns: PdfContent object or None if parsing failed
         """
         try:
@@ -175,13 +204,15 @@ class DoclingParser:
 
             # Extract structured content
             doc = result.document
-            sections = extract_sections_from_document(doc)
+            if artifacts_dir is None:
+                artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
+            sections, figures, tables = _extract_sections_and_artifacts(doc, artifacts_dir)
 
             # Focus on what arXiv API doesn't provide: structured full text content only
             return PdfContent(
                 sections=sections,
-                figures=[],  # Removed: basic metadata not useful
-                tables=[],  # Removed: basic metadata not useful
+                figures=figures,
+                tables=tables,
                 raw_text=doc.export_to_text(),
                 markdown=doc.export_to_markdown(),
                 references=[],

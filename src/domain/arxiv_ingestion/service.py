@@ -509,6 +509,8 @@ class MetadataFetcher:
                     "content": section.content,
                     "level": section.level,
                     "breadcrumb": section.breadcrumb,
+                    "figure_paths": section.figure_paths,
+                    "table_paths": section.table_paths,
                 }
                 for section in pdf_content.sections
             ]

@@ -31,7 +31,8 @@ async def convert_pdfs(input_dir: Path, output_dir: Path, pdf_parser: PDFParserS
 
     for pdf_path in pdf_paths:
         try:
-            pdf_content = await pdf_parser.parse_pdf(pdf_path)
+            artifact_dir = output_dir / f"{pdf_path.stem}_assets"
+            pdf_content = await pdf_parser.parse_pdf(pdf_path, artifacts_dir=artifact_dir)
             if pdf_content is None:
                 logger.warning("Parser skipped %s", pdf_path)
                 failed += 1

@@ -17,6 +17,8 @@ class PaperSection(BaseModel):
     content: str = Field(..., description="Section content")
     level: int = Field(default=1, description="Section hierarchy level")
     breadcrumb: Optional[str] = Field(default=None, description="Full section path, e.g. Methods > Training")
+    figure_paths: List[str] = Field(default_factory=list, description="Paths to figures associated with this section")
+    table_paths: List[str] = Field(default_factory=list, description="Paths to tables associated with this section")
 
 
 class PaperFigure(BaseModel):
@@ -24,6 +26,7 @@ class PaperFigure(BaseModel):
 
     caption: str = Field(..., description="Figure caption")
     id: str = Field(..., description="Figure identifier")
+    path: Optional[str] = Field(default=None, description="Path to the saved figure image")
 
 
 class PaperTable(BaseModel):
@@ -31,6 +34,7 @@ class PaperTable(BaseModel):
 
     caption: str = Field(..., description="Table caption")
     id: str = Field(..., description="Table identifier")
+    path: Optional[str] = Field(default=None, description="Path to the saved table Markdown file")
 
 
 class PdfContent(BaseModel):
