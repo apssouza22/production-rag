@@ -1,12 +1,20 @@
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from docling_core.types.doc import DocItemLabel, DoclingDocument, TableCell, TableData
+import pytest
+from docling_core.types.doc import DocItemLabel, DoclingDocument, ImageRef, TableCell, TableData
+from PIL import Image
+from src.domain.pdf_parser.exceptions import PDFParsingException
 from src.domain.pdf_parser.markdown_export import (
     _extract_gfm_table_lines,
     _parse_gfm_table,
+    _render_picture,
     _render_table,
     _render_text_item,
+    _resolve_alt,
     _write_table_csv,
+    export_markdown,
 )
 
 
@@ -28,6 +36,40 @@ def _table_data(rows: list[list[str]], header: bool = True) -> TableData:
         for c, text in enumerate(row)
     ]
     return TableData(num_rows=len(rows), num_cols=len(rows[0]), table_cells=cells)
+
+
+class _FakeImage:
+    def save(self, path, fmt):
+        Path(path).write_bytes(b"png")
+
+
+def _picture(caption: str = "", has_image: bool = True) -> SimpleNamespace:
+    return SimpleNamespace(
+        label=DocItemLabel.PICTURE,
+        text="",
+        get_image=lambda doc: _FakeImage() if has_image else None,
+        caption_text=lambda doc: caption,
+    )
+
+
+def _table(markdown: str) -> SimpleNamespace:
+    return SimpleNamespace(label=DocItemLabel.TABLE, text="", export_to_markdown=lambda doc: markdown)
+
+
+def _fake_doc(items: list) -> SimpleNamespace:
+    def _forbidden_export():
+        raise AssertionError("doc.export_to_markdown() must not be called")
+
+    return SimpleNamespace(iterate_items=lambda: iter((item, 1) for item in items), export_to_markdown=_forbidden_export)
+
+
+def _add_picture_with_caption(doc: DoclingDocument, caption: str | None):
+    """Mimic Docling's PDF pipeline: the caption is a child of the picture and listed in its captions."""
+    picture = doc.add_picture(image=ImageRef.from_pil(Image.new("RGB", (8, 8), "white"), dpi=72))
+    if caption is not None:
+        caption_item = doc.add_text(label=DocItemLabel.CAPTION, text=caption, parent=picture)
+        picture.captions.append(caption_item.get_ref())
+    return picture
 
 
 def _read_csv(path) -> str:
@@ -131,3 +173,143 @@ class TestRenderTable:
         assert "Table 1: scores" not in markdown
         assert markdown.splitlines()[0].startswith("| Model")
         assert _read_csv(csv_path) == 'Model,Acc\r\n"A, v2",0.9\r\n'
+
+
+class TestResolveAlt:
+    def _alt(self, items, picture_index=0, doc=None):
+        pairs = [(item, 1) for item in items]
+        return _resolve_alt(pairs, picture_index, items[picture_index], doc, number=picture_index + 1)
+
+    def test_next_figure_caption_after_text_and_table_in_same_section(self):
+        items = [
+            _picture(),
+            _item(DocItemLabel.PARAGRAPH, "Some text."),
+            _table("| a |\n|---|\n| b |"),
+            _item(DocItemLabel.CAPTION, "Table 1: not a figure"),
+            _item(DocItemLabel.CAPTION, "Figure 1: Architecture overview"),
+        ]
+
+        assert self._alt(items) == "Figure 1: Architecture overview"
+
+    def test_caption_after_section_header_is_not_used(self):
+        items = [
+            _picture(),
+            _item(DocItemLabel.SECTION_HEADER, "Results", level=1),
+            _item(DocItemLabel.CAPTION, "Figure 2: Results"),
+        ]
+
+        assert self._alt(items) == "Figure 001"
+
+    def test_falls_back_to_picture_caption_text(self):
+        items = [_picture(caption="Figure 3: Pipeline"), _item(DocItemLabel.SECTION_HEADER, "Next", level=1)]
+
+        assert self._alt(items) == "Figure 3: Pipeline"
+
+    def test_picture_caption_without_figure_prefix_uses_number(self):
+        items = [_picture(caption="Overview of the system")]
+
+        assert self._alt(items) == "Figure 001"
+
+    def test_picture_without_caption_takes_next_figure_caption_in_section(self):
+        # Accepted behaviour (Q2): the search does not stop at the next picture
+        items = [_picture(), _picture(), _item(DocItemLabel.CAPTION, "Figure 2: Second")]
+
+        assert self._alt(items, picture_index=0) == "Figure 2: Second"
+
+    def test_caption_whitespace_is_collapsed(self):
+        items = [_picture(), _item(DocItemLabel.CAPTION, "Figure 1:\n  Two   lines")]
+
+        assert self._alt(items) == "Figure 1: Two lines"
+
+
+class TestRenderPicture:
+    def test_saves_png_and_links_it(self, tmp_path):
+        png_path = tmp_path / "figure_001.png"
+
+        block = _render_picture(_picture(), None, "Figure 1: Arch", png_path, "paper_assets/figure_001.png")
+
+        assert block == "![Figure 1: Arch](paper_assets/figure_001.png)"
+        assert png_path.exists()
+
+    def test_missing_image_renders_italic_alt_without_file(self, tmp_path):
+        png_path = tmp_path / "figure_001.png"
+
+        block = _render_picture(_picture(has_image=False), None, "Figure 001", png_path, "paper_assets/figure_001.png")
+
+        assert block == "_Figure 001 (imagem indisponível)_"
+        assert not png_path.exists()
+
+
+class TestExportMarkdown:
+    def test_mixed_document_order_counters_and_files(self, tmp_path):
+        doc = _fake_doc(
+            [
+                _item(DocItemLabel.TITLE, "Paper"),
+                _item(DocItemLabel.PARAGRAPH, "Intro."),
+                _picture(),
+                _item(DocItemLabel.CAPTION, "Figure 1: First"),
+                _table("| a | b |\n|---|---|\n| 1 | 2 |"),
+                _picture(has_image=False),
+                _table("| c |\n|---|\n| 3 |"),
+            ]
+        )
+
+        markdown_path, assets_dir = export_markdown(doc, "paper", tmp_path)
+
+        assert markdown_path == tmp_path / "paper.md"
+        assert assets_dir == tmp_path / "paper_assets"
+        assert sorted(p.name for p in assets_dir.iterdir()) == ["figure_001.png", "table_001.csv", "table_002.csv"]
+        assert markdown_path.read_text(encoding="utf-8") == (
+            "# Paper\n\n"
+            "Intro.\n\n"
+            "![Figure 1: First](paper_assets/figure_001.png)\n\n"
+            "Figure 1: First\n\n"
+            "| a | b |\n|---|---|\n| 1 | 2 |\n\n"
+            "_Figure 002 (imagem indisponível)_\n\n"
+            "| c |\n|---|\n| 3 |\n"
+        )
+
+    def test_document_without_assets_creates_empty_assets_dir(self, tmp_path):
+        output_dir = tmp_path / "nested" / "out"
+
+        markdown_path, assets_dir = export_markdown(_fake_doc([_item(DocItemLabel.PARAGRAPH, "Only text.")]), "paper", output_dir)
+
+        assert markdown_path.read_text(encoding="utf-8") == "Only text.\n"
+        assert assets_dir.is_dir()
+        assert list(assets_dir.iterdir()) == []
+
+    def test_overwrites_previous_export(self, tmp_path):
+        export_markdown(_fake_doc([_item(DocItemLabel.PARAGRAPH, "Old.")]), "paper", tmp_path)
+
+        markdown_path, _ = export_markdown(_fake_doc([_item(DocItemLabel.PARAGRAPH, "New.")]), "paper", tmp_path)
+
+        assert markdown_path.read_text(encoding="utf-8") == "New.\n"
+
+    def test_write_failure_raises_pdf_parsing_exception(self, tmp_path):
+        with patch.object(Path, "write_text", side_effect=OSError("disk full")):
+            with pytest.raises(PDFParsingException) as exc_info:
+                export_markdown(_fake_doc([_item(DocItemLabel.PARAGRAPH, "Text.")]), "paper", tmp_path)
+
+        assert "Failed to export Markdown" in str(exc_info.value)
+        assert "disk full" in str(exc_info.value)
+
+    def test_real_docling_document(self, tmp_path):
+        doc = DoclingDocument(name="paper")
+        doc.add_title("Paper")
+        doc.add_heading("Method", level=1)
+        _add_picture_with_caption(doc, "Figure 1: Architecture")
+        table = doc.add_table(data=_table_data([["Model", "Acc"], ["A", "0.9"]]))
+        table_caption = doc.add_text(label=DocItemLabel.CAPTION, text="Table 1: Scores", parent=table)
+        table.captions.append(table_caption.get_ref())
+        _add_picture_with_caption(doc, None)
+
+        markdown_path, assets_dir = export_markdown(doc, "paper", tmp_path)
+        markdown = markdown_path.read_text(encoding="utf-8")
+
+        assert (assets_dir / "figure_001.png").read_bytes().startswith(b"\x89PNG")
+        assert (assets_dir / "figure_002.png").exists()
+        assert "![Figure 1: Architecture](paper_assets/figure_001.png)" in markdown
+        assert "![Figure 002](paper_assets/figure_002.png)" in markdown
+        assert markdown.count("Table 1: Scores") == 1
+        assert ".csv" not in markdown
+        assert _read_csv(assets_dir / "table_001.csv") == "Model,Acc\r\nA,0.9\r\n"

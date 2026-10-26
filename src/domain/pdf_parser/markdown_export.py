@@ -12,10 +12,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 from docling_core.types.doc import DocItemLabel
+from src.domain.pdf_parser.exceptions import PDFParsingException
 
 logger = logging.getLogger(__name__)
 
 _MAX_HEADING_LEVEL = 6
+_SECTION_LABELS = {DocItemLabel.TITLE, DocItemLabel.SECTION_HEADER}
+_FIGURE_CAPTION_PREFIX = "Figure"
 
 # A GFM header separator row, e.g. "|:----|-----:|" or "| --- | --- |"
 _GFM_SEPARATOR_CELL = re.compile(r"^:?-+:?$")
@@ -129,3 +132,107 @@ def _render_table(table: Any, doc: Any, csv_path: Path) -> str:
     header, rows = _parse_gfm_table(table_lines)
     _write_table_csv(csv_path, header, rows)
     return "\n".join(table_lines)
+
+
+def _resolve_alt(items: list[tuple[Any, int]], index: int, picture: Any, doc: Any, number: int) -> str:
+    """Resolve the alt text of a picture.
+
+    1. The next ``CAPTION`` starting with "Figure", searching forward until the end of the current
+       section (the next ``TITLE`` or ``SECTION_HEADER``), even across other pictures and tables.
+    2. Otherwise, the picture's own caption (``caption_text``) when it starts with "Figure".
+    3. Otherwise, ``Figure NNN``.
+
+    :param items: All ``(item, depth)`` pairs from ``doc.iterate_items()``
+    :param index: Position of the picture in ``items``
+    :param picture: Docling ``PictureItem``
+    :param doc: Docling document the picture belongs to
+    :param number: Picture number (1-based), used in the fallback alt
+    :returns: Alt text for the Markdown image
+    """
+    for item, _depth in items[index + 1 :]:
+        label = getattr(item, "label", None)
+        if label in _SECTION_LABELS:
+            break
+        if label == DocItemLabel.CAPTION:
+            text = " ".join(getattr(item, "text", "").split())
+            if text.startswith(_FIGURE_CAPTION_PREFIX):
+                return text
+
+    caption_text = getattr(picture, "caption_text", None)
+    if callable(caption_text):
+        text = " ".join(caption_text(doc).split())
+        if text.startswith(_FIGURE_CAPTION_PREFIX):
+            return text
+
+    return f"Figure {number:03d}"
+
+
+def _render_picture(picture: Any, doc: Any, alt: str, png_path: Path, link: str) -> str:
+    """Save a picture as PNG and render its Markdown image.
+
+    When Docling has no image for the picture, nothing is saved and the alt text is rendered in
+    italics instead, so the Markdown has no broken link.
+
+    :param picture: Docling ``PictureItem``
+    :param doc: Docling document the picture belongs to
+    :param alt: Alt text
+    :param png_path: Destination PNG file
+    :param link: Link to the PNG, relative to the Markdown file
+    :returns: Markdown block for the picture
+    """
+    image = picture.get_image(doc)
+    if image is None:
+        logger.warning("Picture has no image; skipping %s", png_path.name)
+        return f"_{alt} (imagem indisponível)_"
+
+    image.save(png_path, "PNG")
+    return f"![{alt}]({link})"
+
+
+def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Path]:
+    """Export a Docling document as ``{pdf_stem}.md`` plus a ``{pdf_stem}_assets/`` folder.
+
+    The Markdown is assembled in a single pass over ``doc.iterate_items()``. Pictures are saved as
+    ``figure_NNN.png`` and tables as ``table_NNN.csv``, each with its own counter starting at 001 in
+    visit order. Existing files with the same names are overwritten.
+
+    :param doc: Converted Docling document
+    :param pdf_stem: PDF file name without extension
+    :param output_dir: Folder where the Markdown and the assets folder are written
+    :returns: Tuple of (Markdown file path, assets folder path)
+    :raises PDFParsingException: If the files cannot be written
+    """
+    assets_dir = output_dir / f"{pdf_stem}_assets"
+    markdown_path = output_dir / f"{pdf_stem}.md"
+    figure_count = 0
+    table_count = 0
+
+    try:
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Materialized once so the alt rule can look ahead; still a single assembly pass
+        items = list(doc.iterate_items())
+        blocks: list[str] = []
+        for index, (item, depth) in enumerate(items):
+            label = getattr(item, "label", None)
+            if label == DocItemLabel.PICTURE:
+                figure_count += 1
+                file_name = f"figure_{figure_count:03d}.png"
+                alt = _resolve_alt(items, index, item, doc, figure_count)
+                block = _render_picture(item, doc, alt, assets_dir / file_name, f"{assets_dir.name}/{file_name}")
+            elif label == DocItemLabel.TABLE:
+                table_count += 1
+                block = _render_table(item, doc, assets_dir / f"table_{table_count:03d}.csv")
+            else:
+                block = _render_text_item(item, depth)
+
+            if block:
+                blocks.append(block)
+
+        markdown_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+    except OSError as e:
+        logger.error("Failed to export Markdown to %s: %s", output_dir, e)
+        raise PDFParsingException(f"Failed to export Markdown to {output_dir}: {e}") from e
+
+    logger.info("Exported %s (%d figures, %d tables)", markdown_path, figure_count, table_count)
+    return markdown_path, assets_dir
