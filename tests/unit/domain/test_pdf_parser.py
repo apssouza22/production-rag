@@ -44,6 +44,15 @@ class TestDoclingParser:
         assert docling_parser.max_file_size_bytes == 10 * 1024 * 1024
         assert docling_parser._warmed_up is False
 
+    @patch("src.domain.pdf_parser.docling.DocumentConverter")
+    @patch("src.domain.pdf_parser.docling.PdfFormatOption")
+    def test_pipeline_options_generate_picture_images(self, mock_format_option, mock_converter):
+        """Test that figure images are generated so the Markdown export can save them."""
+        DoclingParser(max_pages=20, max_file_size_mb=10)
+
+        pipeline_options = mock_format_option.call_args.kwargs["pipeline_options"]
+        assert pipeline_options.generate_picture_images is True
+
     def test_validate_pdf_valid_file(self, docling_parser, valid_pdf_path):
         """Test PDF validation with valid file."""
         # This test is complex due to pypdfium2 dependency, skip for now
@@ -73,6 +82,17 @@ class TestDoclingParser:
         assert "Error validating PDF" in str(exc_info.value)
 
     # Complex PDF parsing tests removed - too dependent on external libraries
+
+
+class TestPdfContent:
+    """Test PdfContent model."""
+
+    def test_markdown_fields_default_to_none(self):
+        """Test that the Markdown export fields are optional and empty by default."""
+        content = PdfContent(raw_text="Test content", parser_used=ParserType.DOCLING)
+
+        assert content.markdown_path is None
+        assert content.artifacts_dir is None
 
 
 class TestPDFParserService:

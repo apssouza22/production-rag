@@ -94,6 +94,7 @@ class DoclingParser:
         pipeline_options = PdfPipelineOptions(
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
+            generate_picture_images=True,  # Needed to export figure PNGs in the Markdown export
         )
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
