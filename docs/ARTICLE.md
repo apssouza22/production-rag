@@ -113,7 +113,7 @@ A few design choices here that took real thought:
 
 **Rate limiting is a first-class setting, not a `sleep` somewhere.** `rate_limit_delay: 3.0` exists because arXiv's terms require it. If your source has a published limit, encode it in config where the next person can find it.
 
-**Parse failure does not lose the document.** If Docling chokes, the metadata still lands in PostgreSQL with `pdf_processed = false`. You get partial coverage instead of a gap, and a retry path that doesn't need to re-fetch. Roughly 10-20% of academic PDFs fail to parse cleanly in practice, so this path is not an edge case.
+**Parse failure does not lose the document.** If Docling chokes, the metadata still lands in PostgreSQL with `pdf_processed = false`. You get partial coverage instead of a gap, and a retry path that doesn't need to re-fetch. Roughly 10-20% of academic PDFs fail to parse cleanly in practice, so this path is not an edge case. When a paper parses but the result looks wrong, `parse_pdf(..., markdown_output_dir=...)` exports it as Markdown with its figures and tables as files, so you can see exactly what Docling extracted; ingestion never turns this on.
 
 **Writes are upserts keyed on `arxiv_id`.** Re-running the DAG for a day you've already processed is a no-op rather than a duplication event. Idempotency is what makes backfills safe.
 

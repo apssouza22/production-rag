@@ -35,7 +35,7 @@ Learn to build modern AI systems production grade from the ground up through han
 
 ### **📋 Prerequisites**
 - **Docker Desktop** (with Docker Compose)  
-- **Python 3.12+**
+- **Python 3.12** (`requires-python = ">=3.12,<3.13"`; `uv sync` downloads it if needed)
 - **UV Package Manager** ([Install Guide](https://docs.astral.sh/uv/getting-started/installation/))
 - **8GB+ RAM** and **20GB+ free disk space**
 

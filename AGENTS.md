@@ -127,7 +127,9 @@ make lint          # ruff + mypy
 
 - Unit tests mirror domain layout: `tests/unit/domain/<domain>/`
 - API tests live in `tests/api/routers/`
-- Use existing fixtures in `tests/conftest.py` and domain-specific `conftest.py` files
+- Use existing fixtures in `tests/conftest.py` and domain-specific `conftest.py` files; retrieval mocks shared by agent and rerank tests live in `tests/unit/domain/conftest.py`
+- Do not declare `pytest_plugins` in a non-root `conftest.py`: pytest aborts collection of the whole suite
+- `tests/integration/pdf_parser/` runs the real Docling pipeline on `tests/fixtures/arxiv_pdfs/2609.17429v1.pdf` (~2 min on CPU, downloads Docling models on the first run) and is part of `make test`; run it alone with `uv run pytest tests/integration/pdf_parser`
 - Add tests only when they cover meaningful behavior — avoid trivial assertions
 
 The `evals/` directory is part of the main project. Evals use the root virtualenv and `.env`, and can import from `src` like tests. Run evals from the repo root (`make eval-quick`, `make rag-eval`).
