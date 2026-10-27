@@ -221,6 +221,52 @@ class TestResolveAlt:
 
         assert self._alt(items) == "Figure 1: Two lines"
 
+    def _alts(self, items):
+        """Resolve the alt of every picture in order, sharing the used captions (as export_markdown does)."""
+        pairs = [(item, 1) for item in items]
+        used: set[int] = set()
+        pictures = [i for i, item in enumerate(items) if item.label == DocItemLabel.PICTURE]
+        return [_resolve_alt(pairs, i, items[i], None, n, used) for n, i in enumerate(pictures, start=1)]
+
+    def test_captions_grouped_after_pictures_are_used_once_each(self):
+        # Seen in the arXiv fixture: two pictures followed by "Figure 1" and "Figure 2"
+        items = [
+            _picture(),
+            _picture(caption="Figure 1: First"),
+            _item(DocItemLabel.CAPTION, "Figure 1: First"),
+            _item(DocItemLabel.CAPTION, "Figure 2: Second"),
+        ]
+
+        assert self._alts(items) == ["Figure 1: First", "Figure 2: Second"]
+
+    def test_caption_before_picture_is_used_when_none_follows(self):
+        # Seen in the arXiv fixture: "Figure 7" comes before its picture
+        items = [
+            _item(DocItemLabel.CAPTION, "Table 9: Not a figure"),
+            _item(DocItemLabel.CAPTION, "Figure 7: Evidence"),
+            _picture(),
+        ]
+
+        assert self._alts(items) == ["Figure 7: Evidence"]
+
+    def test_look_back_stops_at_section_header(self):
+        items = [
+            _item(DocItemLabel.CAPTION, "Figure 1: Other section"),
+            _item(DocItemLabel.SECTION_HEADER, "Results", level=1),
+            _picture(),
+        ]
+
+        assert self._alts(items) == ["Figure 001"]
+
+    def test_used_caption_is_not_taken_again_by_look_back_or_caption_text(self):
+        items = [
+            _picture(),
+            _item(DocItemLabel.CAPTION, "Figure 1: Only caption"),
+            _picture(caption="Figure 1: Only caption"),
+        ]
+
+        assert self._alts(items) == ["Figure 1: Only caption", "Figure 002"]
+
 
 class TestRenderPicture:
     def test_saves_png_and_links_it(self, tmp_path):

@@ -134,34 +134,68 @@ def _render_table(table: Any, doc: Any, csv_path: Path) -> str:
     return "\n".join(table_lines)
 
 
-def _resolve_alt(items: list[tuple[Any, int]], index: int, picture: Any, doc: Any, number: int) -> str:
+def _figure_caption_text(item: Any) -> Optional[str]:
+    """Return the normalized text of a ``CAPTION`` item starting with "Figure", or None."""
+    if getattr(item, "label", None) != DocItemLabel.CAPTION:
+        return None
+    text = " ".join(getattr(item, "text", "").split())
+    return text if text.startswith(_FIGURE_CAPTION_PREFIX) else None
+
+
+def _resolve_alt(
+    items: list[tuple[Any, int]],
+    index: int,
+    picture: Any,
+    doc: Any,
+    number: int,
+    used_captions: Optional[set[int]] = None,
+) -> str:
     """Resolve the alt text of a picture.
 
-    1. The next ``CAPTION`` starting with "Figure", searching forward until the end of the current
-       section (the next ``TITLE`` or ``SECTION_HEADER``), even across other pictures and tables.
-    2. Otherwise, the picture's own caption (``caption_text``) when it starts with "Figure".
-    3. Otherwise, ``Figure NNN``.
+    Each "Figure" caption is used by at most one picture, because Docling may place several captions
+    after a group of pictures, or a caption before its picture. In order:
+
+    1. The next unused ``CAPTION`` starting with "Figure", searching forward until the end of the
+       current section (the next ``TITLE`` or ``SECTION_HEADER``), even across other pictures and tables.
+    2. Otherwise, the picture's own caption (``caption_text``) when it starts with "Figure" and is unused.
+    3. Otherwise, the nearest unused "Figure" ``CAPTION`` before the picture, in the same section.
+    4. Otherwise, ``Figure NNN``.
 
     :param items: All ``(item, depth)`` pairs from ``doc.iterate_items()``
     :param index: Position of the picture in ``items``
     :param picture: Docling ``PictureItem``
     :param doc: Docling document the picture belongs to
     :param number: Picture number (1-based), used in the fallback alt
+    :param used_captions: Positions in ``items`` of captions already used; updated in place
     :returns: Alt text for the Markdown image
     """
-    for item, _depth in items[index + 1 :]:
-        label = getattr(item, "label", None)
-        if label in _SECTION_LABELS:
+    used = used_captions if used_captions is not None else set()
+    used_texts = {_figure_caption_text(items[i][0]) for i in used}
+
+    for position in range(index + 1, len(items)):
+        item = items[position][0]
+        if getattr(item, "label", None) in _SECTION_LABELS:
             break
-        if label == DocItemLabel.CAPTION:
-            text = " ".join(getattr(item, "text", "").split())
-            if text.startswith(_FIGURE_CAPTION_PREFIX):
-                return text
+        text = _figure_caption_text(item)
+        if text and position not in used:
+            used.add(position)
+            return text
 
     caption_text = getattr(picture, "caption_text", None)
     if callable(caption_text):
         text = " ".join(caption_text(doc).split())
-        if text.startswith(_FIGURE_CAPTION_PREFIX):
+        if text.startswith(_FIGURE_CAPTION_PREFIX) and text not in used_texts:
+            # Mark the matching caption item as used, so a later picture does not take it again
+            used.update(i for i, (item, _depth) in enumerate(items) if _figure_caption_text(item) == text)
+            return text
+
+    for position in range(index - 1, -1, -1):
+        item = items[position][0]
+        if getattr(item, "label", None) in _SECTION_LABELS:
+            break
+        text = _figure_caption_text(item)
+        if text and position not in used:
+            used.add(position)
             return text
 
     return f"Figure {number:03d}"
@@ -212,13 +246,14 @@ def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Pa
 
         # Materialized once so the alt rule can look ahead; still a single assembly pass
         items = list(doc.iterate_items())
+        used_captions: set[int] = set()
         blocks: list[str] = []
         for index, (item, depth) in enumerate(items):
             label = getattr(item, "label", None)
             if label == DocItemLabel.PICTURE:
                 figure_count += 1
                 file_name = f"figure_{figure_count:03d}.png"
-                alt = _resolve_alt(items, index, item, doc, figure_count)
+                alt = _resolve_alt(items, index, item, doc, figure_count, used_captions)
                 block = _render_picture(item, doc, alt, assets_dir / file_name, f"{assets_dir.name}/{file_name}")
             elif label == DocItemLabel.TABLE:
                 table_count += 1
