@@ -38,7 +38,7 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 
 - **FastAPI + Pydantic Settings** — API + typed config via `.env`
 - **SQLAlchemy** — PostgreSQL ORM
-- **Docling** — Scientific PDF parsing; `parse_pdf(pdf_path, markdown_output_dir=...)` can also export `{pdf_stem}.md` plus `{pdf_stem}_assets/` (`figure_NNN.png`, `table_NNN.csv`) to inspect what was extracted (not used by ingestion)
+- **Docling** — Scientific PDF parsing; `parse_pdf(pdf_path, markdown_output_dir=...)` can also export `{pdf_stem}.md` plus `{pdf_stem}_assets/` (`figure_NNN.png`, `table_NNN.csv`) to inspect what was extracted (not used by ingestion). Exporting the same PDF to the same folder replaces the previous `.md` and `figure_*.png`/`table_*.csv`; a figure without an image shows as `_<caption> (image unavailable)_`
 - **opensearch-py** — Search client
 - **Jina AI** — 1024-dim embeddings and cross-encoder reranking
 - **Langfuse SDK** — RAG tracing

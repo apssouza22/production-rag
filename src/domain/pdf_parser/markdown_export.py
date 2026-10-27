@@ -2,7 +2,8 @@
 
 The Markdown is assembled in a single pass over ``doc.iterate_items()``: text items become
 Markdown blocks, tables stay inline as GFM pipe tables (and are also saved as CSV), and
-pictures are saved as PNG and linked from the Markdown.
+pictures are saved as PNG and linked from the Markdown (a picture without an image is rendered
+as its italic alt text followed by ``(image unavailable)``).
 """
 
 import bisect
@@ -173,9 +174,13 @@ class _CaptionIndex:
     used: set[int] = field(default_factory=set)
     used_unvisited_texts: set[str] = field(default_factory=set)
     positions: list[int] = field(init=False)
+    by_text: dict[str, list[int]] = field(init=False)
 
     def __post_init__(self) -> None:
         self.positions = sorted(self.captions)
+        self.by_text = {}
+        for position in self.positions:
+            self.by_text.setdefault(self.captions[position], []).append(position)
 
     @classmethod
     def build(cls, items: list[tuple[Any, int]]) -> "_CaptionIndex":
@@ -228,7 +233,7 @@ class _CaptionIndex:
 
         A text with no matching visited caption is returned once, then treated as used.
         """
-        positions = [position for position, caption in self.captions.items() if caption == text]
+        positions = self.by_text.get(text, [])
         if not positions:
             if text in self.used_unvisited_texts:
                 return None
