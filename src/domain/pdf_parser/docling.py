@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pypdfium2 as pdfium
+from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -83,13 +84,22 @@ def extract_sections_from_document(doc: Any) -> list[PaperSection]:
 class DoclingParser:
     """Docling PDF parser for scientific document processing."""
 
-    def __init__(self, max_pages: int, max_file_size_mb: int, do_ocr: bool = False, do_table_structure: bool = True):
+    def __init__(
+        self,
+        max_pages: int,
+        max_file_size_mb: int,
+        do_ocr: bool = False,
+        do_table_structure: bool = True,
+        accelerator_device: AcceleratorDevice | str | None = None,
+    ):
         """Initialize DocumentConverter with optimized pipeline options.
 
         :param max_pages: Maximum number of pages to process
         :param max_file_size_mb: Maximum file size in MB
         :param do_ocr: Enable OCR for scanned PDFs (default: False, very slow)
         :param do_table_structure: Extract table structures (default: True)
+        :param accelerator_device: Device for Docling models ("cpu", "cuda", "mps", "auto");
+            None keeps Docling's default, which also honors the ``DOCLING_DEVICE`` environment variable
         """
         # Configure pipeline options
         pipeline_options = PdfPipelineOptions(
@@ -97,6 +107,8 @@ class DoclingParser:
             do_ocr=do_ocr,  # Usually disabled for speed
             generate_picture_images=True,  # Needed to export figure PNGs in the Markdown export
         )
+        if accelerator_device is not None:
+            pipeline_options.accelerator_options = AcceleratorOptions(device=accelerator_device)
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
         self._warmed_up = False

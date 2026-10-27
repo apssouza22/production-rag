@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
+from docling.datamodel.accelerator_options import AcceleratorDevice
+from docling.datamodel.pipeline_options import PdfPipelineOptions
 from src.domain.pdf_parser.docling import DoclingParser
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 from src.domain.pdf_parser.factory import make_pdf_parser_service
@@ -86,66 +88,105 @@ class TestDoclingParser:
 
 
 class TestDoclingParserMarkdownExport:
-    """Test how DoclingParser.parse_pdf wires the optional Markdown export."""
+    """Test how DoclingParser.parse_pdf wires the optional Markdown export.
+
+    Docling is replaced at module level (DocumentConverter and pypdfium2), so the real validation and
+    error handling of parse_pdf run without loading any model.
+    """
 
     @pytest.fixture
     def fake_document(self):
         return SimpleNamespace(iterate_items=lambda: iter([]), export_to_text=lambda: "Full text")
 
     @pytest.fixture
-    def docling_parser(self, fake_document):
-        parser = DoclingParser(max_pages=20, max_file_size_mb=10)
-        parser._validate_pdf = MagicMock(return_value=True)
-        parser._converter = MagicMock()
-        parser._converter.convert.return_value = SimpleNamespace(document=fake_document)
-        return parser
+    def page_count(self):
+        return 1
+
+    @pytest.fixture
+    def docling_parser(self, fake_document, page_count):
+        with (
+            patch("src.domain.pdf_parser.docling.DocumentConverter") as mock_converter_cls,
+            patch("src.domain.pdf_parser.docling.pdfium.PdfDocument") as mock_pdf_document,
+        ):
+            mock_converter_cls.return_value.convert.return_value = SimpleNamespace(document=fake_document)
+            mock_pdf_document.return_value.__len__.return_value = page_count
+            yield DoclingParser(max_pages=20, max_file_size_mb=10)
+
+    @pytest.fixture
+    def pdf_path(self, tmp_path):
+        pdf_dir = tmp_path / "in"
+        pdf_dir.mkdir()
+        pdf_file = pdf_dir / "paper.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4\ntest content")
+        return pdf_file
 
     @patch("src.domain.pdf_parser.docling.export_markdown")
-    def test_without_output_dir_does_not_export(self, mock_export, docling_parser, tmp_path):
-        result = docling_parser.parse_pdf(tmp_path / "paper.pdf")
+    def test_without_output_dir_does_not_export(self, mock_export, docling_parser, pdf_path, tmp_path):
+        result = docling_parser.parse_pdf(pdf_path)
 
         mock_export.assert_not_called()
         assert result.raw_text == "Full text"
         assert result.markdown_path is None
         assert result.artifacts_dir is None
-        assert list(tmp_path.iterdir()) == []
+        assert sorted(p.name for p in tmp_path.rglob("*")) == ["in", "paper.pdf"]
 
     @patch("src.domain.pdf_parser.docling.export_markdown")
-    def test_export_does_not_change_sections_or_raw_text(self, mock_export, docling_parser, tmp_path):
+    def test_export_does_not_change_sections_or_raw_text(self, mock_export, docling_parser, pdf_path, tmp_path):
         output_dir = tmp_path / "out"
         mock_export.return_value = (output_dir / "paper.md", output_dir / "paper_assets")
 
-        without_export = docling_parser.parse_pdf(tmp_path / "paper.pdf")
-        with_export = docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=output_dir)
+        without_export = docling_parser.parse_pdf(pdf_path)
+        with_export = docling_parser.parse_pdf(pdf_path, markdown_output_dir=output_dir)
 
         assert with_export.sections == without_export.sections
         assert with_export.raw_text == without_export.raw_text
 
     @patch("src.domain.pdf_parser.docling.export_markdown")
-    def test_with_output_dir_exports_and_returns_paths(self, mock_export, docling_parser, fake_document, tmp_path):
+    def test_with_output_dir_exports_and_returns_paths(self, mock_export, docling_parser, fake_document, pdf_path, tmp_path):
         output_dir = tmp_path / "out"
         mock_export.return_value = (output_dir / "paper.md", output_dir / "paper_assets")
 
-        result = docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=output_dir)
+        result = docling_parser.parse_pdf(pdf_path, markdown_output_dir=output_dir)
 
         mock_export.assert_called_once_with(fake_document, "paper", output_dir)
         assert result.markdown_path == output_dir / "paper.md"
         assert result.artifacts_dir == output_dir / "paper_assets"
 
     @patch("src.domain.pdf_parser.docling.export_markdown")
-    def test_export_error_keeps_original_message(self, mock_export, docling_parser, tmp_path):
+    def test_export_error_keeps_original_message(self, mock_export, docling_parser, pdf_path, tmp_path):
         mock_export.side_effect = PDFParsingException("Failed to export Markdown to /out: disk full")
 
         with pytest.raises(PDFParsingException) as exc_info:
-            docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=tmp_path / "out")
+            docling_parser.parse_pdf(pdf_path, markdown_output_dir=tmp_path / "out")
 
         assert str(exc_info.value) == "Failed to export Markdown to /out: disk full"
 
-    def test_page_limit_still_returns_none(self, docling_parser, tmp_path):
+    @pytest.mark.parametrize("page_count", [40])
+    @patch("src.domain.pdf_parser.docling.export_markdown")
+    def test_page_limit_still_returns_none(self, mock_export, docling_parser, pdf_path, tmp_path):
         """PDFValidationError subclasses PDFParsingException; the limit case must keep returning None."""
-        docling_parser._validate_pdf.side_effect = PDFValidationError("PDF has too many pages: 40 > 20")
+        assert docling_parser.parse_pdf(pdf_path, markdown_output_dir=tmp_path / "out") is None
+        mock_export.assert_not_called()
 
-        assert docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=tmp_path / "out") is None
+
+class TestDoclingParserAcceleratorDevice:
+    """Test the optional accelerator device of DoclingParser."""
+
+    @patch("src.domain.pdf_parser.docling.DocumentConverter")
+    @patch("src.domain.pdf_parser.docling.PdfFormatOption")
+    def test_device_is_passed_to_pipeline_options(self, mock_format_option, mock_converter):
+        DoclingParser(max_pages=20, max_file_size_mb=10, accelerator_device="cpu")
+
+        pipeline_options = mock_format_option.call_args.kwargs["pipeline_options"]
+        assert pipeline_options.accelerator_options.device == AcceleratorDevice.CPU
+
+    @patch("src.domain.pdf_parser.docling.DocumentConverter")
+    @patch("src.domain.pdf_parser.docling.PdfFormatOption")
+    def test_without_device_keeps_docling_default(self, mock_format_option, mock_converter):
+        DoclingParser(max_pages=20, max_file_size_mb=10)
+
+        pipeline_options = mock_format_option.call_args.kwargs["pipeline_options"]
+        assert pipeline_options.accelerator_options == PdfPipelineOptions().accelerator_options
 
 
 class TestPdfContent:
