@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -84,6 +85,69 @@ class TestDoclingParser:
     # Complex PDF parsing tests removed - too dependent on external libraries
 
 
+class TestDoclingParserMarkdownExport:
+    """Test how DoclingParser.parse_pdf wires the optional Markdown export."""
+
+    @pytest.fixture
+    def fake_document(self):
+        return SimpleNamespace(iterate_items=lambda: iter([]), export_to_text=lambda: "Full text")
+
+    @pytest.fixture
+    def docling_parser(self, fake_document):
+        parser = DoclingParser(max_pages=20, max_file_size_mb=10)
+        parser._validate_pdf = MagicMock(return_value=True)
+        parser._converter = MagicMock()
+        parser._converter.convert.return_value = SimpleNamespace(document=fake_document)
+        return parser
+
+    @patch("src.domain.pdf_parser.docling.export_markdown")
+    def test_without_output_dir_does_not_export(self, mock_export, docling_parser, tmp_path):
+        result = docling_parser.parse_pdf(tmp_path / "paper.pdf")
+
+        mock_export.assert_not_called()
+        assert result.raw_text == "Full text"
+        assert result.markdown_path is None
+        assert result.artifacts_dir is None
+        assert list(tmp_path.iterdir()) == []
+
+    @patch("src.domain.pdf_parser.docling.export_markdown")
+    def test_export_does_not_change_sections_or_raw_text(self, mock_export, docling_parser, tmp_path):
+        output_dir = tmp_path / "out"
+        mock_export.return_value = (output_dir / "paper.md", output_dir / "paper_assets")
+
+        without_export = docling_parser.parse_pdf(tmp_path / "paper.pdf")
+        with_export = docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=output_dir)
+
+        assert with_export.sections == without_export.sections
+        assert with_export.raw_text == without_export.raw_text
+
+    @patch("src.domain.pdf_parser.docling.export_markdown")
+    def test_with_output_dir_exports_and_returns_paths(self, mock_export, docling_parser, fake_document, tmp_path):
+        output_dir = tmp_path / "out"
+        mock_export.return_value = (output_dir / "paper.md", output_dir / "paper_assets")
+
+        result = docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=output_dir)
+
+        mock_export.assert_called_once_with(fake_document, "paper", output_dir)
+        assert result.markdown_path == output_dir / "paper.md"
+        assert result.artifacts_dir == output_dir / "paper_assets"
+
+    @patch("src.domain.pdf_parser.docling.export_markdown")
+    def test_export_error_keeps_original_message(self, mock_export, docling_parser, tmp_path):
+        mock_export.side_effect = PDFParsingException("Failed to export Markdown to /out: disk full")
+
+        with pytest.raises(PDFParsingException) as exc_info:
+            docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=tmp_path / "out")
+
+        assert str(exc_info.value) == "Failed to export Markdown to /out: disk full"
+
+    def test_page_limit_still_returns_none(self, docling_parser, tmp_path):
+        """PDFValidationError subclasses PDFParsingException; the limit case must keep returning None."""
+        docling_parser._validate_pdf.side_effect = PDFValidationError("PDF has too many pages: 40 > 20")
+
+        assert docling_parser.parse_pdf(tmp_path / "paper.pdf", markdown_output_dir=tmp_path / "out") is None
+
+
 class TestPdfContent:
     """Test PdfContent model."""
 
@@ -137,7 +201,18 @@ class TestPDFParserService:
         result = await pdf_parser_service.parse_pdf(valid_pdf_path)
 
         assert result == mock_content
-        mock_parse.assert_called_once_with(valid_pdf_path)
+        mock_parse.assert_called_once_with(valid_pdf_path, None)
+
+    @patch("src.domain.pdf_parser.parser.DoclingParser.parse_pdf")
+    @pytest.mark.asyncio
+    async def test_parse_pdf_forwards_markdown_output_dir(self, mock_parse, pdf_parser_service, valid_pdf_path, tmp_path):
+        """Test that the Markdown output folder is passed down to DoclingParser."""
+        output_dir = tmp_path / "out"
+        mock_parse.return_value = PdfContent(raw_text="Test content", parser_used=ParserType.DOCLING)
+
+        await pdf_parser_service.parse_pdf(valid_pdf_path, markdown_output_dir=output_dir)
+
+        mock_parse.assert_called_once_with(valid_pdf_path, output_dir)
 
     @patch("src.domain.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio
@@ -148,7 +223,7 @@ class TestPDFParserService:
         result = await pdf_parser_service.parse_pdf(valid_pdf_path)
 
         assert result is None
-        mock_parse.assert_called_once_with(valid_pdf_path)
+        mock_parse.assert_called_once_with(valid_pdf_path, None)
 
     @patch("src.domain.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio

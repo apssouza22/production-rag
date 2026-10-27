@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
+
 from .docling import DoclingParser
 from .models import PdfContent
 
@@ -19,10 +20,11 @@ class PDFParserService:
             max_pages=max_pages, max_file_size_mb=max_file_size_mb, do_ocr=do_ocr, do_table_structure=do_table_structure
         )
 
-    async def parse_pdf(self, pdf_path: Path) -> Optional[PdfContent]:
+    async def parse_pdf(self, pdf_path: Path, markdown_output_dir: Path | None = None) -> Optional[PdfContent]:
         """Parse PDF using Docling parser only.
 
         :param pdf_path: Path to PDF file
+        :param markdown_output_dir: When set, also export ``{pdf_stem}.md`` and ``{pdf_stem}_assets/`` there
         :returns: PdfContent object or None if parsing failed
         """
         if not pdf_path.exists():
@@ -30,7 +32,7 @@ class PDFParserService:
             raise PDFValidationError(f"PDF file not found: {pdf_path}")
 
         try:
-            result = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path)
+            result = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path, markdown_output_dir)
             if result:
                 logger.info(f"Parsed {pdf_path.name}")
                 return result

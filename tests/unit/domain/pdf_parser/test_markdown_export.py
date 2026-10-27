@@ -313,3 +313,13 @@ class TestExportMarkdown:
         assert markdown.count("Table 1: Scores") == 1
         assert ".csv" not in markdown
         assert _read_csv(assets_dir / "table_001.csv") == "Model,Acc\r\nA,0.9\r\n"
+
+    def test_table_without_grid_still_advances_counter(self, tmp_path):
+        """A table whose Markdown has no pipe rows writes an empty CSV, adds no block and keeps numbering."""
+        doc = _fake_doc([_table("Table 1: caption only"), _table("| c |\n|---|\n| 3 |")])
+
+        markdown_path, assets_dir = export_markdown(doc, "paper", tmp_path)
+
+        assert _read_csv(assets_dir / "table_001.csv") == ""
+        assert _read_csv(assets_dir / "table_002.csv") == "c\r\n3\r\n"
+        assert markdown_path.read_text(encoding="utf-8") == "| c |\n|---|\n| 3 |\n"
