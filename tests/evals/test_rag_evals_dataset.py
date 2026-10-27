@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
 from evals.rag_evals.retrieval import RerankSearchClient

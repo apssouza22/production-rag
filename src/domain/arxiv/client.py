@@ -8,7 +8,6 @@ from typing import List, Optional
 from urllib.parse import quote, urlencode
 
 import httpx
-
 from src.config import ArxivSettings
 from src.domain.arxiv.exceptions import (
     ArxivAPIException,
@@ -17,6 +16,7 @@ from src.domain.arxiv.exceptions import (
     PDFDownloadException,
     PDFDownloadTimeoutError,
 )
+
 from .paper import ArxivPaper
 
 logger = logging.getLogger(__name__)

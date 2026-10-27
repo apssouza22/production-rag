@@ -1,64 +1,12 @@
-"""Shared pytest fixtures for agent and retrieval tests."""
+"""Pytest fixtures for agent tests.
 
-from unittest.mock import AsyncMock, Mock
+The retrieval mocks (OpenSearch, Jina embeddings and reranker) live in ``tests/unit/domain/conftest.py``,
+shared with the rerank tests.
+"""
 
 import pytest
-
-from src.domain.jinaai.jina import JinaRerankResult
 from src.domain.rerank.config import RerankSearchConfig
 from src.domain.rerank.factory import make_rerank_search_service
-
-
-@pytest.fixture
-def mock_opensearch_client():
-    """Mock OpenSearch client with sample search results."""
-    client = Mock()
-    client.search_unified = Mock(
-        return_value={
-            "hits": [
-                {
-                    "chunk_text": "Transformers are neural network architectures based on self-attention mechanisms.",
-                    "arxiv_id": "1706.03762",
-                    "title": "Attention Is All You Need",
-                    "authors": "Vaswani et al.",
-                    "score": 0.95,
-                    "section_name": "Introduction",
-                },
-                {
-                    "chunk_text": "BERT is a bidirectional transformer pre-trained on large corpora.",
-                    "arxiv_id": "1810.04805",
-                    "title": "BERT: Pre-training of Deep Bidirectional Transformers",
-                    "authors": "Devlin et al.",
-                    "score": 0.88,
-                    "section_name": "Abstract",
-                },
-            ],
-            "total": 2,
-        }
-    )
-    return client
-
-
-@pytest.fixture
-def mock_jina_embeddings_client():
-    """Mock Jina embeddings client."""
-    client = AsyncMock()
-    client.embed_query = AsyncMock(return_value=[0.1] * 1024)
-    return client
-
-
-@pytest.fixture
-def mock_jina_reranker_client():
-    """Mock Jina reranker client."""
-    client = AsyncMock()
-    client.is_configured = True
-    client.rerank = AsyncMock(
-        return_value=[
-            JinaRerankResult(index=0, relevance_score=0.98),
-            JinaRerankResult(index=1, relevance_score=0.72),
-        ]
-    )
-    return client
 
 
 @pytest.fixture
