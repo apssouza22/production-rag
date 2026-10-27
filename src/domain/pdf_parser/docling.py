@@ -99,7 +99,8 @@ class DoclingParser:
         :param do_ocr: Enable OCR for scanned PDFs (default: False, very slow)
         :param do_table_structure: Extract table structures (default: True)
         :param accelerator_device: Device for Docling models ("cpu", "cuda", "mps", "auto");
-            None keeps Docling's default, which also honors the ``DOCLING_DEVICE`` environment variable
+            None keeps Docling's default, which also honors the ``DOCLING_DEVICE`` environment variable.
+            ``PDFParserService`` and the factory do not pass it; use ``DOCLING_DEVICE`` there
         """
         # Configure pipeline options
         pipeline_options = PdfPipelineOptions(

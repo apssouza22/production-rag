@@ -2,7 +2,7 @@
 Learn to build modern AI systems production grade from the ground up through hands-on implementation
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.12+-blue.svg" alt="Python Version">
+  <img src="https://img.shields.io/badge/Python-3.12-blue.svg" alt="Python Version">
   <img src="https://img.shields.io/badge/FastAPI-0.115+-green.svg" alt="FastAPI">
   <img src="https://img.shields.io/badge/OpenSearch-2.19-orange.svg" alt="OpenSearch">
   <img src="https://img.shields.io/badge/Docker-Compose-blue.svg" alt="Docker">

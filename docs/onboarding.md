@@ -51,7 +51,7 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 ### Prerequisites
 
 - Docker Desktop (8GB+ RAM, ~20GB disk)
-- Python 3.12+
+- Python 3.12 (`requires-python = ">=3.12,<3.13"`)
 - [UV](https://docs.astral.sh/uv/getting-started/installation/)
 
 ### Bootstrap
@@ -477,7 +477,7 @@ uv run pytest
 | Empty search results | Run Airflow DAG to ingest + index; check `curl localhost:9200/arxiv-papers-chunks/_count` |
 | Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a new query; enable `LANGFUSE__DEBUG=true` |
 | Port conflicts | Stop services on 8000, 8080, 5412, 9200 |
-| Docling fails with `CUDA error: no kernel image is available` | The GPU is too old for the installed torch build (e.g. compute capability 6.1). Run on CPU: `CUDA_VISIBLE_DEVICES="" <command>`, `DOCLING_DEVICE=cpu`, or `DoclingParser(..., accelerator_device="cpu")` |
+| Docling fails with `CUDA error: no kernel image is available` | The GPU is too old for the installed torch build (e.g. compute capability 6.1). Run on CPU: `CUDA_VISIBLE_DEVICES="" <command>` or `DOCLING_DEVICE=cpu` (works for the API, `PDFParserService` and Airflow); `DoclingParser(..., accelerator_device="cpu")` only applies when you build the parser yourself |
 
 Full reset:
 
