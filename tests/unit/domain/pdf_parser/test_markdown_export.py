@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -282,7 +283,7 @@ class TestRenderPicture:
 
         block = _render_picture(_picture(has_image=False), None, "Figure 001", png_path, "paper_assets/figure_001.png")
 
-        assert block == "_Figure 001 (imagem indisponível)_"
+        assert block == "_Figure 001 (image unavailable)_"
         assert not png_path.exists()
 
 
@@ -311,7 +312,7 @@ class TestExportMarkdown:
             "![Figure 1: First](paper_assets/figure_001.png)\n\n"
             "Figure 1: First\n\n"
             "| a | b |\n|---|---|\n| 1 | 2 |\n\n"
-            "_Figure 002 (imagem indisponível)_\n\n"
+            "_Figure 002 (image unavailable)_\n\n"
             "| c |\n|---|\n| 3 |\n"
         )
 
@@ -430,12 +431,24 @@ class TestMarkdownSafety:
     def test_missing_image_fallback_escapes_alt(self, tmp_path):
         block = _render_picture(_picture(has_image=False), None, "Figure 1: F_1", tmp_path / "f.png", "a/figure_001.png")
 
-        assert block == r"_Figure 1: F\_1 (imagem indisponível)_"
+        assert block == r"_Figure 1: F\_1 (image unavailable)_"
 
-    def test_link_with_spaces_or_parentheses_uses_angle_brackets(self, tmp_path):
-        markdown_path, _ = export_markdown(_fake_doc([_picture()]), "my paper (v2)", tmp_path)
+    def test_link_is_percent_encoded(self, tmp_path):
+        markdown_path, _ = export_markdown(_fake_doc([_picture()]), "my paper (v2)#<1>%?", tmp_path)
 
-        assert "![Figure 001](<my paper (v2)_assets/figure_001.png>)" in markdown_path.read_text(encoding="utf-8")
+        assert "![Figure 001](my%20paper%20%28v2%29%23%3C1%3E%25%3F_assets/figure_001.png)" in markdown_path.read_text(
+            encoding="utf-8"
+        )
+
+    def test_arxiv_stem_link_is_unchanged(self, tmp_path):
+        markdown_path, _ = export_markdown(_fake_doc([_picture()]), "2609.17429v1", tmp_path)
+
+        assert "![Figure 001](2609.17429v1_assets/figure_001.png)" in markdown_path.read_text(encoding="utf-8")
+
+    def test_alt_backslash_backtick_bracket_html_and_entity_are_escaped(self, tmp_path):
+        block = _render_picture(_picture(), None, r"Figure 1: a\b `c` d] <b> &amp;", tmp_path / "f.png", "a/figure_001.png")
+
+        assert block == r"![Figure 1: a\\b \`c\` d\] \<b> \&amp;](a/figure_001.png)"
 
     def test_code_fence_is_longer_than_backticks_in_text(self):
         block = _render_text_item(_item(DocItemLabel.CODE, "Use ```json blocks```"), depth=1)
@@ -464,3 +477,61 @@ class TestExportMarkdownLabelsAndReexport:
         _, assets_dir = export_markdown(_fake_doc([_picture()]), "paper", tmp_path)
 
         assert sorted(p.name for p in assets_dir.iterdir()) == ["figure_001.png", "notes.txt"]
+
+    def test_reexport_keeps_similar_names_and_folders_and_clears_large_counters(self, tmp_path):
+        assets_dir = tmp_path / "paper_assets"
+        assets_dir.mkdir()
+        (assets_dir / "figure_1.png").write_bytes(b"x")
+        (assets_dir / "table_001.csv").mkdir()
+        (assets_dir / "figure_1000.png").write_bytes(b"x")
+        (tmp_path / "paper.md").write_text("old", encoding="utf-8")
+
+        markdown_path, _ = export_markdown(_fake_doc([_item(DocItemLabel.PARAGRAPH, "New.")]), "paper", tmp_path)
+
+        assert sorted(p.name for p in assets_dir.iterdir()) == ["figure_1.png", "table_001.csv"]
+        assert (assets_dir / "table_001.csv").is_dir()
+        assert markdown_path.read_text(encoding="utf-8") == "New.\n"
+
+    def test_failed_reexport_leaves_no_stale_markdown(self, tmp_path):
+        export_markdown(_fake_doc([_picture()]), "paper", tmp_path)
+
+        with patch.object(Path, "write_text", side_effect=OSError("disk full")):
+            with pytest.raises(PDFParsingException):
+                export_markdown(_fake_doc([_picture()]), "paper", tmp_path)
+
+        assert not (tmp_path / "paper.md").exists()
+
+
+class TestLinkedCaptions:
+    """Captions Docling linked to a picture are matched one by one (not the glued caption_text)."""
+
+    def test_picture_with_two_linked_captions_takes_the_visited_one(self, tmp_path):
+        doc = DoclingDocument(name="paper")
+        doc.add_heading("Method", level=1)
+        first = _add_picture_with_caption(doc, "Figure 1: A")
+        second_caption = doc.add_text(label=DocItemLabel.CAPTION, text="Figure 1b: B", parent=first)
+        first.captions.append(second_caption.get_ref())
+
+        markdown_path, _ = export_markdown(doc, "paper", tmp_path)
+        alts = re.findall(r"^!\[([^\]]*)\]", markdown_path.read_text(encoding="utf-8"), flags=re.MULTILINE)
+
+        assert alts == ["Figure 1: A"]
+
+    def test_same_unvisited_linked_caption_is_used_once(self):
+        items = [_picture(caption="Figure 9: Ghost"), _picture(caption="Figure 9: Ghost")]
+        captions = _CaptionIndex.build([(item, 1) for item in items])
+
+        alts = [_resolve_alt(i, items[i], None, i + 1, captions) for i in range(2)]
+
+        assert alts == ["Figure 9: Ghost", "Figure 002"]
+
+    def test_linked_caption_ref_is_used_when_forward_search_finds_none(self, tmp_path):
+        doc = DoclingDocument(name="paper")
+        caption = doc.add_text(label=DocItemLabel.CAPTION, text="Figure 3: Linked")
+        doc.add_heading("Results", level=1)
+        picture = doc.add_picture(image=ImageRef.from_pil(Image.new("RGB", (8, 8), "white"), dpi=72))
+        picture.captions.append(caption.get_ref())
+
+        markdown_path, _ = export_markdown(doc, "paper", tmp_path)
+
+        assert "![Figure 3: Linked](paper_assets/figure_001.png)" in markdown_path.read_text(encoding="utf-8")

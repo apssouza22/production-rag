@@ -188,6 +188,11 @@ class TestDoclingParserAcceleratorDevice:
         pipeline_options = mock_format_option.call_args.kwargs["pipeline_options"]
         assert pipeline_options.accelerator_options == PdfPipelineOptions().accelerator_options
 
+    @patch("src.domain.pdf_parser.docling.DocumentConverter")
+    def test_invalid_device_is_rejected(self, mock_converter):
+        with pytest.raises(ValueError):
+            DoclingParser(max_pages=20, max_file_size_mb=10, accelerator_device="gpu")
+
 
 class TestPdfContent:
     """Test PdfContent model."""

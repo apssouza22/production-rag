@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 from docling_core.types.doc import DocItemLabel
 from src.domain.pdf_parser.exceptions import PDFParsingException
@@ -27,13 +28,13 @@ _FIGURE_CAPTION_PREFIX = "Figure"
 
 # A GFM header separator row, e.g. "|:----|-----:|" or "| --- | --- |"
 _GFM_SEPARATOR_CELL = re.compile(r"^:?-+:?$")
-# Asset files written by a previous export, removed before exporting again
-_ASSET_FILE = re.compile(r"^(figure_\d{3}\.png|table_\d{3}\.csv)$")
-# Characters that would change the meaning of inline Markdown inside the alt text
-_MARKDOWN_INLINE_SPECIALS = re.compile(r"([\\`*_\[\]])")
-# Characters that require an angle-bracket link destination (CommonMark)
-_LINK_UNSAFE = set(" ()<>")
+# Asset files written by a previous export, removed before exporting again (counters may exceed 999)
+_ASSET_FILE = re.compile(r"^(figure_\d{3,}\.png|table_\d{3,}\.csv)$")
+# Characters that would change the meaning of inline Markdown inside the alt text (links, emphasis,
+# code, HTML tags and entities)
+_MARKDOWN_INLINE_SPECIALS = re.compile(r"([\\`*_\[\]<&])")
 _BACKTICK_RUN = re.compile(r"`+")
+_MISSING_IMAGE_NOTE = "(image unavailable)"
 
 
 def _code_fence(text: str) -> str:
@@ -163,12 +164,18 @@ class _CaptionIndex:
     """Positions of "Figure" captions and section starts in ``iterate_items`` order.
 
     Built once per document so each picture only looks at caption positions, not at every item.
-    Captions are tracked by position: each one is used by at most one picture.
+    Captions are tracked by position: each one is used by at most one picture. Caption texts that
+    were not visited (only linked to a picture) are tracked by text.
     """
 
     captions: dict[int, str]
     section_starts: list[int]
     used: set[int] = field(default_factory=set)
+    used_unvisited_texts: set[str] = field(default_factory=set)
+    positions: list[int] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.positions = sorted(self.captions)
 
     @classmethod
     def build(cls, items: list[tuple[Any, int]]) -> "_CaptionIndex":
@@ -198,38 +205,51 @@ class _CaptionIndex:
     def take_next(self, index: int) -> Optional[str]:
         """Take the first unused caption after ``index``, in the same section."""
         _start, end = self._section_bounds(index)
-        # captions is filled in ascending position order
-        for position in self.captions:
-            if position <= index or position in self.used:
-                continue
+        for position in self.positions[bisect.bisect_right(self.positions, index) :]:
             if end is not None and position > end:
                 break
-            return self._take(position)
+            if position not in self.used:
+                return self._take(position)
         return None
 
     def take_previous(self, index: int) -> Optional[str]:
         """Take the nearest unused caption before ``index``, in the same section."""
         start, _end = self._section_bounds(index)
-        for position in reversed(list(self.captions)):
-            if position >= index or position in self.used:
-                continue
+        for i in range(bisect.bisect_left(self.positions, index) - 1, -1, -1):
+            position = self.positions[i]
             if position < start:
                 break
-            return self._take(position)
+            if position not in self.used:
+                return self._take(position)
         return None
 
     def take_text(self, text: str) -> Optional[str]:
-        """Take a caption with exactly this text, unless every caption with it is already used.
+        """Take a caption with exactly this text, unless it is already used.
 
-        A text with no matching visited caption is returned as is.
+        A text with no matching visited caption is returned once, then treated as used.
         """
         positions = [position for position, caption in self.captions.items() if caption == text]
         if not positions:
+            if text in self.used_unvisited_texts:
+                return None
+            self.used_unvisited_texts.add(text)
             return text
         for position in positions:
             if position not in self.used:
                 return self._take(position)
         return None
+
+
+def _linked_caption_texts(picture: Any, doc: Any) -> list[str]:
+    """Return the normalized text of each caption Docling linked to the picture.
+
+    Each caption is resolved on its own: ``caption_text`` would glue several captions together.
+    """
+    caption_refs = getattr(picture, "captions", None)
+    if caption_refs:
+        return [_normalize(getattr(ref.resolve(doc), "text", "")) for ref in caption_refs]
+    caption_text = getattr(picture, "caption_text", None)
+    return [_normalize(caption_text(doc))] if callable(caption_text) else []
 
 
 def _resolve_alt(index: int, picture: Any, doc: Any, number: int, captions: _CaptionIndex) -> str:
@@ -240,7 +260,8 @@ def _resolve_alt(index: int, picture: Any, doc: Any, number: int, captions: _Cap
 
     1. The next unused ``CAPTION`` starting with "Figure", searching forward until the end of the
        current section (the next ``TITLE`` or ``SECTION_HEADER``), even across other pictures and tables.
-    2. Otherwise, the picture's own caption (``caption_text``) when it starts with "Figure" and is unused.
+    2. Otherwise, a caption linked to the picture (each of ``picture.captions``) that starts with "Figure"
+       and is unused.
     3. Otherwise, the nearest unused "Figure" ``CAPTION`` before the picture, in the same section.
     4. Otherwise, ``Figure NNN``.
 
@@ -255,9 +276,7 @@ def _resolve_alt(index: int, picture: Any, doc: Any, number: int, captions: _Cap
     if alt:
         return alt
 
-    caption_text = getattr(picture, "caption_text", None)
-    if callable(caption_text):
-        text = _normalize(caption_text(doc))
+    for text in _linked_caption_texts(picture, doc):
         if text.startswith(_FIGURE_CAPTION_PREFIX):
             alt = captions.take_text(text)
             if alt:
@@ -276,10 +295,8 @@ def _escape_markdown_inline(text: str) -> str:
 
 
 def _link_destination(link: str) -> str:
-    """Wrap a link destination in angle brackets when it has spaces, parentheses or angle brackets."""
-    if any(char in _LINK_UNSAFE for char in link):
-        return "<" + link.replace("<", "%3C").replace(">", "%3E") + ">"
-    return link
+    """Percent-encode a relative link destination (spaces, parentheses, ``#``, ``%``, ``?``...), keeping ``/``."""
+    return quote(link, safe="/")
 
 
 def _render_picture(picture: Any, doc: Any, alt: str, png_path: Path, link: str) -> str:
@@ -299,7 +316,7 @@ def _render_picture(picture: Any, doc: Any, alt: str, png_path: Path, link: str)
     image = picture.get_image(doc)
     if image is None:
         logger.warning("Picture has no image; skipping %s", png_path.name)
-        return f"_{escaped_alt} (imagem indisponível)_"
+        return f"_{escaped_alt} {_MISSING_IMAGE_NOTE}_"
 
     image.save(png_path, "PNG")
     return f"![{escaped_alt}]({_link_destination(link)})"
@@ -317,8 +334,9 @@ def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Pa
 
     The Markdown is assembled in a single pass over ``doc.iterate_items()``. Pictures are saved as
     ``figure_NNN.png`` and tables as ``table_NNN.csv``, each with its own counter starting at 001 in
-    visit order. A previous export of the same PDF in ``output_dir`` is replaced: the Markdown is
-    overwritten and old ``figure_NNN.png``/``table_NNN.csv`` files are removed first.
+    visit order. A previous export of the same PDF in ``output_dir`` is replaced: its Markdown and its
+    ``figure_NNN.png``/``table_NNN.csv`` files are removed first, so a failed export never leaves an
+    old Markdown pointing at removed assets.
 
     :param doc: Converted Docling document
     :param pdf_stem: PDF file name without extension
@@ -333,6 +351,7 @@ def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Pa
 
     try:
         assets_dir.mkdir(parents=True, exist_ok=True)
+        markdown_path.unlink(missing_ok=True)
         _clear_previous_assets(assets_dir)
 
         # Materialized once so the alt rule can look around the picture; still a single assembly pass
