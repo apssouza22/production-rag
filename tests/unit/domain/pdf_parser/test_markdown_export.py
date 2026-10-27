@@ -7,6 +7,7 @@ from docling_core.types.doc import DocItemLabel, DoclingDocument, ImageRef, Tabl
 from PIL import Image
 from src.domain.pdf_parser.exceptions import PDFParsingException
 from src.domain.pdf_parser.markdown_export import (
+    _CaptionIndex,
     _extract_gfm_table_lines,
     _parse_gfm_table,
     _render_picture,
@@ -177,8 +178,8 @@ class TestRenderTable:
 
 class TestResolveAlt:
     def _alt(self, items, picture_index=0, doc=None):
-        pairs = [(item, 1) for item in items]
-        return _resolve_alt(pairs, picture_index, items[picture_index], doc, number=picture_index + 1)
+        captions = _CaptionIndex.build([(item, 1) for item in items])
+        return _resolve_alt(picture_index, items[picture_index], doc, picture_index + 1, captions)
 
     def test_next_figure_caption_after_text_and_table_in_same_section(self):
         items = [
@@ -223,10 +224,9 @@ class TestResolveAlt:
 
     def _alts(self, items):
         """Resolve the alt of every picture in order, sharing the used captions (as export_markdown does)."""
-        pairs = [(item, 1) for item in items]
-        used: set[int] = set()
+        captions = _CaptionIndex.build([(item, 1) for item in items])
         pictures = [i for i, item in enumerate(items) if item.label == DocItemLabel.PICTURE]
-        return [_resolve_alt(pairs, i, items[i], None, n, used) for n, i in enumerate(pictures, start=1)]
+        return [_resolve_alt(i, items[i], None, n, captions) for n, i in enumerate(pictures, start=1)]
 
     def test_captions_grouped_after_pictures_are_used_once_each(self):
         # Seen in the arXiv fixture: two pictures followed by "Figure 1" and "Figure 2"
@@ -369,3 +369,98 @@ class TestExportMarkdown:
         assert _read_csv(assets_dir / "table_001.csv") == ""
         assert _read_csv(assets_dir / "table_002.csv") == "c\r\n3\r\n"
         assert markdown_path.read_text(encoding="utf-8") == "| c |\n|---|\n| 3 |\n"
+
+
+class TestResolveAltOrder:
+    """Search order and section limits of the alt rule (Q5)."""
+
+    def _alts(self, items):
+        captions = _CaptionIndex.build([(item, 1) for item in items])
+        pictures = [i for i, item in enumerate(items) if item.label == DocItemLabel.PICTURE]
+        return [_resolve_alt(i, items[i], None, n, captions) for n, i in enumerate(pictures, start=1)]
+
+    def test_forward_search_comes_before_caption_text(self):
+        # Q5 order: a visited caption ahead wins over the picture's own caption_text, even when it was
+        # meant for the next picture. In Docling's PDF pipeline the own caption is visited right after
+        # the picture, so this only happens when that caption is missing from the iteration.
+        items = [_picture(caption="Figure 1: A"), _picture(), _item(DocItemLabel.CAPTION, "Figure 2: B")]
+
+        assert self._alts(items) == ["Figure 2: B", "Figure 002"]
+
+    def test_look_back_takes_nearest_caption(self):
+        items = [
+            _item(DocItemLabel.CAPTION, "Figure 1: Far"),
+            _item(DocItemLabel.CAPTION, "Figure 2: Near"),
+            _picture(),
+        ]
+
+        assert self._alts(items) == ["Figure 2: Near"]
+
+    def test_title_also_limits_both_searches(self):
+        items = [
+            _item(DocItemLabel.CAPTION, "Figure 1: Before title"),
+            _item(DocItemLabel.TITLE, "Appendix"),
+            _picture(),
+            _item(DocItemLabel.TITLE, "Another part"),
+            _item(DocItemLabel.CAPTION, "Figure 2: After title"),
+        ]
+
+        assert self._alts(items) == ["Figure 001"]
+
+    def test_caption_text_takes_matching_caption_outside_the_section(self):
+        # Docling linked the caption to the picture, but the caption was visited in another section
+        items = [
+            _item(DocItemLabel.CAPTION, "Figure 1: Linked"),
+            _item(DocItemLabel.SECTION_HEADER, "Results", level=1),
+            _picture(caption="Figure 1: Linked"),
+            _picture(),
+        ]
+
+        assert self._alts(items) == ["Figure 1: Linked", "Figure 002"]
+
+
+class TestMarkdownSafety:
+    def test_alt_special_characters_are_escaped(self, tmp_path):
+        block = _render_picture(
+            _picture(), None, "Figure 1: values in [0, 1) for F_1 *x*", tmp_path / "f.png", "paper_assets/figure_001.png"
+        )
+
+        assert block == r"![Figure 1: values in \[0, 1) for F\_1 \*x\*](paper_assets/figure_001.png)"
+
+    def test_missing_image_fallback_escapes_alt(self, tmp_path):
+        block = _render_picture(_picture(has_image=False), None, "Figure 1: F_1", tmp_path / "f.png", "a/figure_001.png")
+
+        assert block == r"_Figure 1: F\_1 (imagem indisponível)_"
+
+    def test_link_with_spaces_or_parentheses_uses_angle_brackets(self, tmp_path):
+        markdown_path, _ = export_markdown(_fake_doc([_picture()]), "my paper (v2)", tmp_path)
+
+        assert "![Figure 001](<my paper (v2)_assets/figure_001.png>)" in markdown_path.read_text(encoding="utf-8")
+
+    def test_code_fence_is_longer_than_backticks_in_text(self):
+        block = _render_text_item(_item(DocItemLabel.CODE, "Use ```json blocks```"), depth=1)
+
+        assert block == "````\nUse ```json blocks```\n````"
+
+
+class TestExportMarkdownLabelsAndReexport:
+    def test_document_index_table_and_chart_picture_are_exported(self, tmp_path):
+        doc = DoclingDocument(name="paper")
+        doc.add_table(data=_table_data([["Section", "Page"], ["Intro", "1"]]), label=DocItemLabel.DOCUMENT_INDEX)
+        chart = _add_picture_with_caption(doc, "Figure 1: A chart")
+        chart.label = DocItemLabel.CHART
+
+        markdown_path, assets_dir = export_markdown(doc, "paper", tmp_path)
+        markdown = markdown_path.read_text(encoding="utf-8")
+
+        assert sorted(p.name for p in assets_dir.iterdir()) == ["figure_001.png", "table_001.csv"]
+        assert "| Section" in markdown
+        assert "![Figure 1: A chart](paper_assets/figure_001.png)" in markdown
+
+    def test_reexport_removes_assets_from_previous_export(self, tmp_path):
+        export_markdown(_fake_doc([_picture(), _picture(), _table("| a |\n|---|\n| 1 |")]), "paper", tmp_path)
+        (tmp_path / "paper_assets" / "notes.txt").write_text("keep me", encoding="utf-8")
+
+        _, assets_dir = export_markdown(_fake_doc([_picture()]), "paper", tmp_path)
+
+        assert sorted(p.name for p in assets_dir.iterdir()) == ["figure_001.png", "notes.txt"]

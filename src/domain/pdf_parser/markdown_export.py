@@ -5,9 +5,11 @@ Markdown blocks, tables stay inline as GFM pipe tables (and are also saved as CS
 pictures are saved as PNG and linked from the Markdown.
 """
 
+import bisect
 import csv
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,10 +20,26 @@ logger = logging.getLogger(__name__)
 
 _MAX_HEADING_LEVEL = 6
 _SECTION_LABELS = {DocItemLabel.TITLE, DocItemLabel.SECTION_HEADER}
+# Docling labels a PictureItem as PICTURE or CHART and a TableItem as TABLE or DOCUMENT_INDEX
+_PICTURE_LABELS = {DocItemLabel.PICTURE, DocItemLabel.CHART}
+_TABLE_LABELS = {DocItemLabel.TABLE, DocItemLabel.DOCUMENT_INDEX}
 _FIGURE_CAPTION_PREFIX = "Figure"
 
 # A GFM header separator row, e.g. "|:----|-----:|" or "| --- | --- |"
 _GFM_SEPARATOR_CELL = re.compile(r"^:?-+:?$")
+# Asset files written by a previous export, removed before exporting again
+_ASSET_FILE = re.compile(r"^(figure_\d{3}\.png|table_\d{3}\.csv)$")
+# Characters that would change the meaning of inline Markdown inside the alt text
+_MARKDOWN_INLINE_SPECIALS = re.compile(r"([\\`*_\[\]])")
+# Characters that require an angle-bracket link destination (CommonMark)
+_LINK_UNSAFE = set(" ()<>")
+_BACKTICK_RUN = re.compile(r"`+")
+
+
+def _code_fence(text: str) -> str:
+    """Return a backtick fence longer than any backtick run in the text."""
+    longest_run = max((len(run) for run in _BACKTICK_RUN.findall(text)), default=0)
+    return "`" * max(3, longest_run + 1)
 
 
 def _render_text_item(item: Any, depth: int) -> Optional[str]:
@@ -47,7 +65,8 @@ def _render_text_item(item: Any, depth: int) -> Optional[str]:
     if label == DocItemLabel.LIST_ITEM:
         return f"- {text}"
     if label == DocItemLabel.CODE:
-        return f"```\n{text}\n```"
+        fence = _code_fence(text)
+        return f"{fence}\n{text}\n{fence}"
     return text
 
 
@@ -134,22 +153,86 @@ def _render_table(table: Any, doc: Any, csv_path: Path) -> str:
     return "\n".join(table_lines)
 
 
-def _figure_caption_text(item: Any) -> Optional[str]:
-    """Return the normalized text of a ``CAPTION`` item starting with "Figure", or None."""
-    if getattr(item, "label", None) != DocItemLabel.CAPTION:
+def _normalize(text: str) -> str:
+    """Collapse whitespace and line breaks into single spaces."""
+    return " ".join(text.split())
+
+
+@dataclass
+class _CaptionIndex:
+    """Positions of "Figure" captions and section starts in ``iterate_items`` order.
+
+    Built once per document so each picture only looks at caption positions, not at every item.
+    Captions are tracked by position: each one is used by at most one picture.
+    """
+
+    captions: dict[int, str]
+    section_starts: list[int]
+    used: set[int] = field(default_factory=set)
+
+    @classmethod
+    def build(cls, items: list[tuple[Any, int]]) -> "_CaptionIndex":
+        captions: dict[int, str] = {}
+        section_starts: list[int] = []
+        for position, (item, _depth) in enumerate(items):
+            label = getattr(item, "label", None)
+            if label in _SECTION_LABELS:
+                section_starts.append(position)
+            elif label == DocItemLabel.CAPTION:
+                text = _normalize(getattr(item, "text", ""))
+                if text.startswith(_FIGURE_CAPTION_PREFIX):
+                    captions[position] = text
+        return cls(captions=captions, section_starts=section_starts)
+
+    def _section_bounds(self, index: int) -> tuple[int, Optional[int]]:
+        """Return the positions of the section start before ``index`` (-1 if none) and of the next one (None if none)."""
+        after = bisect.bisect_right(self.section_starts, index)
+        start = self.section_starts[after - 1] if after > 0 else -1
+        end = self.section_starts[after] if after < len(self.section_starts) else None
+        return start, end
+
+    def _take(self, position: int) -> str:
+        self.used.add(position)
+        return self.captions[position]
+
+    def take_next(self, index: int) -> Optional[str]:
+        """Take the first unused caption after ``index``, in the same section."""
+        _start, end = self._section_bounds(index)
+        # captions is filled in ascending position order
+        for position in self.captions:
+            if position <= index or position in self.used:
+                continue
+            if end is not None and position > end:
+                break
+            return self._take(position)
         return None
-    text = " ".join(getattr(item, "text", "").split())
-    return text if text.startswith(_FIGURE_CAPTION_PREFIX) else None
+
+    def take_previous(self, index: int) -> Optional[str]:
+        """Take the nearest unused caption before ``index``, in the same section."""
+        start, _end = self._section_bounds(index)
+        for position in reversed(list(self.captions)):
+            if position >= index or position in self.used:
+                continue
+            if position < start:
+                break
+            return self._take(position)
+        return None
+
+    def take_text(self, text: str) -> Optional[str]:
+        """Take a caption with exactly this text, unless every caption with it is already used.
+
+        A text with no matching visited caption is returned as is.
+        """
+        positions = [position for position, caption in self.captions.items() if caption == text]
+        if not positions:
+            return text
+        for position in positions:
+            if position not in self.used:
+                return self._take(position)
+        return None
 
 
-def _resolve_alt(
-    items: list[tuple[Any, int]],
-    index: int,
-    picture: Any,
-    doc: Any,
-    number: int,
-    used_captions: Optional[set[int]] = None,
-) -> str:
+def _resolve_alt(index: int, picture: Any, doc: Any, number: int, captions: _CaptionIndex) -> str:
     """Resolve the alt text of a picture.
 
     Each "Figure" caption is used by at most one picture, because Docling may place several captions
@@ -161,44 +244,42 @@ def _resolve_alt(
     3. Otherwise, the nearest unused "Figure" ``CAPTION`` before the picture, in the same section.
     4. Otherwise, ``Figure NNN``.
 
-    :param items: All ``(item, depth)`` pairs from ``doc.iterate_items()``
-    :param index: Position of the picture in ``items``
+    :param index: Position of the picture in the ``iterate_items`` sequence
     :param picture: Docling ``PictureItem``
     :param doc: Docling document the picture belongs to
     :param number: Picture number (1-based), used in the fallback alt
-    :param used_captions: Positions in ``items`` of captions already used; updated in place
-    :returns: Alt text for the Markdown image
+    :param captions: Caption index of the document; the chosen caption is marked as used
+    :returns: Alt text for the Markdown image (not escaped)
     """
-    used = used_captions if used_captions is not None else set()
-    used_texts = {_figure_caption_text(items[i][0]) for i in used}
-
-    for position in range(index + 1, len(items)):
-        item = items[position][0]
-        if getattr(item, "label", None) in _SECTION_LABELS:
-            break
-        text = _figure_caption_text(item)
-        if text and position not in used:
-            used.add(position)
-            return text
+    alt = captions.take_next(index)
+    if alt:
+        return alt
 
     caption_text = getattr(picture, "caption_text", None)
     if callable(caption_text):
-        text = " ".join(caption_text(doc).split())
-        if text.startswith(_FIGURE_CAPTION_PREFIX) and text not in used_texts:
-            # Mark the matching caption item as used, so a later picture does not take it again
-            used.update(i for i, (item, _depth) in enumerate(items) if _figure_caption_text(item) == text)
-            return text
+        text = _normalize(caption_text(doc))
+        if text.startswith(_FIGURE_CAPTION_PREFIX):
+            alt = captions.take_text(text)
+            if alt:
+                return alt
 
-    for position in range(index - 1, -1, -1):
-        item = items[position][0]
-        if getattr(item, "label", None) in _SECTION_LABELS:
-            break
-        text = _figure_caption_text(item)
-        if text and position not in used:
-            used.add(position)
-            return text
+    alt = captions.take_previous(index)
+    if alt:
+        return alt
 
     return f"Figure {number:03d}"
+
+
+def _escape_markdown_inline(text: str) -> str:
+    """Escape characters that would change the meaning of inline Markdown (links, emphasis, code)."""
+    return _MARKDOWN_INLINE_SPECIALS.sub(r"\\\1", text)
+
+
+def _link_destination(link: str) -> str:
+    """Wrap a link destination in angle brackets when it has spaces, parentheses or angle brackets."""
+    if any(char in _LINK_UNSAFE for char in link):
+        return "<" + link.replace("<", "%3C").replace(">", "%3E") + ">"
+    return link
 
 
 def _render_picture(picture: Any, doc: Any, alt: str, png_path: Path, link: str) -> str:
@@ -209,18 +290,26 @@ def _render_picture(picture: Any, doc: Any, alt: str, png_path: Path, link: str)
 
     :param picture: Docling ``PictureItem``
     :param doc: Docling document the picture belongs to
-    :param alt: Alt text
+    :param alt: Alt text (escaped here)
     :param png_path: Destination PNG file
     :param link: Link to the PNG, relative to the Markdown file
     :returns: Markdown block for the picture
     """
+    escaped_alt = _escape_markdown_inline(alt)
     image = picture.get_image(doc)
     if image is None:
         logger.warning("Picture has no image; skipping %s", png_path.name)
-        return f"_{alt} (imagem indisponível)_"
+        return f"_{escaped_alt} (imagem indisponível)_"
 
     image.save(png_path, "PNG")
-    return f"![{alt}]({link})"
+    return f"![{escaped_alt}]({_link_destination(link)})"
+
+
+def _clear_previous_assets(assets_dir: Path) -> None:
+    """Remove figure and table files left by a previous export of the same PDF."""
+    for path in assets_dir.iterdir():
+        if path.is_file() and _ASSET_FILE.match(path.name):
+            path.unlink()
 
 
 def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Path]:
@@ -228,7 +317,8 @@ def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Pa
 
     The Markdown is assembled in a single pass over ``doc.iterate_items()``. Pictures are saved as
     ``figure_NNN.png`` and tables as ``table_NNN.csv``, each with its own counter starting at 001 in
-    visit order. Existing files with the same names are overwritten.
+    visit order. A previous export of the same PDF in ``output_dir`` is replaced: the Markdown is
+    overwritten and old ``figure_NNN.png``/``table_NNN.csv`` files are removed first.
 
     :param doc: Converted Docling document
     :param pdf_stem: PDF file name without extension
@@ -243,19 +333,20 @@ def export_markdown(doc: Any, pdf_stem: str, output_dir: Path) -> tuple[Path, Pa
 
     try:
         assets_dir.mkdir(parents=True, exist_ok=True)
+        _clear_previous_assets(assets_dir)
 
-        # Materialized once so the alt rule can look ahead; still a single assembly pass
+        # Materialized once so the alt rule can look around the picture; still a single assembly pass
         items = list(doc.iterate_items())
-        used_captions: set[int] = set()
+        captions = _CaptionIndex.build(items)
         blocks: list[str] = []
         for index, (item, depth) in enumerate(items):
             label = getattr(item, "label", None)
-            if label == DocItemLabel.PICTURE:
+            if label in _PICTURE_LABELS:
                 figure_count += 1
                 file_name = f"figure_{figure_count:03d}.png"
-                alt = _resolve_alt(items, index, item, doc, figure_count, used_captions)
+                alt = _resolve_alt(index, item, doc, figure_count, captions)
                 block = _render_picture(item, doc, alt, assets_dir / file_name, f"{assets_dir.name}/{file_name}")
-            elif label == DocItemLabel.TABLE:
+            elif label in _TABLE_LABELS:
                 table_count += 1
                 block = _render_table(item, doc, assets_dir / f"table_{table_count:03d}.csv")
             else:
