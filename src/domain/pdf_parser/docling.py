@@ -3,12 +3,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pypdfium2 as pdfium
+from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import DocItemLabel
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
+from .markdown_export import export_markdown
 from .models import PaperSection, ParserType, PdfContent
 
 logger = logging.getLogger(__name__)
@@ -82,19 +84,32 @@ def extract_sections_from_document(doc: Any) -> list[PaperSection]:
 class DoclingParser:
     """Docling PDF parser for scientific document processing."""
 
-    def __init__(self, max_pages: int, max_file_size_mb: int, do_ocr: bool = False, do_table_structure: bool = True):
+    def __init__(
+        self,
+        max_pages: int,
+        max_file_size_mb: int,
+        do_ocr: bool = False,
+        do_table_structure: bool = True,
+        accelerator_device: AcceleratorDevice | str | None = None,
+    ):
         """Initialize DocumentConverter with optimized pipeline options.
 
         :param max_pages: Maximum number of pages to process
         :param max_file_size_mb: Maximum file size in MB
         :param do_ocr: Enable OCR for scanned PDFs (default: False, very slow)
         :param do_table_structure: Extract table structures (default: True)
+        :param accelerator_device: Device for Docling models ("cpu", "cuda", "mps", "auto");
+            None keeps Docling's default, which also honors the ``DOCLING_DEVICE`` environment variable.
+            ``PDFParserService`` and the factory do not pass it; use ``DOCLING_DEVICE`` there
         """
         # Configure pipeline options
         pipeline_options = PdfPipelineOptions(
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
+            generate_picture_images=True,  # Needed to export figure PNGs in the Markdown export
         )
+        if accelerator_device is not None:
+            pipeline_options.accelerator_options = AcceleratorOptions(device=accelerator_device)
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
         self._warmed_up = False
@@ -155,11 +170,12 @@ class DoclingParser:
             logger.error(f"Error validating PDF {pdf_path}: {e}")
             raise PDFValidationError(f"Error validating PDF {pdf_path}: {e}")
 
-    def parse_pdf(self, pdf_path: Path) -> Optional[PdfContent]:
+    def parse_pdf(self, pdf_path: Path, markdown_output_dir: Path | None = None) -> Optional[PdfContent]:
         """Parse PDF using Docling parser.
         Limited to 20 pages to avoid memory issues with large papers.
 
         :param pdf_path: Path to PDF file
+        :param markdown_output_dir: When set, also export ``{pdf_stem}.md`` and ``{pdf_stem}_assets/`` there
         :returns: PdfContent object or None if parsing failed
         """
         try:
@@ -177,6 +193,11 @@ class DoclingParser:
             doc = result.document
             sections = extract_sections_from_document(doc)
 
+            markdown_path: Path | None = None
+            artifacts_dir: Path | None = None
+            if markdown_output_dir is not None:
+                markdown_path, artifacts_dir = export_markdown(doc, pdf_path.stem, markdown_output_dir)
+
             # Focus on what arXiv API doesn't provide: structured full text content only
             return PdfContent(
                 sections=sections,
@@ -186,6 +207,8 @@ class DoclingParser:
                 references=[],
                 parser_used=ParserType.DOCLING,
                 metadata={"source": "docling", "note": "Content extracted from PDF, metadata comes from arXiv API"},
+                markdown_path=markdown_path,
+                artifacts_dir=artifacts_dir,
             )
 
         except PDFValidationError as e:
@@ -197,6 +220,10 @@ class DoclingParser:
             else:
                 # Re-raise other validation errors (corrupted files, etc.)
                 raise
+        except PDFParsingException:
+            # Raised by the Markdown export with its own message; do not re-wrap it below.
+            # Must come after PDFValidationError, which is a subclass.
+            raise
         except Exception as e:
             logger.error(f"Failed to parse PDF with Docling: {e}")
             logger.error(f"PDF path: {pdf_path}")

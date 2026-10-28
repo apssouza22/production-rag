@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -43,6 +44,8 @@ class PdfContent(BaseModel):
     references: List[str] = Field(default_factory=list, description="References")
     parser_used: ParserType = Field(..., description="Parser used for extraction")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Parser metadata")
+    markdown_path: Optional[Path] = Field(default=None, description="Exported Markdown file, when markdown_output_dir is set")
+    artifacts_dir: Optional[Path] = Field(default=None, description="Assets folder (figures and tables) of the exported Markdown")
 
 
 class ArxivMetadata(BaseModel):

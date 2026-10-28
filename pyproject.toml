@@ -2,7 +2,7 @@
 name = "production-rag"
 version = "0.1.0"
 description = "Production ready RAG"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi[standard]>=0.115.12",
     "uvicorn>=0.34.0",

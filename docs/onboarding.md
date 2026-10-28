@@ -38,7 +38,7 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 
 - **FastAPI + Pydantic Settings** — API + typed config via `.env`
 - **SQLAlchemy** — PostgreSQL ORM
-- **Docling** — Scientific PDF parsing
+- **Docling** — Scientific PDF parsing; `parse_pdf(pdf_path, markdown_output_dir=...)` can also export `{pdf_stem}.md` plus `{pdf_stem}_assets/` (`figure_NNN.png`, `table_NNN.csv`) to inspect what was extracted (not used by ingestion). Exporting the same PDF to the same folder replaces the previous `.md` and `figure_*.png`/`table_*.csv`; a figure without an image shows as `_<caption> (image unavailable)_`
 - **opensearch-py** — Search client
 - **Jina AI** — 1024-dim embeddings and cross-encoder reranking
 - **Langfuse SDK** — RAG tracing
@@ -51,7 +51,7 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 ### Prerequisites
 
 - Docker Desktop (8GB+ RAM, ~20GB disk)
-- Python 3.12+
+- Python 3.12 (`requires-python = ">=3.12,<3.13"`)
 - [UV](https://docs.astral.sh/uv/getting-started/installation/)
 
 ### Bootstrap
@@ -345,7 +345,7 @@ src/
     ├── platform/llm/   # OpenAI ChatOpenAI factory
     ├── langfuse/              # Tracing
     ├── db/ + paper/           # Persistence and repositories
-    └── pdf_parser/            # Docling wrapper
+    └── pdf_parser/            # Docling wrapper + optional Markdown export (markdown_export.py)
 airflow/dags/                  # Ingestion pipeline
 evals/                         # Langfuse trace + Ragas retrieval evaluation
 compose.yml                    # Full stack definition
@@ -477,6 +477,7 @@ uv run pytest
 | Empty search results | Run Airflow DAG to ingest + index; check `curl localhost:9200/arxiv-papers-chunks/_count` |
 | Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a new query; enable `LANGFUSE__DEBUG=true` |
 | Port conflicts | Stop services on 8000, 8080, 5412, 9200 |
+| Docling fails with `CUDA error: no kernel image is available` | The GPU is too old for the installed torch build (e.g. compute capability 6.1). Run on CPU: `CUDA_VISIBLE_DEVICES="" <command>` or `DOCLING_DEVICE=cpu` (works for the API, `PDFParserService` and Airflow); `DoclingParser(..., accelerator_device="cpu")` only applies when you build the parser yourself |
 
 Full reset:
 
