@@ -6,9 +6,10 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
+from evals.core.schemas import EvalSample
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.retrieval import RerankSearchClient
-from evals.rag_evals.schemas import EvalQuery, EvalSample
+from evals.rag_evals.schemas import EvalQuery
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +67,11 @@ class DatasetBuilder:
             resolved_response = await self._generate_response(user_input, retrieved_contexts)
 
         return EvalSample(
-            user_input=user_input,
+            input=user_input,
             reference=reference,
-            response=resolved_response,
-            retrieved_contexts=retrieved_contexts,
-            rerank_applied=search_result.rerank_applied,
+            output=resolved_response,
+            contexts=retrieved_contexts,
+            metadata={"rerank_applied": search_result.rerank_applied},
         )
 
     async def build_samples(self, queries: list[EvalQuery]) -> list[EvalSample]:
@@ -106,3 +107,17 @@ class DatasetBuilder:
         if not content:
             raise RuntimeError(f"Empty response generated for query: {user_input}")
         return content.strip()
+
+
+class RagDataset:
+    """Load a local query file and enrich it into normalized RAG samples."""
+
+    def __init__(self, dataset_path: Path, builder: DatasetBuilder) -> None:
+        self.dataset_path = dataset_path
+        self.builder = builder
+        self.total_queries = 0
+
+    async def load(self) -> list[EvalSample]:
+        queries = load_queries(self.dataset_path)
+        self.total_queries = len(queries)
+        return await self.builder.build_samples(queries)

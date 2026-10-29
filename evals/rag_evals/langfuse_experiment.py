@@ -9,11 +9,13 @@ from typing import Any
 from langfuse import Evaluation, Langfuse
 from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperimentItem
 
+from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.schemas import EvalSample
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
-from evals.rag_evals.metrics import MetricDefinition, build_metrics, create_openai_client
+from evals.rag_evals.metrics import build_metrics, create_openai_client
 from evals.rag_evals.retrieval import RerankSearchClient
-from evals.rag_evals.schemas import EvalQuery, EvalSample
+from evals.rag_evals.schemas import EvalQuery
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,23 @@ def queries_to_experiment_items(queries: list[EvalQuery]) -> list[LocalExperimen
             }
         )
     return items
+
+
+def experiment_item_to_sample(item: Any, output: Any = None) -> EvalSample:
+    """Normalize a local or hosted Langfuse experiment item."""
+    output_payload = output if isinstance(output, dict) else {}
+    raw_metadata = item.get("metadata") if isinstance(item, dict) else getattr(item, "metadata", None)
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    metadata["rerank_applied"] = bool(output_payload.get("rerank_applied", False))
+    source_id = item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+    return EvalSample(
+        input=extract_item_input(item),
+        output=output_payload.get("response") or extract_item_preset_response(item),
+        reference=extract_item_expected_output(item),
+        contexts=list(output_payload.get("retrieved_contexts", [])),
+        source_id=str(source_id) if source_id else None,
+        metadata=metadata,
+    )
 
 
 def extract_item_input(item: Any) -> str:
@@ -82,8 +101,8 @@ def extract_item_preset_response(item: Any) -> str | None:
 def sample_to_task_output(sample: EvalSample) -> dict[str, Any]:
     """Serialize a Ragas sample as Langfuse task output for evaluators."""
     return {
-        "response": sample.response,
-        "retrieved_contexts": sample.retrieved_contexts,
+        "response": sample.output,
+        "retrieved_contexts": sample.contexts,
         "rerank_applied": sample.rerank_applied,
     }
 
@@ -102,25 +121,23 @@ def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
         if not isinstance(output, dict):
             return Evaluation(name=metric.name, value=0, comment="Task output is missing retrieval payload")
 
-        reference = str(expected_output) if expected_output else ""
-        if metric.requires_reference and not reference:
-            return Evaluation(name=metric.name, value=0, comment="Reference answer is required")
-
-        sample = EvalSample(
-            user_input=str(input),
-            reference=reference,
-            response=str(output.get("response", "")),
-            retrieved_contexts=list(output.get("retrieved_contexts", [])),
-            rerank_applied=bool(output.get("rerank_applied", False)),
+        sample = experiment_item_to_sample(
+            {
+                "input": input,
+                "expected_output": expected_output,
+                "metadata": metadata,
+            },
+            output,
         )
         try:
-            score = await metric.scorer(sample)
+            score = await evaluate_metric(metric, sample)
         except Exception as exc:
             logger.exception("Metric %s failed for input preview=%r", metric.name, str(input)[:80])
             return Evaluation(name=metric.name, value=0, comment=str(exc))
 
         if score.error or score.value is None:
-            return Evaluation(name=metric.name, value=0, comment=score.error or "scoring failed")
+            comment = "Reference answer is required" if score.error == "reference is required" else score.error
+            return Evaluation(name=metric.name, value=0, comment=comment or "scoring failed")
         return Evaluation(name=metric.name, value=score.value)
 
     return evaluator
@@ -218,9 +235,7 @@ class RagLangfuseExperiment:
     def __init__(self, settings: RagEvalSettings | None = None) -> None:
         self.settings = settings or get_settings()
         if not self.settings.langfuse_public_key or not self.settings.langfuse_secret_key:
-            raise ValueError(
-                "Langfuse credentials are required. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env"
-            )
+            raise ValueError("Langfuse credentials are required. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env")
 
         self.langfuse = Langfuse(
             public_key=self.settings.langfuse_public_key,
@@ -309,16 +324,14 @@ class RagLangfuseExperiment:
         dataset_builder = self.dataset_builder
 
         async def rag_task(*, item, **kwargs):
-            user_input = extract_item_input(item)
-            reference = extract_item_expected_output(item)
-            preset_response = extract_item_preset_response(item)
+            base_sample = experiment_item_to_sample(item)
             sample = await dataset_builder.build_sample_from_inputs(
-                user_input=user_input,
-                reference=reference,
-                response=preset_response,
+                user_input=base_sample.user_input,
+                reference=base_sample.reference or "",
+                response=base_sample.output,
             )
             if sample is None:
-                raise RuntimeError(f"No retrieval sample built for query: {user_input}")
+                raise RuntimeError(f"No retrieval sample built for query: {base_sample.user_input}")
             return sample_to_task_output(sample)
 
         return rag_task

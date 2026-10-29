@@ -2,27 +2,27 @@
 
 import logging
 import time
-from datetime import datetime, timedelta
 from time import sleep
 
 import openai
 from langfuse import Langfuse
-from langfuse.api import TraceWithDetails
 from tqdm import tqdm
 
+from evals.core.datasets import Dataset
+from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.schemas import MetricResult
 from evals.custom_evals.config import build_openai_client_kwargs, get_settings
+from evals.custom_evals.dataset import LangfuseTraceDataset
 from evals.custom_evals.helpers import (
     calculate_avg_scores,
     generate_report,
-    get_input_output,
     initialize_metrics_summary,
     initialize_report,
     process_trace_results,
     update_failure_metrics,
     update_success_metrics,
 )
-from evals.custom_evals.metrics import metrics
-from evals.custom_evals.schemas import ScoreSchema
+from evals.custom_evals.metrics import build_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,11 @@ logger = logging.getLogger(__name__)
 class Evaluator:
     """Evaluates model outputs using predefined metrics."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        dataset: Dataset | None = None,
+        metrics: list[MetricDefinition] | None = None,
+    ) -> None:
         """Initialize Evaluator with OpenAI and Langfuse clients."""
         self.settings = get_settings()
 
@@ -46,19 +50,21 @@ class Evaluator:
             host=self.settings.langfuse_host,
             timeout=60,
         )
+        self.dataset: Dataset = dataset or LangfuseTraceDataset(self.langfuse)
+        self.metrics = metrics if metrics is not None else build_metrics(self.client, self.settings.evaluation_llm)
         self.report = initialize_report(self.settings.evaluation_llm)
-        initialize_metrics_summary(self.report, metrics)
+        initialize_metrics_summary(self.report, [{"name": metric.name} for metric in self.metrics])
 
-    async def run(self, generate_report_file=True):
+    async def run(self, generate_report_file: bool = True) -> dict:
         """Fetch traces from Langfuse, evaluate them, and push scores back."""
         start_time = time.time()
-        traces = self.__fetch_traces()
-        self.report["total_traces"] = len(traces)
+        samples = await self.dataset.load()
+        self.report["total_traces"] = len(samples)
 
         trace_results = {}
 
-        for trace in tqdm(traces, desc="Evaluating traces"):
-            trace_id = trace.id
+        for index, sample in enumerate(tqdm(samples, desc="Evaluating traces")):
+            trace_id = sample.source_id or f"sample-{index}"
             trace_results[trace_id] = {
                 "success": False,
                 "metrics_evaluated": 0,
@@ -66,20 +72,25 @@ class Evaluator:
                 "metrics_results": {},
             }
 
-            for metric in tqdm(metrics, desc=f"Applying metrics to trace {trace_id[:8]}...", leave=False):
-                metric_name = metric["name"]
-                input_text, output_text = get_input_output(trace)
-                score = await self._run_metric_evaluation(metric, input_text, output_text)
+            for metric in tqdm(self.metrics, desc=f"Applying metrics to trace {trace_id[:8]}...", leave=False):
+                metric_name = metric.name
+                try:
+                    score = await evaluate_metric(metric, sample)
+                except Exception as exc:
+                    logger.exception("Metric %s evaluation failed", metric_name)
+                    score = MetricResult(name=metric_name, error=str(exc))
 
-                if score:
-                    self._push_to_langfuse(trace, score, metric)
+                if score.value is not None and not score.error:
+                    if sample.source_id:
+                        self._push_to_langfuse(sample.source_id, score)
                     update_success_metrics(self.report, trace_id, metric_name, score, trace_results)
                 else:
+                    logger.error("Metric %s evaluation failed: %s", metric_name, score.error)
                     update_failure_metrics(self.report, trace_id, metric_name, trace_results)
 
                 trace_results[trace_id]["metrics_evaluated"] += 1
 
-            process_trace_results(self.report, trace_id, trace_results, len(metrics))
+            process_trace_results(self.report, trace_id, trace_results, len(self.metrics))
             sleep(self.settings.evaluation_sleep_time)
 
         self.report["duration_seconds"] = round(time.time() - start_time, 2)
@@ -95,65 +106,14 @@ class Evaluator:
             self.report["failed_traces"],
             self.report["duration_seconds"],
         )
+        return self.report
 
-    def _push_to_langfuse(self, trace: TraceWithDetails, score: ScoreSchema, metric: dict):
+    def _push_to_langfuse(self, trace_id: str, score: MetricResult) -> None:
         """Push evaluation score to Langfuse."""
         self.langfuse.create_score(
-            trace_id=trace.id,
-            name=metric["name"],
+            trace_id=trace_id,
+            name=score.name,
             data_type="NUMERIC",
-            value=score.score,
+            value=score.value,
             comment=score.reasoning,
         )
-
-    async def _run_metric_evaluation(self, metric: dict, input_text: str, output_text: str) -> ScoreSchema | None:
-        """Evaluate a single trace against a specific metric."""
-        metric_name = metric["name"]
-        if not metric:
-            logger.error("Metric %s not found", metric_name)
-            return None
-        system_metric_prompt = metric["prompt"]
-
-        if not input_text or not output_text:
-            logger.error("Metric %s evaluation failed: missing input or output", metric_name)
-            return None
-        score = await self._call_openai(system_metric_prompt, input_text, output_text)
-        if score:
-            logger.info("Metric %s evaluation completed successfully", metric_name)
-        else:
-            logger.error("Metric %s evaluation failed", metric_name)
-        return score
-
-    async def _call_openai(self, metric_system_prompt: str, input_text: str, output_text: str) -> ScoreSchema | None:
-        """Call OpenAI API to evaluate a trace."""
-        num_retries = 3
-        for _ in range(num_retries):
-            try:
-                response = await self.client.beta.chat.completions.parse(
-                    model=self.settings.evaluation_llm,
-                    messages=[
-                        {"role": "system", "content": metric_system_prompt},
-                        {"role": "user", "content": f"Input: {input_text}\nGeneration: {output_text}"},
-                    ],
-                    response_format=ScoreSchema,
-                )
-                return response.choices[0].message.parsed
-            except Exception as e:
-                sleep_time = 10
-                logger.error("Error calling OpenAI: %s (retrying in %ss)", e, sleep_time)
-                sleep(sleep_time)
-                continue
-        return None
-
-    def __fetch_traces(self) -> list[TraceWithDetails]:
-        """Fetch traces from the past 24 hours without scores."""
-        last_24_hours = datetime.now() - timedelta(hours=24)
-        logger.info("Fetching Langfuse traces from %s", last_24_hours)
-        try:
-            traces = self.langfuse.api.trace.list(
-                from_timestamp=last_24_hours, order_by="timestamp.asc", limit=100
-            ).data
-            return [trace for trace in traces if not trace.scores]
-        except Exception as e:
-            logger.error("Error fetching traces: %s", e)
-            return []

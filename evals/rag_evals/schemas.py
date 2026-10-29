@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from evals.core.schemas import EvalSample, MetricResult
+
 
 class EvalQuery(BaseModel):
     """A single evaluation query with a reference answer and optional response."""
@@ -28,19 +30,12 @@ class RerankSearchResponse(BaseModel):
     after_rerank: list[RerankSearchDocument]
 
 
-class EvalSample(BaseModel):
-    """Evaluation sample with retrieved contexts from rerank search."""
+MetricScore = MetricResult
 
-    user_input: str
-    reference: str
-    response: str
-    retrieved_contexts: list[str]
-    rerank_applied: bool = False
-
-
-class MetricScore(BaseModel):
-    """Score for a single metric on one sample."""
-
-    name: str
-    value: float | None = None
-    error: str | None = None
+__all__ = [
+    "EvalQuery",
+    "EvalSample",
+    "MetricScore",
+    "RerankSearchDocument",
+    "RerankSearchResponse",
+]

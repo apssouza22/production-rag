@@ -4,7 +4,6 @@ import json
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.evaluator import RagEvaluator
 from evals.rag_evals.metrics import MetricDefinition
@@ -48,12 +47,11 @@ async def test_evaluator_aggregates_metric_scores(tmp_path):
     with (
         patch("evals.rag_evals.evaluator.create_openai_client", return_value=Mock()),
         patch("evals.rag_evals.evaluator.RerankSearchClient"),
-        patch("evals.rag_evals.evaluator.DatasetBuilder") as dataset_builder_cls,
-        patch("evals.rag_evals.evaluator.build_metrics", return_value=[metric_definition]),
-        patch("evals.rag_evals.evaluator.load_queries", return_value=[Mock()]),
+        patch("evals.rag_evals.evaluator.DatasetBuilder"),
     ):
-        dataset_builder_cls.return_value.build_samples = AsyncMock(return_value=[sample])
-        evaluator = RagEvaluator(settings=settings)
+        dataset = Mock(total_queries=1)
+        dataset.load = AsyncMock(return_value=[sample])
+        evaluator = RagEvaluator(settings=settings, dataset=dataset, metrics=[metric_definition])
         report = await evaluator.run(generate_report_file=False)
 
     assert report["evaluated_samples"] == 1
@@ -101,13 +99,12 @@ async def test_evaluator_writes_json_report(tmp_path):
     with (
         patch("evals.rag_evals.evaluator.create_openai_client", return_value=Mock()),
         patch("evals.rag_evals.evaluator.RerankSearchClient"),
-        patch("evals.rag_evals.evaluator.DatasetBuilder") as dataset_builder_cls,
-        patch("evals.rag_evals.evaluator.build_metrics", return_value=[metric_definition]),
-        patch("evals.rag_evals.evaluator.load_queries", return_value=[Mock()]),
+        patch("evals.rag_evals.evaluator.DatasetBuilder"),
         patch("evals.rag_evals.evaluator.REPORTS_DIR", reports_dir),
     ):
-        dataset_builder_cls.return_value.build_samples = AsyncMock(return_value=[sample])
-        evaluator = RagEvaluator(settings=settings)
+        dataset = Mock(total_queries=1)
+        dataset.load = AsyncMock(return_value=[sample])
+        evaluator = RagEvaluator(settings=settings, dataset=dataset, metrics=[metric_definition])
         report = await evaluator.run(generate_report_file=True)
 
     report_path = report["report_path"]
@@ -158,12 +155,11 @@ async def test_evaluator_skips_reference_metrics_without_reference(tmp_path):
     with (
         patch("evals.rag_evals.evaluator.create_openai_client", return_value=Mock()),
         patch("evals.rag_evals.evaluator.RerankSearchClient"),
-        patch("evals.rag_evals.evaluator.DatasetBuilder") as dataset_builder_cls,
-        patch("evals.rag_evals.evaluator.build_metrics", return_value=[metric_definition]),
-        patch("evals.rag_evals.evaluator.load_queries", return_value=[Mock()]),
+        patch("evals.rag_evals.evaluator.DatasetBuilder"),
     ):
-        dataset_builder_cls.return_value.build_samples = AsyncMock(return_value=[sample])
-        evaluator = RagEvaluator(settings=settings)
+        dataset = Mock(total_queries=1)
+        dataset.load = AsyncMock(return_value=[sample])
+        evaluator = RagEvaluator(settings=settings, dataset=dataset, metrics=[metric_definition])
         report = await evaluator.run(generate_report_file=False)
 
     assert report["metrics_summary"]["context_precision"]["failure_count"] == 1

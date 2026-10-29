@@ -9,11 +9,13 @@ from typing import Any
 
 from tqdm import tqdm
 
+from evals.core.datasets import Dataset
+from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
-from evals.rag_evals.dataset import DatasetBuilder, load_queries
+from evals.rag_evals.dataset import DatasetBuilder, RagDataset
 from evals.rag_evals.metrics import build_metrics, create_openai_client
 from evals.rag_evals.retrieval import RerankSearchClient
-from evals.rag_evals.schemas import EvalSample, MetricScore
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,12 @@ REPORTS_DIR = Path(__file__).parent.parent / "reports"
 class RagEvaluator:
     """Evaluate retrieval and response quality with Ragas metrics."""
 
-    def __init__(self, settings: RagEvalSettings | None = None) -> None:
+    def __init__(
+        self,
+        settings: RagEvalSettings | None = None,
+        dataset: Dataset | None = None,
+        metrics: list[MetricDefinition] | None = None,
+    ) -> None:
         self.settings = settings or get_settings()
         self.openai_client = create_openai_client(self.settings)
         self.retrieval_client = RerankSearchClient(self.settings)
@@ -32,16 +39,16 @@ class RagEvaluator:
             retrieval_client=self.retrieval_client,
             openai_client=self.openai_client,
         )
-        self.metrics = build_metrics(self.settings, self.openai_client)
+        self.dataset: Dataset = dataset or RagDataset(self.settings.rag_eval_dataset_path, self.dataset_builder)
+        self.metrics = metrics if metrics is not None else build_metrics(self.settings, self.openai_client)
         self.report = self._initialize_report()
 
     async def run(self, generate_report_file: bool = True) -> dict[str, Any]:
         """Build the dataset from rerank search and score each sample."""
         start_time = time.time()
-        queries = load_queries(self.settings.rag_eval_dataset_path)
-        samples = await self.dataset_builder.build_samples(queries)
+        samples = await self.dataset.load()
 
-        self.report["total_queries"] = len(queries)
+        self.report["total_queries"] = getattr(self.dataset, "total_queries", len(samples))
         self.report["evaluated_samples"] = len(samples)
 
         if not samples:
@@ -65,24 +72,21 @@ class RagEvaluator:
         return self.report
 
     async def _evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
-        metric_scores: list[MetricScore] = []
+        metric_scores: list[MetricResult] = []
         for metric in self.metrics:
-            if metric.requires_reference and not sample.reference:
-                metric_scores.append(MetricScore(name=metric.name, error="reference is required"))
-                continue
             try:
-                metric_scores.append(await metric.scorer(sample))
+                metric_scores.append(await evaluate_metric(metric, sample))
             except Exception as exc:
                 logger.exception("Metric %s failed for query preview=%r", metric.name, sample.user_input[:80])
-                metric_scores.append(MetricScore(name=metric.name, error=str(exc)))
+                metric_scores.append(MetricResult(name=metric.name, error=str(exc)))
 
         return {
             "user_input": sample.user_input,
-            "reference_preview": sample.reference[:200],
+            "reference_preview": (sample.reference or "")[:200],
             "response_preview": sample.response[:200],
-            "context_count": len(sample.retrieved_contexts),
+            "context_count": len(sample.contexts),
             "rerank_applied": sample.rerank_applied,
-            "metrics": [score.model_dump() for score in metric_scores],
+            "metrics": [score.model_dump(exclude={"reasoning"}) for score in metric_scores],
         }
 
     def _initialize_report(self) -> dict[str, Any]:

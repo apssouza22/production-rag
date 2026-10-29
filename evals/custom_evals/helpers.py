@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from langfuse.api import TraceWithDetails
 
-from evals.custom_evals.schemas import ScoreSchema
+from evals.core.schemas import MetricResult
 
 logger = logging.getLogger(__name__)
 
@@ -171,30 +171,28 @@ def initialize_metrics_summary(report: Dict[str, Any], metrics: List[Dict[str, s
 
 
 def update_success_metrics(
-    report: Dict[str, Any], trace_id: str, metric_name: str, score: ScoreSchema, trace_results: Dict[str, Any]
+    report: Dict[str, Any], trace_id: str, metric_name: str, score: MetricResult, trace_results: Dict[str, Any]
 ) -> None:
     """Update metrics for a successful evaluation."""
+    if score.value is None:
+        raise ValueError("A successful metric result must contain a value")
     trace_results[trace_id]["metrics_succeeded"] += 1
     trace_results[trace_id]["metrics_results"][metric_name] = {
         "success": True,
-        "score": score.score,
+        "score": score.value,
         "reasoning": score.reasoning,
     }
     report["metrics_summary"][metric_name]["success_count"] += 1
-    report["metrics_summary"][metric_name]["avg_score"] += score.score
+    report["metrics_summary"][metric_name]["avg_score"] += score.value
 
 
-def update_failure_metrics(
-    report: Dict[str, Any], trace_id: str, metric_name: str, trace_results: Dict[str, Any]
-) -> None:
+def update_failure_metrics(report: Dict[str, Any], trace_id: str, metric_name: str, trace_results: Dict[str, Any]) -> None:
     """Update metrics for a failed evaluation."""
     trace_results[trace_id]["metrics_results"][metric_name] = {"success": False}
     report["metrics_summary"][metric_name]["failure_count"] += 1
 
 
-def process_trace_results(
-    report: Dict[str, Any], trace_id: str, trace_results: Dict[str, Any], metrics_count: int
-) -> None:
+def process_trace_results(report: Dict[str, Any], trace_id: str, trace_results: Dict[str, Any], metrics_count: int) -> None:
     """Process results for a single trace."""
     if trace_results[trace_id]["metrics_succeeded"] == metrics_count:
         trace_results[trace_id]["success"] = True
