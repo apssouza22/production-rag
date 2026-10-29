@@ -2,10 +2,10 @@
 
 Evaluation frameworks for the API, integrated with the main project:
 
-- **custom_evals** — scores Langfuse traces with LLM-as-judge metrics
+- **live_req_evals** — scores Langfuse traces with LLM-as-judge metrics
 - **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
 
-Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.custom_evals.config import get_settings`).
+Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.live_req_evals.config import get_settings`).
 
 ## Prerequisites
 
@@ -47,14 +47,14 @@ make eval-no-report  # skip JSON report
 Or directly:
 
 ```bash
-uv run python -m evals.custom_evals.main --quick
-uv run python -m evals.custom_evals.main --interactive
-uv run python -m evals.custom_evals.main --no-report
+uv run python -m evals.live_req_evals.main --quick
+uv run python -m evals.live_req_evals.main --interactive
+uv run python -m evals.live_req_evals.main --no-report
 ```
 
 ## Metrics
 
-Metric prompts live in `evals/custom_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
+Metric prompts live in `evals/live_req_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
 
 - `relevancy`
 - `helpfulness`
@@ -154,7 +154,7 @@ uv run python -m evals.rag_evals.main --langfuse-experiment --dataset-name my-ra
 
 Local summaries use the unified report schema. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
 
-## How custom_evals works
+## How live_req_evals works
 
 1. Fetches unscored Langfuse traces from the last 24 hours
 2. Extracts `query` and `answer` from each trace (supports RAG API and LangGraph trace formats)

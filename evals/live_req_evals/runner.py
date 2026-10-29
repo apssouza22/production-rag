@@ -17,9 +17,9 @@ from evals.core.reporting import (
 )
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
-from evals.custom_evals.config import get_settings
-from evals.custom_evals.dataset import LangfuseTraceDataset
-from evals.custom_evals.metrics import build_metrics
+from evals.live_req_evals.config import get_settings
+from evals.live_req_evals.dataset import LangfuseTraceDataset
+from evals.live_req_evals.metrics import build_metrics
 
 logger = logging.getLogger(__name__)
 

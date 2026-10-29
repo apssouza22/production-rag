@@ -8,9 +8,9 @@ from evals.core.metrics import MetricDefinition, SampleField
 from evals.core.reporting import build_report
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
-from evals.custom_evals.config import Settings
-from evals.custom_evals.dataset import LangfuseTraceDataset
-from evals.custom_evals.runner import TraceEvaluationRunner
+from evals.live_req_evals.config import Settings
+from evals.live_req_evals.dataset import LangfuseTraceDataset
+from evals.live_req_evals.runner import TraceEvaluationRunner
 
 
 def test_eval_runner_is_abstract() -> None:
@@ -96,9 +96,9 @@ async def test_trace_runner_consumes_shared_dataset_and_metric() -> None:
     settings = Settings(evaluation_sleep_time=0)
 
     with (
-        patch("evals.custom_evals.runner.get_settings", return_value=settings),
-        patch("evals.custom_evals.runner.make_eval_chat_model"),
-        patch("evals.custom_evals.runner.Langfuse") as langfuse_cls,
+        patch("evals.live_req_evals.runner.get_settings", return_value=settings),
+        patch("evals.live_req_evals.runner.make_eval_chat_model"),
+        patch("evals.live_req_evals.runner.Langfuse") as langfuse_cls,
     ):
         runner = TraceEvaluationRunner(dataset=dataset, metrics=[metric])
         report = await runner.run_eval(generate_report_file=False)

@@ -3,9 +3,9 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from evals.core.metrics import PromptMetric
 from evals.core.schemas import EvalSample
-from evals.custom_evals.metrics import PromptMetric
-from evals.custom_evals.schemas import ScoreSchema
+from evals.live_req_evals.schemas import ScoreSchema
 from evals.rag_evals.metrics import (
     ContextPrecisionMetric,
     ContextRecallMetric,

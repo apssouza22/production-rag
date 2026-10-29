@@ -1,13 +1,19 @@
 """Metric contracts and shared requirement validation."""
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from evals.core.schemas import EvalSample, MetricResult
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from evals.core.schemas import EvalSample, MetricResult, ScoreSchema
 
 MetricScorer = Callable[[EvalSample], Awaitable[MetricResult]]
+logger = logging.getLogger(__name__)
 
 
 class SampleField(StrEnum):
@@ -42,6 +48,53 @@ class Metric(ABC):
     @abstractmethod
     async def _score(self, sample: EvalSample) -> MetricResult:
         """Implement provider-specific scoring for a valid sample."""
+
+
+class PromptMetric(Metric):
+    """LLM judge driven by a system prompt."""
+
+    required_fields = frozenset({SampleField.INPUT, SampleField.OUTPUT})
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        prompt: str,
+        chat_model: BaseChatModel,
+        max_retries: int = 3,
+        retry_delay_seconds: float = 10,
+    ) -> None:
+        self.name = name
+        self.description = f"LLM judge using the {name} prompt."
+        self.prompt = prompt
+        self.chat_model = chat_model
+        self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
+
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        for attempt in range(self.max_retries):
+            try:
+                judge = self.chat_model.with_structured_output(ScoreSchema)
+                response = await judge.ainvoke(
+                    [
+                        SystemMessage(content=self.prompt),
+                        HumanMessage(content=f"Input: {sample.input}\nGeneration: {sample.output}"),
+                    ]
+                )
+                parsed = response if isinstance(response, ScoreSchema) else ScoreSchema.model_validate(response)
+                return MetricResult(name=self.name, value=parsed.score, reasoning=parsed.reasoning)
+            except Exception as exc:
+                if attempt == self.max_retries - 1:
+                    logger.exception("Metric %s failed after retries", self.name)
+                    return MetricResult(name=self.name, error=str(exc))
+                logger.error(
+                    "Metric %s failed (retrying in %ss): %s",
+                    self.name,
+                    self.retry_delay_seconds,
+                    exc,
+                )
+                await asyncio.sleep(self.retry_delay_seconds)
+        return MetricResult(name=self.name, error="scoring failed")
 
 
 @dataclass(frozen=True, init=False)

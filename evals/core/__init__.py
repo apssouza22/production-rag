@@ -8,7 +8,7 @@ from evals.core.evaluator import (
     MetricMetadata,
     MetricResultHandler,
 )
-from evals.core.metrics import Metric, MetricDefinition, MetricScorer, SampleField
+from evals.core.metrics import Metric, MetricDefinition, MetricScorer, PromptMetric, SampleField
 from evals.core.reporting import (
     EvaluationReport,
     MetricSummary,
@@ -37,6 +37,7 @@ __all__ = [
     "MetricSummary",
     "MetricMetadata",
     "MetricResultHandler",
+    "PromptMetric",
     "ReportItem",
     "SampleField",
     "build_report",

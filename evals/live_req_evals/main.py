@@ -10,8 +10,8 @@ from typing import Any, Dict, Optional
 import colorama
 from colorama import Fore, Style
 
-from evals.custom_evals.config import get_settings
-from evals.custom_evals.runner import TraceEvaluationRunner
+from evals.live_req_evals.config import get_settings
+from evals.live_req_evals.runner import TraceEvaluationRunner
 
 logger = logging.getLogger(__name__)
 

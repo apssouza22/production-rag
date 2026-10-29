@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from langfuse import Langfuse
 
 from evals.core.schemas import EvalSample
-from evals.custom_evals.helpers import get_input_output
+from evals.live_req_evals.helpers import get_input_output
 
 logger = logging.getLogger(__name__)
 

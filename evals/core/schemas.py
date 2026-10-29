@@ -53,3 +53,10 @@ class MetricResult(BaseModel):
     value: float | None = None
     reasoning: str | None = None
     error: str | None = None
+
+
+class ScoreSchema(BaseModel):
+    """Structured output returned by an LLM-based metric."""
+
+    score: float = Field(description="provide a score between 0 and 1")
+    reasoning: str = Field(description="provide a one sentence reasoning")
