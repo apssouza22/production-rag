@@ -2,8 +2,7 @@
 
 from typing import Any
 
-from openai import AsyncOpenAI
-from ragas.llms import llm_factory
+from langchain_core.language_models.chat_models import BaseChatModel
 from ragas.metrics.collections import (
     ContextPrecisionWithReference,
     ContextRecall,
@@ -13,9 +12,9 @@ from ragas.metrics.collections import (
     Faithfulness,
 )
 
+from evals.core.llm import RagasChatModel
 from evals.core.metrics import Metric, SampleField
 from evals.core.schemas import EvalSample, MetricResult
-from evals.rag_evals.config import RagEvalSettings, build_eval_openai_client_kwargs
 
 
 class ContextRelevanceMetric(Metric):
@@ -127,9 +126,9 @@ class FactualCorrectnessMetric(Metric):
         return MetricResult(name=self.name, value=float(result.value))
 
 
-def build_metrics(settings: RagEvalSettings, openai_client: AsyncOpenAI) -> list[Metric]:
+def build_metrics(chat_model: BaseChatModel) -> list[Metric]:
     """Create object-oriented Ragas metrics."""
-    ragas_llm = llm_factory(settings.evaluation_llm, client=openai_client)
+    ragas_llm = RagasChatModel(chat_model)
     return [
         ContextRelevanceMetric(ragas_llm),
         ContextUtilizationMetric(ragas_llm),
@@ -138,7 +137,3 @@ def build_metrics(settings: RagEvalSettings, openai_client: AsyncOpenAI) -> list
         ContextRecallMetric(ragas_llm),
         FactualCorrectnessMetric(ragas_llm),
     ]
-
-
-def create_openai_client(settings: RagEvalSettings) -> AsyncOpenAI:
-    return AsyncOpenAI(**build_eval_openai_client_kwargs(settings))

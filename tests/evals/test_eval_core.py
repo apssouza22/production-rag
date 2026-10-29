@@ -97,7 +97,7 @@ async def test_trace_runner_consumes_shared_dataset_and_metric() -> None:
 
     with (
         patch("evals.custom_evals.runner.get_settings", return_value=settings),
-        patch("evals.custom_evals.runner.openai.AsyncOpenAI"),
+        patch("evals.custom_evals.runner.make_eval_chat_model"),
         patch("evals.custom_evals.runner.Langfuse") as langfuse_cls,
     ):
         runner = TraceEvaluationRunner(dataset=dataset, metrics=[metric])

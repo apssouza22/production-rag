@@ -6,7 +6,6 @@ import pytest
 from evals.core.schemas import EvalSample
 from evals.custom_evals.metrics import PromptMetric
 from evals.custom_evals.schemas import ScoreSchema
-from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.metrics import (
     ContextPrecisionMetric,
     ContextRecallMetric,
@@ -20,15 +19,14 @@ from evals.rag_evals.metrics import (
 
 @pytest.mark.asyncio
 async def test_prompt_metric_scores_sample() -> None:
-    client = Mock()
-    client.beta.chat.completions.parse = AsyncMock(
-        return_value=Mock(choices=[Mock(message=Mock(parsed=ScoreSchema(score=0.8, reasoning="Relevant response")))])
-    )
+    judge = Mock()
+    judge.ainvoke = AsyncMock(return_value=ScoreSchema(score=0.8, reasoning="Relevant response"))
+    chat_model = Mock()
+    chat_model.with_structured_output.return_value = judge
     metric = PromptMetric(
         name="relevancy",
         prompt="Judge relevance.",
-        client=client,
-        model="judge-model",
+        chat_model=chat_model,
     )
 
     result = await metric.score(EvalSample(input="question", output="answer"))
@@ -41,7 +39,7 @@ async def test_prompt_metric_scores_sample() -> None:
 def test_build_ragas_metrics_returns_concrete_metric_objects() -> None:
     evaluator = Mock()
     with (
-        patch("evals.rag_evals.metrics.llm_factory", return_value=Mock()),
+        patch("evals.rag_evals.metrics.RagasChatModel", return_value=Mock()),
         patch("evals.rag_evals.metrics.ContextRelevance", return_value=evaluator),
         patch("evals.rag_evals.metrics.ContextUtilization", return_value=evaluator),
         patch("evals.rag_evals.metrics.Faithfulness", return_value=evaluator),
@@ -49,7 +47,7 @@ def test_build_ragas_metrics_returns_concrete_metric_objects() -> None:
         patch("evals.rag_evals.metrics.ContextRecall", return_value=evaluator),
         patch("evals.rag_evals.metrics.FactualCorrectness", return_value=evaluator),
     ):
-        metrics = build_metrics(RagEvalSettings(), Mock())
+        metrics = build_metrics(Mock())
 
     assert [type(metric) for metric in metrics] == [
         ContextRelevanceMetric,

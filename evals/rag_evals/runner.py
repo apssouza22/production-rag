@@ -5,6 +5,7 @@ from pathlib import Path
 
 from evals.core.datasets import Dataset
 from evals.core.evaluator import Evaluator
+from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
 from evals.core.reporting import (
     EvaluationReport,
@@ -16,7 +17,7 @@ from evals.core.reporting import (
 from evals.core.runner import EvalRunner
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, RagDataset
-from evals.rag_evals.metrics import build_metrics, create_openai_client
+from evals.rag_evals.metrics import build_metrics
 from evals.rag_evals.retrieval import RerankSearchClient
 
 logger = logging.getLogger(__name__)
@@ -34,15 +35,19 @@ class RagEvaluationRunner(EvalRunner):
         metrics: list[Metric] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.openai_client = create_openai_client(self.settings)
+        self.chat_model = make_eval_chat_model(
+            model=self.settings.evaluation_llm,
+            api_key=self.settings.evaluation_api_key or self.settings.openai_api_key,
+            base_url=self.settings.evaluation_base_url,
+        )
         self.retrieval_client = RerankSearchClient(self.settings)
         self.dataset_builder = DatasetBuilder(
             settings=self.settings,
             retrieval_client=self.retrieval_client,
-            openai_client=self.openai_client,
+            chat_model=self.chat_model,
         )
         self.dataset: Dataset = dataset or RagDataset(self.settings.rag_eval_dataset_path, self.dataset_builder)
-        self.metrics = metrics if metrics is not None else build_metrics(self.settings, self.openai_client)
+        self.metrics = metrics if metrics is not None else build_metrics(self.chat_model)
         self.evaluator = Evaluator(self.metrics, progress_description="Evaluating RAG samples")
         self.report: EvaluationReport | None = None
 

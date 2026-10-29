@@ -2,11 +2,11 @@
 
 import logging
 
-import openai
 from langfuse import Langfuse
 
 from evals.core.datasets import Dataset
 from evals.core.evaluator import Evaluator, MetricResultHandler
+from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
 from evals.core.reporting import (
     EvaluationReport,
@@ -17,7 +17,7 @@ from evals.core.reporting import (
 )
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
-from evals.custom_evals.config import build_openai_client_kwargs, get_settings
+from evals.custom_evals.config import get_settings
 from evals.custom_evals.dataset import LangfuseTraceDataset
 from evals.custom_evals.metrics import build_metrics
 
@@ -53,12 +53,11 @@ class TraceEvaluationRunner(EvalRunner):
         """Initialize trace dataset, metrics, and integrations."""
         self.settings = get_settings()
 
-        client_kwargs = build_openai_client_kwargs(
-            self.settings,
-            api_key=self.settings.evaluation_api_key or self.settings.openai_api_key or None,
-            base_url=self.settings.evaluation_base_url or None,
+        self.chat_model = make_eval_chat_model(
+            model=self.settings.evaluation_llm,
+            api_key=self.settings.evaluation_api_key or self.settings.openai_api_key,
+            base_url=self.settings.evaluation_base_url,
         )
-        self.client = openai.AsyncOpenAI(**client_kwargs)
         self.langfuse = Langfuse(
             public_key=self.settings.langfuse_public_key,
             secret_key=self.settings.langfuse_secret_key,
@@ -69,7 +68,7 @@ class TraceEvaluationRunner(EvalRunner):
             self.langfuse,
             source_location=self.settings.langfuse_host,
         )
-        self.metrics = metrics if metrics is not None else build_metrics(self.client, self.settings.evaluation_llm)
+        self.metrics = metrics if metrics is not None else build_metrics(self.chat_model)
         self.evaluator = Evaluator(
             self.metrics,
             result_handlers=[LangfuseScorePublisher(self.langfuse)],

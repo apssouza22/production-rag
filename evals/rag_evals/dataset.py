@@ -4,7 +4,8 @@ import json
 import logging
 from pathlib import Path
 
-from openai import AsyncOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from evals.core.schemas import EvalSample
 from evals.rag_evals.config import RagEvalSettings
@@ -37,11 +38,11 @@ class DatasetBuilder:
         self,
         settings: RagEvalSettings,
         retrieval_client: RerankSearchClient,
-        openai_client: AsyncOpenAI | None = None,
+        chat_model: BaseChatModel | None = None,
     ) -> None:
         self.settings = settings
         self.retrieval_client = retrieval_client
-        self.openai_client = openai_client
+        self.chat_model = chat_model
 
     async def build_sample_from_inputs(
         self,
@@ -89,21 +90,17 @@ class DatasetBuilder:
 
     async def _generate_response(self, user_input: str, retrieved_contexts: list[str]) -> str:
         """Generate a grounded answer from retrieved contexts for response-based metrics."""
-        if self.openai_client is None:
-            raise RuntimeError("OpenAI client is required to generate responses")
+        if self.chat_model is None:
+            raise RuntimeError("Chat model is required to generate responses")
 
         context_block = "\n\n".join(f"[{index + 1}] {context}" for index, context in enumerate(retrieved_contexts))
-        completion = await self.openai_client.chat.completions.create(
-            model=self.settings.evaluation_llm,
-            messages=[
-                {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Question: {user_input}\n\nExcerpts:\n{context_block}",
-                },
-            ],
+        response = await self.chat_model.ainvoke(
+            [
+                SystemMessage(content=ANSWER_SYSTEM_PROMPT),
+                HumanMessage(content=f"Question: {user_input}\n\nExcerpts:\n{context_block}"),
+            ]
         )
-        content = completion.choices[0].message.content
+        content = response.text
         if not content:
             raise RuntimeError(f"Empty response generated for query: {user_input}")
         return content.strip()

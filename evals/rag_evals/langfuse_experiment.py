@@ -8,12 +8,13 @@ from langfuse import Evaluation, Langfuse
 from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperimentItem
 
 from evals.core.evaluator import EvaluationItemResult, EvaluationResponse, MetricMetadata
+from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
 from evals.core.reporting import EvaluationReport, build_report, write_report
 from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
-from evals.rag_evals.metrics import build_metrics, create_openai_client
+from evals.rag_evals.metrics import build_metrics
 from evals.rag_evals.retrieval import RerankSearchClient
 from evals.rag_evals.schemas import EvalQuery
 
@@ -263,14 +264,18 @@ class RagLangfuseExperiment:
             host=self.settings.langfuse_host,
             timeout=60,
         )
-        self.openai_client = create_openai_client(self.settings)
+        self.chat_model = make_eval_chat_model(
+            model=self.settings.evaluation_llm,
+            api_key=self.settings.evaluation_api_key or self.settings.openai_api_key,
+            base_url=self.settings.evaluation_base_url,
+        )
         self.retrieval_client = RerankSearchClient(self.settings)
         self.dataset_builder = DatasetBuilder(
             settings=self.settings,
             retrieval_client=self.retrieval_client,
-            openai_client=self.openai_client,
+            chat_model=self.chat_model,
         )
-        self.metrics = build_metrics(self.settings, self.openai_client)
+        self.metrics = build_metrics(self.chat_model)
         self.report: EvaluationReport | None = None
 
     def run(

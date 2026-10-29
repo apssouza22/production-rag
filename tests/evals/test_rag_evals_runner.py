@@ -45,7 +45,7 @@ async def test_evaluator_aggregates_metric_scores(tmp_path):
     )
 
     with (
-        patch("evals.rag_evals.runner.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.runner.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.runner.RerankSearchClient"),
         patch("evals.rag_evals.runner.DatasetBuilder"),
     ):
@@ -99,7 +99,7 @@ async def test_evaluator_writes_json_report(tmp_path):
     )
 
     with (
-        patch("evals.rag_evals.runner.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.runner.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.runner.RerankSearchClient"),
         patch("evals.rag_evals.runner.DatasetBuilder"),
         patch("evals.rag_evals.runner.REPORTS_DIR", reports_dir),
@@ -154,7 +154,7 @@ async def test_evaluator_skips_reference_metrics_without_reference(tmp_path):
     )
 
     with (
-        patch("evals.rag_evals.runner.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.runner.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.runner.RerankSearchClient"),
         patch("evals.rag_evals.runner.DatasetBuilder"),
     ):

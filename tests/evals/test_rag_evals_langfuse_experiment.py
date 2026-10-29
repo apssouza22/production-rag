@@ -182,7 +182,7 @@ def test_rag_langfuse_experiment_runs_local_dataset(tmp_path):
 
     with (
         patch("evals.rag_evals.langfuse_experiment.Langfuse") as langfuse_cls,
-        patch("evals.rag_evals.langfuse_experiment.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.langfuse_experiment.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.langfuse_experiment.RerankSearchClient"),
         patch("evals.rag_evals.langfuse_experiment.DatasetBuilder"),
         patch("evals.rag_evals.langfuse_experiment.build_metrics", return_value=[]),
@@ -223,7 +223,7 @@ def test_rag_langfuse_experiment_uses_hosted_dataset(tmp_path):
 
     with (
         patch("evals.rag_evals.langfuse_experiment.Langfuse") as langfuse_cls,
-        patch("evals.rag_evals.langfuse_experiment.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.langfuse_experiment.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.langfuse_experiment.RerankSearchClient"),
         patch("evals.rag_evals.langfuse_experiment.DatasetBuilder"),
         patch("evals.rag_evals.langfuse_experiment.build_metrics", return_value=[]),
