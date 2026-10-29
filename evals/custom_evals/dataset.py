@@ -28,6 +28,7 @@ class LangfuseTraceDataset:
         self.lookback_hours = lookback_hours
         self.limit = limit
         self.source_location = source_location
+        self.total_items = 0
 
     async def load(self) -> list[EvalSample]:
         from_timestamp = datetime.now() - timedelta(hours=self.lookback_hours)
@@ -55,4 +56,5 @@ class LangfuseTraceDataset:
                     metadata={"source": "langfuse_trace"},
                 )
             )
+        self.total_items = len(samples)
         return samples

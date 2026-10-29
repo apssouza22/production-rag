@@ -9,6 +9,7 @@ from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.langfuse_experiment import (
     RagLangfuseExperiment,
     build_langfuse_evaluators,
+    experiment_result_to_evaluation_response,
     experiment_result_to_report,
     extract_item_expected_output,
     extract_item_input,
@@ -139,7 +140,10 @@ def test_experiment_result_to_report_aggregates_scores():
     )
 
     report = experiment_result_to_report(result, settings, dataset_path="evals/rag_evals/queries.json")
+    response = experiment_result_to_evaluation_response(result)
 
+    assert response.items[0].item_id == "trace-1"
+    assert response.items[0].metrics[0].value == 0.9
     assert report.schema_version == "1.0"
     assert report.run_type == "langfuse_experiment"
     assert report.evaluated_items == 1

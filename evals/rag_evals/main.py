@@ -10,8 +10,8 @@ import colorama
 from colorama import Fore, Style
 
 from evals.rag_evals.config import get_settings
-from evals.rag_evals.evaluator import RagEvaluator
 from evals.rag_evals.langfuse_experiment import RagLangfuseExperiment
+from evals.rag_evals.runner import RagEvaluationRunner
 
 settings = get_settings()
 
@@ -92,8 +92,8 @@ async def run_evaluation(generate_report: bool = True) -> None:
     print_info(f"Judge model: {settings.evaluation_llm}")
 
     try:
-        evaluator = RagEvaluator(settings=settings)
-        report = await evaluator.run(generate_report_file=generate_report)
+        runner = RagEvaluationRunner(settings=settings)
+        report = await runner.run_eval(generate_report_file=generate_report)
         print_success("Ragas evaluation completed successfully!")
         display_summary(report)
     except Exception as exc:

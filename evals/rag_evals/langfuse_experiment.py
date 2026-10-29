@@ -7,8 +7,9 @@ from typing import Any
 from langfuse import Evaluation, Langfuse
 from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperimentItem
 
+from evals.core.evaluator import EvaluationItemResult, EvaluationResponse, MetricMetadata
 from evals.core.metrics import Metric
-from evals.core.reporting import EvaluationReport, ReportItem, build_report, make_report_item, write_report
+from evals.core.reporting import EvaluationReport, build_report, write_report
 from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
@@ -154,8 +155,42 @@ def experiment_result_to_report(
     metrics: list[Metric] | None = None,
 ) -> EvaluationReport:
     """Convert a Langfuse experiment result into the unified report shape."""
-    report_items: list[ReportItem] = []
+    response = experiment_result_to_evaluation_response(result, metrics=metrics)
+    run_evaluations = [
+        {
+            "name": evaluation.name,
+            "value": evaluation.value,
+            "comment": evaluation.comment,
+        }
+        for evaluation in result.run_evaluations
+    ]
 
+    return build_report(
+        response=response,
+        run_type="langfuse_experiment",
+        evaluation_model=settings.evaluation_llm,
+        dataset_source="langfuse_dataset" if dataset_path is None else "json_rag",
+        dataset_location=settings.rag_eval_langfuse_dataset or dataset_path,
+        metadata={
+            "experiment_name": result.name,
+            "run_name": result.run_name,
+            "description": result.description,
+            "experiment_id": result.experiment_id,
+            "dataset_run_id": result.dataset_run_id,
+            "dataset_run_url": result.dataset_run_url,
+            "run_evaluations": run_evaluations,
+            "formatted_summary": result.format(),
+        },
+    )
+
+
+def experiment_result_to_evaluation_response(
+    result: ExperimentResult,
+    *,
+    metrics: list[Metric] | None = None,
+) -> EvaluationResponse:
+    """Adapt Langfuse's experiment result to the shared evaluator response."""
+    items: list[EvaluationItemResult] = []
     for item_result in result.item_results:
         metric_results: list[MetricResult] = []
         for evaluation in item_result.evaluations:
@@ -175,42 +210,42 @@ def experiment_result_to_report(
                 )
             )
         sample = experiment_item_to_sample(item_result.item, item_result.output)
-        report_items.append(
-            make_report_item(
-                sample,
-                metric_results,
+        sample_metadata = {
+            **sample.metadata,
+            "trace_id": item_result.trace_id,
+            "dataset_run_id": item_result.dataset_run_id,
+        }
+        items.append(
+            EvaluationItemResult(
                 item_id=item_result.trace_id,
-                metadata={"trace_id": item_result.trace_id, "dataset_run_id": item_result.dataset_run_id},
+                sample=sample.model_copy(
+                    update={
+                        "source_id": item_result.trace_id,
+                        "metadata": sample_metadata,
+                    }
+                ),
+                metrics=metric_results,
             )
         )
 
-    run_evaluations = [
-        {
-            "name": evaluation.name,
-            "value": evaluation.value,
-            "comment": evaluation.comment,
-        }
-        for evaluation in result.run_evaluations
-    ]
-
-    return build_report(
-        run_type="langfuse_experiment",
-        evaluation_model=settings.evaluation_llm,
-        dataset_source="langfuse_dataset" if dataset_path is None else "json_rag",
-        dataset_location=settings.rag_eval_langfuse_dataset or dataset_path,
+    definitions = {metric.name: metric for metric in metrics or []}
+    metric_names = set(definitions)
+    metric_names.update(metric_result.name for item in items for metric_result in item.metrics)
+    return EvaluationResponse(
         total_items=len(result.item_results),
-        items=report_items,
-        metrics=metrics,
-        metadata={
-            "experiment_name": result.name,
-            "run_name": result.run_name,
-            "description": result.description,
-            "experiment_id": result.experiment_id,
-            "dataset_run_id": result.dataset_run_id,
-            "dataset_run_url": result.dataset_run_url,
-            "run_evaluations": run_evaluations,
-            "formatted_summary": result.format(),
-        },
+        evaluated_items=len(items),
+        duration_seconds=0.0,
+        metrics=[
+            MetricMetadata(
+                name=name,
+                description=definitions[name].description if name in definitions else "",
+                required_fields=(
+                    sorted(field.value for field in definitions[name].required_fields) if name in definitions else []
+                ),
+            )
+            for name in sorted(metric_names)
+        ],
+        items=items,
     )
 
 

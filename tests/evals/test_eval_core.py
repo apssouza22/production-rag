@@ -3,11 +3,19 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from evals.core.evaluator import Evaluator
 from evals.core.metrics import MetricDefinition, SampleField
+from evals.core.reporting import build_report
+from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
 from evals.custom_evals.config import Settings
 from evals.custom_evals.dataset import LangfuseTraceDataset
-from evals.custom_evals.evaluator import Evaluator
+from evals.custom_evals.runner import TraceEvaluationRunner
+
+
+def test_eval_runner_is_abstract() -> None:
+    with pytest.raises(TypeError):
+        EvalRunner()
 
 
 def test_eval_sample_normalizes_legacy_rag_fields() -> None:
@@ -70,7 +78,7 @@ async def test_langfuse_trace_dataset_returns_normalized_samples() -> None:
 
 
 @pytest.mark.asyncio
-async def test_custom_evaluator_consumes_shared_dataset_and_metric() -> None:
+async def test_trace_runner_consumes_shared_dataset_and_metric() -> None:
     sample = EvalSample(input="question", output="answer", source_id="trace-1")
     dataset = Mock()
     dataset.load = AsyncMock(return_value=[sample])
@@ -88,12 +96,12 @@ async def test_custom_evaluator_consumes_shared_dataset_and_metric() -> None:
     settings = Settings(evaluation_sleep_time=0)
 
     with (
-        patch("evals.custom_evals.evaluator.get_settings", return_value=settings),
-        patch("evals.custom_evals.evaluator.openai.AsyncOpenAI"),
-        patch("evals.custom_evals.evaluator.Langfuse") as langfuse_cls,
+        patch("evals.custom_evals.runner.get_settings", return_value=settings),
+        patch("evals.custom_evals.runner.openai.AsyncOpenAI"),
+        patch("evals.custom_evals.runner.Langfuse") as langfuse_cls,
     ):
-        evaluator = Evaluator(dataset=dataset, metrics=[metric])
-        report = await evaluator.run(generate_report_file=False)
+        runner = TraceEvaluationRunner(dataset=dataset, metrics=[metric])
+        report = await runner.run_eval(generate_report_file=False)
 
     assert report["schema_version"] == "1.0"
     assert report["run_type"] == "trace_evaluation"
@@ -106,3 +114,30 @@ async def test_custom_evaluator_consumes_shared_dataset_and_metric() -> None:
         value=0.8,
         comment="Useful answer",
     )
+
+
+@pytest.mark.asyncio
+async def test_shared_evaluator_response_builds_report() -> None:
+    sample = EvalSample(input="question", output="answer")
+    dataset = Mock(total_items=2)
+    dataset.load = AsyncMock(return_value=[sample])
+
+    async def scorer(current_sample: EvalSample) -> MetricResult:
+        return MetricResult(name="quality", value=0.75)
+
+    metric = MetricDefinition(name="quality", description="Quality score", scorer=scorer)
+    response = await Evaluator([metric]).evaluate(dataset)
+
+    assert response.total_items == 2
+    assert response.evaluated_items == 1
+    assert response.items[0].sample == sample
+
+    report = build_report(
+        response=response,
+        run_type="test",
+        evaluation_model="judge-model",
+        dataset_source="test_dataset",
+    )
+
+    assert report.total_items == 2
+    assert report.metrics_summary["quality"].average_score == 0.75

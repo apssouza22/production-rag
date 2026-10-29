@@ -11,7 +11,7 @@ import colorama
 from colorama import Fore, Style
 
 from evals.custom_evals.config import get_settings
-from evals.custom_evals.evaluator import Evaluator
+from evals.custom_evals.runner import TraceEvaluationRunner
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +124,8 @@ async def run_evaluation(generate_report: bool = True) -> None:
     print_info(f"Report generation: {'Enabled' if generate_report else 'Disabled'}")
 
     try:
-        evaluator = Evaluator()
-        report = await evaluator.run(generate_report_file=generate_report)
+        runner = TraceEvaluationRunner()
+        report = await runner.run_eval(generate_report_file=generate_report)
 
         print_success("Evaluation completed successfully!")
         display_summary(report)

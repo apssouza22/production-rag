@@ -117,9 +117,11 @@ class RagDataset:
     def __init__(self, dataset_path: Path, builder: DatasetBuilder) -> None:
         self.dataset_path = dataset_path
         self.builder = builder
+        self.total_items = 0
         self.total_queries = 0
 
     async def load(self) -> list[EvalSample]:
         queries = load_queries(self.dataset_path)
+        self.total_items = len(queries)
         self.total_queries = len(queries)
         return await self.builder.build_samples(queries)

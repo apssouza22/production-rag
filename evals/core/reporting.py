@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from evals.core.metrics import Metric
+from evals.core.evaluator import EvaluationResponse
 from evals.core.schemas import EvalSample, MetricResult
 
 REPORT_SCHEMA_VERSION = "1.0"
@@ -95,18 +95,16 @@ def make_report_item(
 
 def build_report(
     *,
+    response: EvaluationResponse,
     run_type: str,
     evaluation_model: str,
     dataset_source: str,
-    total_items: int,
-    items: list[ReportItem],
-    metrics: list[Metric] | None = None,
     dataset_location: str | None = None,
-    duration_seconds: float = 0.0,
     metadata: dict[str, Any] | None = None,
 ) -> EvaluationReport:
-    """Aggregate item-level metric results into the unified report."""
-    definitions = {metric.name: metric for metric in metrics or []}
+    """Build a report from the provider-neutral evaluator response."""
+    items = [make_report_item(item.sample, item.metrics, item_id=item.item_id) for item in response.items]
+    definitions = {metric.name: metric for metric in response.metrics}
     metric_names = set(definitions)
     metric_names.update(result.name for item in items for result in item.metrics)
 
@@ -123,7 +121,7 @@ def build_report(
                 values.append(result.value)
         summaries[name] = MetricSummary(
             description=definition.description if definition else "",
-            required_fields=sorted(field.value for field in definition.required_fields) if definition else [],
+            required_fields=definition.required_fields if definition else [],
             success_count=len(values),
             failure_count=failure_count,
             average_score=round(sum(values) / len(values), 4) if values else 0.0,
@@ -142,11 +140,11 @@ def build_report(
         evaluation_model=evaluation_model,
         dataset_source=dataset_source,
         dataset_location=dataset_location,
-        total_items=total_items,
-        evaluated_items=len(items),
+        total_items=response.total_items,
+        evaluated_items=response.evaluated_items,
         successful_items=successful_items,
         failed_items=len(items) - successful_items,
-        duration_seconds=duration_seconds,
+        duration_seconds=response.duration_seconds,
         metrics_summary=summaries,
         items=items,
         metadata=metadata or {},

@@ -162,6 +162,12 @@ Local summaries use the unified report schema. When using a hosted dataset, Lang
 4. Pushes scores back to Langfuse
 5. Optionally writes a unified JSON report
 
+## Unified evaluator
+
+`evals.core.evaluator.Evaluator` is the only metric execution loop. It accepts any shared `Dataset` and `Metric` implementations and returns an `EvaluationResponse` without knowing about report formats or providers.
+
+The trace and RAG runners configure datasets, metrics, and integrations, then pass the evaluator response to the shared report builder. Langfuse experiments keep their SDK orchestration and adapt `ExperimentResult` into the same `EvaluationResponse` before report generation.
+
 ## Unified reports
 
 All execution paths emit the same versioned schema:
