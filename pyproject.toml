@@ -72,6 +72,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 env_files = ".env.test"
 pythonpath = ["."]
+log_cli = true
+log_cli_level = "INFO"
 
 [tool.mypy]
 explicit_package_bases = true

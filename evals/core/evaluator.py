@@ -76,6 +76,7 @@ class Evaluator:
             metric_results: list[MetricResult] = []
             for metric in self.metrics:
                 try:
+                    logger.info("Evaluating sample %s with metric %s", sample.source_id, metric.name)
                     result = await metric.score(sample)
                 except Exception as exc:
                     logger.exception("Metric %s evaluation failed", metric.name)
