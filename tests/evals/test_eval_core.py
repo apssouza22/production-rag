@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from evals.core.metrics import MetricDefinition, SampleField, evaluate_metric
+from evals.core.metrics import MetricDefinition, SampleField
 from evals.core.schemas import EvalSample, MetricResult
 from evals.custom_evals.config import Settings
 from evals.custom_evals.dataset import LangfuseTraceDataset
@@ -40,7 +40,7 @@ async def test_metric_requirements_are_validated_before_scoring() -> None:
         required_fields=frozenset({SampleField.OUTPUT, SampleField.CONTEXTS}),
     )
 
-    result = await evaluate_metric(metric, EvalSample(input="question"))
+    result = await metric.score(EvalSample(input="question"))
 
     assert result.error == "contexts, output are required"
     assert scorer_called is False

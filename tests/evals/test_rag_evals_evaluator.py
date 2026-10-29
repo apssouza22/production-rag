@@ -4,9 +4,9 @@ import json
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from evals.core.metrics import MetricDefinition
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.evaluator import RagEvaluator
-from evals.rag_evals.metrics import MetricDefinition
 from evals.rag_evals.schemas import EvalSample, MetricScore
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from evals.core.datasets import Dataset
-from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.metrics import Metric
 from evals.core.reporting import (
     EvaluationReport,
     ReportItem,
@@ -35,7 +35,7 @@ class RagEvaluator:
         self,
         settings: RagEvalSettings | None = None,
         dataset: Dataset | None = None,
-        metrics: list[MetricDefinition] | None = None,
+        metrics: list[Metric] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.openai_client = create_openai_client(self.settings)
@@ -95,7 +95,7 @@ class RagEvaluator:
         metric_scores: list[MetricResult] = []
         for metric in self.metrics:
             try:
-                metric_scores.append(await evaluate_metric(metric, sample))
+                metric_scores.append(await metric.score(sample))
             except Exception as exc:
                 logger.exception("Metric %s failed for query preview=%r", metric.name, sample.user_input[:80])
                 metric_scores.append(MetricResult(name=metric.name, error=str(exc)))

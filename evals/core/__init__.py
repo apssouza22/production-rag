@@ -1,7 +1,7 @@
 """Shared contracts for evaluation datasets and metrics."""
 
 from evals.core.datasets import Dataset
-from evals.core.metrics import MetricDefinition, MetricScorer, SampleField, evaluate_metric
+from evals.core.metrics import Metric, MetricDefinition, MetricScorer, SampleField
 from evals.core.reporting import (
     EvaluationReport,
     MetricSummary,
@@ -18,6 +18,7 @@ __all__ = [
     "Dataset",
     "EvalSample",
     "EvaluationReport",
+    "Metric",
     "MetricDefinition",
     "MetricResult",
     "MetricScorer",
@@ -25,7 +26,6 @@ __all__ = [
     "ReportItem",
     "SampleField",
     "build_report",
-    "evaluate_metric",
     "get_dataset_location",
     "get_dataset_source_name",
     "make_report_item",

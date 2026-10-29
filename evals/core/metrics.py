@@ -1,5 +1,6 @@
 """Metric contracts and shared requirement validation."""
 
+from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -16,9 +17,36 @@ class SampleField(StrEnum):
     CONTEXTS = "contexts"
 
 
+class Metric(ABC):
+    """Object-oriented contract implemented by every evaluation metric."""
+
+    name: str
+    description: str
+    required_fields: frozenset[SampleField]
+
+    @property
+    def requires_reference(self) -> bool:
+        return SampleField.REFERENCE in self.required_fields
+
+    async def score(self, sample: EvalSample) -> MetricResult:
+        """Validate required fields and score one normalized sample."""
+        missing = [
+            required_field for required_field in self.required_fields if getattr(sample, required_field.value) in (None, "", [])
+        ]
+        if missing:
+            names = ", ".join(field.value for field in sorted(missing, key=str))
+            suffix = "is" if len(missing) == 1 else "are"
+            return MetricResult(name=self.name, error=f"{names} {suffix} required")
+        return await self._score(sample)
+
+    @abstractmethod
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        """Implement provider-specific scoring for a valid sample."""
+
+
 @dataclass(frozen=True, init=False)
-class MetricDefinition:
-    """Metadata and scorer for one metric."""
+class MetricDefinition(Metric):
+    """Callable-backed metric adapter, useful for extensions and tests."""
 
     name: str
     description: str
@@ -46,22 +74,5 @@ class MetricDefinition:
         """Compatibility helper for reports and integrations."""
         return SampleField.REFERENCE in self.required_fields
 
-
-def missing_required_fields(metric: MetricDefinition, sample: EvalSample) -> list[SampleField]:
-    """Return fields whose values are absent from a sample."""
-    missing: list[SampleField] = []
-    for required_field in metric.required_fields:
-        value = getattr(sample, required_field.value)
-        if value is None or value == "" or value == []:
-            missing.append(required_field)
-    return sorted(missing, key=str)
-
-
-async def evaluate_metric(metric: MetricDefinition, sample: EvalSample) -> MetricResult:
-    """Validate a sample and invoke a metric scorer."""
-    missing = missing_required_fields(metric, sample)
-    if missing:
-        names = ", ".join(field.value for field in missing)
-        suffix = "is" if len(missing) == 1 else "are"
-        return MetricResult(name=metric.name, error=f"{names} {suffix} required")
-    return await metric.scorer(sample)
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        return await self.scorer(sample)

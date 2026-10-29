@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from evals.core.metrics import MetricDefinition
+from evals.core.metrics import Metric
 from evals.core.schemas import EvalSample, MetricResult
 
 REPORT_SCHEMA_VERSION = "1.0"
@@ -100,7 +100,7 @@ def build_report(
     dataset_source: str,
     total_items: int,
     items: list[ReportItem],
-    metrics: list[MetricDefinition] | None = None,
+    metrics: list[Metric] | None = None,
     dataset_location: str | None = None,
     duration_seconds: float = 0.0,
     metadata: dict[str, Any] | None = None,

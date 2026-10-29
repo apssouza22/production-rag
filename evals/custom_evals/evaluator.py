@@ -9,7 +9,7 @@ from langfuse import Langfuse
 from tqdm import tqdm
 
 from evals.core.datasets import Dataset
-from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.metrics import Metric
 from evals.core.reporting import (
     EvaluationReport,
     ReportItem,
@@ -33,7 +33,7 @@ class Evaluator:
     def __init__(
         self,
         dataset: Dataset | None = None,
-        metrics: list[MetricDefinition] | None = None,
+        metrics: list[Metric] | None = None,
     ) -> None:
         """Initialize Evaluator with OpenAI and Langfuse clients."""
         self.settings = get_settings()
@@ -69,7 +69,7 @@ class Evaluator:
 
             for metric in tqdm(self.metrics, desc=f"Applying metrics to trace {trace_id[:8]}...", leave=False):
                 try:
-                    score = await evaluate_metric(metric, sample)
+                    score = await metric.score(sample)
                 except Exception as exc:
                     logger.exception("Metric %s evaluation failed", metric.name)
                     score = MetricResult(name=metric.name, error=str(exc))

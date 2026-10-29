@@ -4,6 +4,7 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+from evals.core.metrics import MetricDefinition
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.langfuse_experiment import (
     RagLangfuseExperiment,
@@ -15,7 +16,6 @@ from evals.rag_evals.langfuse_experiment import (
     make_ragas_evaluator,
     queries_to_experiment_items,
 )
-from evals.rag_evals.metrics import MetricDefinition
 from evals.rag_evals.schemas import EvalQuery, EvalSample, MetricScore
 from langfuse.experiment import Evaluation, ExperimentItemResult, ExperimentResult
 

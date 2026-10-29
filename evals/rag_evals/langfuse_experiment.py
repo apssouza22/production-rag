@@ -7,7 +7,7 @@ from typing import Any
 from langfuse import Evaluation, Langfuse
 from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperimentItem
 
-from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.metrics import Metric
 from evals.core.reporting import EvaluationReport, ReportItem, build_report, make_report_item, write_report
 from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
@@ -106,7 +106,7 @@ def sample_to_task_output(sample: EvalSample) -> dict[str, Any]:
     }
 
 
-def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
+def make_ragas_evaluator(metric: Metric) -> EvaluatorFunction:
     """Wrap a Ragas metric scorer as a Langfuse item-level evaluator."""
 
     async def evaluator(
@@ -129,7 +129,7 @@ def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
             output,
         )
         try:
-            score = await evaluate_metric(metric, sample)
+            score = await metric.score(sample)
         except Exception as exc:
             logger.exception("Metric %s failed for input preview=%r", metric.name, str(input)[:80])
             return Evaluation(name=metric.name, value=0, comment=f"ERROR: {exc}")
@@ -142,7 +142,7 @@ def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
     return evaluator
 
 
-def build_langfuse_evaluators(metrics: list[MetricDefinition]) -> list[EvaluatorFunction]:
+def build_langfuse_evaluators(metrics: list[Metric]) -> list[EvaluatorFunction]:
     """Create Langfuse evaluators for all configured Ragas metrics."""
     return [make_ragas_evaluator(metric) for metric in metrics]
 
@@ -151,7 +151,7 @@ def experiment_result_to_report(
     result: ExperimentResult,
     settings: RagEvalSettings,
     dataset_path: str | None = None,
-    metrics: list[MetricDefinition] | None = None,
+    metrics: list[Metric] | None = None,
 ) -> EvaluationReport:
     """Convert a Langfuse experiment result into the unified report shape."""
     report_items: list[ReportItem] = []
