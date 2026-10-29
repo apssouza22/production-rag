@@ -95,8 +95,10 @@ async def test_custom_evaluator_consumes_shared_dataset_and_metric() -> None:
         evaluator = Evaluator(dataset=dataset, metrics=[metric])
         report = await evaluator.run(generate_report_file=False)
 
-    assert report["successful_traces"] == 1
-    assert report["metrics_summary"]["helpfulness"]["avg_score"] == 0.8
+    assert report["schema_version"] == "1.0"
+    assert report["run_type"] == "trace_evaluation"
+    assert report["successful_items"] == 1
+    assert report["metrics_summary"]["helpfulness"]["average_score"] == 0.8
     langfuse_cls.return_value.create_score.assert_called_once_with(
         trace_id="trace-1",
         name="helpfulness",

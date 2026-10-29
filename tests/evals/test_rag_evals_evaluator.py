@@ -54,11 +54,13 @@ async def test_evaluator_aggregates_metric_scores(tmp_path):
         evaluator = RagEvaluator(settings=settings, dataset=dataset, metrics=[metric_definition])
         report = await evaluator.run(generate_report_file=False)
 
-    assert report["evaluated_samples"] == 1
+    assert report["schema_version"] == "1.0"
+    assert report["run_type"] == "rag_evaluation"
+    assert report["evaluated_items"] == 1
     assert report["metrics_summary"]["context_relevance"]["success_count"] == 1
-    assert report["metrics_summary"]["context_relevance"]["avg_score"] == 0.9
-    assert report["sample_results"][0]["context_count"] == 1
-    assert report["sample_results"][0]["metrics"] == [{"name": "context_relevance", "value": 0.9, "error": None}]
+    assert report["metrics_summary"]["context_relevance"]["average_score"] == 0.9
+    assert report["items"][0]["context_count"] == 1
+    assert report["items"][0]["metrics"] == [{"name": "context_relevance", "value": 0.9, "reasoning": None, "error": None}]
 
 
 @pytest.mark.asyncio
@@ -111,11 +113,10 @@ async def test_evaluator_writes_json_report(tmp_path):
     with open(report_path, encoding="utf-8") as handle:
         payload = json.load(handle)
 
-    assert payload["evaluated_samples"] == 1
-    assert payload["sample_results"][0]["metrics"][0]["name"] == "context_relevance"
+    assert payload["evaluated_items"] == 1
+    assert payload["items"][0]["metrics"][0]["name"] == "context_relevance"
     assert payload["metrics_summary"]["context_relevance"]["description"] == "test"
-    assert payload["metrics"][0]["description"] == "test"
-    assert payload["metrics"][0]["requires_reference"] is False
+    assert payload["metrics_summary"]["context_relevance"]["required_fields"] == []
 
 
 @pytest.mark.asyncio
@@ -163,4 +164,4 @@ async def test_evaluator_skips_reference_metrics_without_reference(tmp_path):
         report = await evaluator.run(generate_report_file=False)
 
     assert report["metrics_summary"]["context_precision"]["failure_count"] == 1
-    assert report["sample_results"][0]["metrics"][0]["error"] == "reference is required"
+    assert report["items"][0]["metrics"][0]["error"] == "reference is required"

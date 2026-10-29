@@ -1,16 +1,22 @@
 """Run Ragas evaluation over rerank-search retrieval samples."""
 
-import json
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from tqdm import tqdm
 
 from evals.core.datasets import Dataset
 from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.reporting import (
+    EvaluationReport,
+    ReportItem,
+    build_report,
+    get_dataset_location,
+    get_dataset_source_name,
+    make_report_item,
+    write_report,
+)
 from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, RagDataset
@@ -41,37 +47,51 @@ class RagEvaluator:
         )
         self.dataset: Dataset = dataset or RagDataset(self.settings.rag_eval_dataset_path, self.dataset_builder)
         self.metrics = metrics if metrics is not None else build_metrics(self.settings, self.openai_client)
-        self.report = self._initialize_report()
+        self.report: EvaluationReport | None = None
 
-    async def run(self, generate_report_file: bool = True) -> dict[str, Any]:
+    async def run(self, generate_report_file: bool = True) -> dict:
         """Build the dataset from rerank search and score each sample."""
         start_time = time.time()
         samples = await self.dataset.load()
-
-        self.report["total_queries"] = getattr(self.dataset, "total_queries", len(samples))
-        self.report["evaluated_samples"] = len(samples)
+        total_items = getattr(self.dataset, "total_queries", len(samples))
 
         if not samples:
             raise RuntimeError("No evaluation samples were built. Check the dataset and RAG API availability.")
 
+        report_items: list[ReportItem] = []
         for sample in tqdm(samples, desc="Evaluating samples"):
-            sample_result = await self._evaluate_sample(sample)
-            self._update_report(sample_result)
+            report_items.append(await self._evaluate_sample(sample))
 
-        self.report["duration_seconds"] = round(time.time() - start_time, 2)
-        self._finalize_metric_averages()
+        self.report = build_report(
+            run_type="rag_evaluation",
+            evaluation_model=self.settings.evaluation_llm,
+            dataset_source=get_dataset_source_name(self.dataset),
+            dataset_location=get_dataset_location(self.dataset),
+            total_items=total_items,
+            items=report_items,
+            metrics=self.metrics,
+            duration_seconds=round(time.time() - start_time, 2),
+            metadata={
+                "retrieval": {
+                    "top_k": self.settings.rag_eval_top_k,
+                    "use_hybrid": self.settings.rag_eval_use_hybrid,
+                    "rerank_enabled": self.settings.rag_eval_rerank_enabled,
+                    "api_base_url": self.settings.rag_api_base_url,
+                }
+            },
+        )
 
         if generate_report_file:
-            self._write_report_file()
+            write_report(self.report, reports_dir=REPORTS_DIR)
 
         logger.info(
             "Ragas evaluation completed: samples=%s duration_seconds=%s",
-            self.report["evaluated_samples"],
-            self.report["duration_seconds"],
+            self.report.evaluated_items,
+            self.report.duration_seconds,
         )
-        return self.report
+        return self.report.model_dump(mode="json")
 
-    async def _evaluate_sample(self, sample: EvalSample) -> dict[str, Any]:
+    async def _evaluate_sample(self, sample: EvalSample) -> ReportItem:
         metric_scores: list[MetricResult] = []
         for metric in self.metrics:
             try:
@@ -80,71 +100,8 @@ class RagEvaluator:
                 logger.exception("Metric %s failed for query preview=%r", metric.name, sample.user_input[:80])
                 metric_scores.append(MetricResult(name=metric.name, error=str(exc)))
 
-        return {
-            "user_input": sample.user_input,
-            "reference_preview": (sample.reference or "")[:200],
-            "response_preview": sample.response[:200],
-            "context_count": len(sample.contexts),
-            "rerank_applied": sample.rerank_applied,
-            "metrics": [score.model_dump(exclude={"reasoning"}) for score in metric_scores],
-        }
-
-    def _initialize_report(self) -> dict[str, Any]:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "evaluation_llm": self.settings.evaluation_llm,
-            "dataset_path": str(self.settings.rag_eval_dataset_path),
-            "retrieval": {
-                "top_k": self.settings.rag_eval_top_k,
-                "use_hybrid": self.settings.rag_eval_use_hybrid,
-                "rerank_enabled": self.settings.rag_eval_rerank_enabled,
-                "api_base_url": self.settings.rag_api_base_url,
-            },
-            "metrics": [
-                {
-                    "name": metric.name,
-                    "description": metric.description,
-                    "requires_reference": metric.requires_reference,
-                }
-                for metric in self.metrics
-            ],
-            "total_queries": 0,
-            "evaluated_samples": 0,
-            "duration_seconds": 0,
-            "metrics_summary": {
-                metric.name: {
-                    "description": metric.description,
-                    "requires_reference": metric.requires_reference,
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "avg_score": 0.0,
-                }
-                for metric in self.metrics
-            },
-            "sample_results": [],
-        }
-
-    def _update_report(self, sample_result: dict[str, Any]) -> None:
-        self.report["sample_results"].append(sample_result)
-        for metric_score in sample_result["metrics"]:
-            summary = self.report["metrics_summary"][metric_score["name"]]
-            if metric_score.get("value") is None:
-                summary["failure_count"] += 1
-                continue
-            summary["success_count"] += 1
-            summary["avg_score"] += metric_score["value"]
-
-    def _finalize_metric_averages(self) -> None:
-        for summary in self.report["metrics_summary"].values():
-            if summary["success_count"] > 0:
-                summary["avg_score"] = round(summary["avg_score"] / summary["success_count"], 4)
-
-    def _write_report_file(self) -> str:
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = REPORTS_DIR / f"ragas_evaluation_report_{timestamp}.json"
-        with report_path.open("w", encoding="utf-8") as handle:
-            json.dump(self.report, handle, indent=2)
-        self.report["report_path"] = str(report_path)
-        logger.info("Ragas evaluation report written to %s", report_path)
-        return str(report_path)
+        return make_report_item(
+            sample,
+            metric_scores,
+            item_id=sample.source_id or sample.user_input[:80],
+        )

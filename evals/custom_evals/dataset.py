@@ -14,10 +14,20 @@ logger = logging.getLogger(__name__)
 class LangfuseTraceDataset:
     """Load unscored Langfuse traces as normalized evaluation samples."""
 
-    def __init__(self, langfuse: Langfuse, *, lookback_hours: int = 24, limit: int = 100) -> None:
+    source_name = "langfuse_traces"
+
+    def __init__(
+        self,
+        langfuse: Langfuse,
+        *,
+        lookback_hours: int = 24,
+        limit: int = 100,
+        source_location: str | None = None,
+    ) -> None:
         self.langfuse = langfuse
         self.lookback_hours = lookback_hours
         self.limit = limit
+        self.source_location = source_location
 
     async def load(self) -> list[EvalSample]:
         from_timestamp = datetime.now() - timedelta(hours=self.lookback_hours)

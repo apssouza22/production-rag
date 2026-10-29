@@ -112,6 +112,8 @@ class DatasetBuilder:
 class RagDataset:
     """Load a local query file and enrich it into normalized RAG samples."""
 
+    source_name = "json_rag"
+
     def __init__(self, dataset_path: Path, builder: DatasetBuilder) -> None:
         self.dataset_path = dataset_path
         self.builder = builder

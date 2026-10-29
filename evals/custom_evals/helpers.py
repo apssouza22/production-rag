@@ -1,18 +1,9 @@
 """Helper functions for the evaluation process."""
 
 import json
-import logging
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from langfuse.api import TraceWithDetails
-
-from evals.core.schemas import MetricResult
-
-logger = logging.getLogger(__name__)
-
-REPORTS_DIR = Path(__file__).parent.parent / "reports"
 
 INPUT_KEYS = ("query", "question", "input", "prompt", "content", "text")
 OUTPUT_KEYS = ("answer", "response", "content", "text", "generation", "final_answer", "output")
@@ -147,89 +138,3 @@ def get_input_output(trace: TraceWithDetails) -> Tuple[Optional[str], Optional[s
         return legacy_input or input_text, legacy_output or output_text
 
     return input_text, output_text
-
-
-def initialize_report(model_name: str) -> Dict[str, Any]:
-    """Initialize report data structure."""
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "model": model_name,
-        "total_traces": 0,
-        "successful_traces": 0,
-        "failed_traces": 0,
-        "duration_seconds": 0,
-        "metrics_summary": {},
-        "successful_traces_details": [],
-        "failed_traces_details": [],
-    }
-
-
-def initialize_metrics_summary(report: Dict[str, Any], metrics: List[Dict[str, str]]) -> None:
-    """Initialize metrics summary in the report."""
-    for metric in metrics:
-        report["metrics_summary"][metric["name"]] = {"success_count": 0, "failure_count": 0, "avg_score": 0.0}
-
-
-def update_success_metrics(
-    report: Dict[str, Any], trace_id: str, metric_name: str, score: MetricResult, trace_results: Dict[str, Any]
-) -> None:
-    """Update metrics for a successful evaluation."""
-    if score.value is None:
-        raise ValueError("A successful metric result must contain a value")
-    trace_results[trace_id]["metrics_succeeded"] += 1
-    trace_results[trace_id]["metrics_results"][metric_name] = {
-        "success": True,
-        "score": score.value,
-        "reasoning": score.reasoning,
-    }
-    report["metrics_summary"][metric_name]["success_count"] += 1
-    report["metrics_summary"][metric_name]["avg_score"] += score.value
-
-
-def update_failure_metrics(report: Dict[str, Any], trace_id: str, metric_name: str, trace_results: Dict[str, Any]) -> None:
-    """Update metrics for a failed evaluation."""
-    trace_results[trace_id]["metrics_results"][metric_name] = {"success": False}
-    report["metrics_summary"][metric_name]["failure_count"] += 1
-
-
-def process_trace_results(report: Dict[str, Any], trace_id: str, trace_results: Dict[str, Any], metrics_count: int) -> None:
-    """Process results for a single trace."""
-    if trace_results[trace_id]["metrics_succeeded"] == metrics_count:
-        trace_results[trace_id]["success"] = True
-        report["successful_traces"] += 1
-        report["successful_traces_details"].append(
-            {"trace_id": trace_id, "metrics_results": trace_results[trace_id]["metrics_results"]}
-        )
-    else:
-        report["failed_traces"] += 1
-        report["failed_traces_details"].append(
-            {
-                "trace_id": trace_id,
-                "metrics_evaluated": trace_results[trace_id]["metrics_evaluated"],
-                "metrics_succeeded": trace_results[trace_id]["metrics_succeeded"],
-                "metrics_results": trace_results[trace_id]["metrics_results"],
-            }
-        )
-
-
-def calculate_avg_scores(report: Dict[str, Any]) -> None:
-    """Calculate average scores for each metric."""
-    for _, data in report["metrics_summary"].items():
-        if data["success_count"] > 0:
-            data["avg_score"] = round(data["avg_score"] / data["success_count"], 2)
-
-
-def generate_report(report: Dict[str, Any]) -> str:
-    """Generate a JSON report file with evaluation results."""
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = REPORTS_DIR / f"evaluation_report_{timestamp}.json"
-
-    with open(report_path, "w") as f:
-        json.dump(report, f, indent=2)
-
-    report["generate_report_path"] = str(report_path)
-
-    logger.info("Evaluation report generated at %s", report_path)
-    return str(report_path)

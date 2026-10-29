@@ -122,7 +122,7 @@ make rag-eval-no-report
 uv run python -m evals.rag_evals.main --quick
 ```
 
-Reports are written to `evals/reports/ragas_evaluation_report_<timestamp>.json`.
+Reports use the unified schema described below.
 
 ### Langfuse Experiments (`rag_evals` + Langfuse SDK)
 
@@ -152,7 +152,7 @@ uv run python -m evals.rag_evals.main --langfuse-experiment --quick
 uv run python -m evals.rag_evals.main --langfuse-experiment --dataset-name my-rag-eval-set
 ```
 
-Local summaries are written to `evals/reports/langfuse_experiment_report_<timestamp>.json`. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
+Local summaries use the unified report schema. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
 
 ## How custom_evals works
 
@@ -160,7 +160,20 @@ Local summaries are written to `evals/reports/langfuse_experiment_report_<timest
 2. Extracts `query` and `answer` from each trace (supports RAG API and LangGraph trace formats)
 3. Scores each trace against every metric using the configured judge LLM
 4. Pushes scores back to Langfuse
-5. Optionally writes a JSON summary report to `evals/reports/evaluation_report_<timestamp>.json`
+5. Optionally writes a unified JSON report
+
+## Unified reports
+
+All execution paths emit the same versioned schema:
+
+- `schema_version`, `timestamp`, and `run_type`
+- evaluation model and dataset source/location
+- total, evaluated, successful, and failed item counts
+- per-metric success/failure counts and average scores
+- normalized item previews, metadata, and metric results
+- runner-specific details under `metadata`
+
+Files are written to `evals/reports/evaluation_report_<run_type>_<timestamp>.json`.
 
 ## Tests
 

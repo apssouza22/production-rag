@@ -10,18 +10,18 @@ from tqdm import tqdm
 
 from evals.core.datasets import Dataset
 from evals.core.metrics import MetricDefinition, evaluate_metric
+from evals.core.reporting import (
+    EvaluationReport,
+    ReportItem,
+    build_report,
+    get_dataset_location,
+    get_dataset_source_name,
+    make_report_item,
+    write_report,
+)
 from evals.core.schemas import MetricResult
 from evals.custom_evals.config import build_openai_client_kwargs, get_settings
 from evals.custom_evals.dataset import LangfuseTraceDataset
-from evals.custom_evals.helpers import (
-    calculate_avg_scores,
-    generate_report,
-    initialize_metrics_summary,
-    initialize_report,
-    process_trace_results,
-    update_failure_metrics,
-    update_success_metrics,
-)
 from evals.custom_evals.metrics import build_metrics
 
 logger = logging.getLogger(__name__)
@@ -50,63 +50,62 @@ class Evaluator:
             host=self.settings.langfuse_host,
             timeout=60,
         )
-        self.dataset: Dataset = dataset or LangfuseTraceDataset(self.langfuse)
+        self.dataset: Dataset = dataset or LangfuseTraceDataset(
+            self.langfuse,
+            source_location=self.settings.langfuse_host,
+        )
         self.metrics = metrics if metrics is not None else build_metrics(self.client, self.settings.evaluation_llm)
-        self.report = initialize_report(self.settings.evaluation_llm)
-        initialize_metrics_summary(self.report, [{"name": metric.name} for metric in self.metrics])
+        self.report: EvaluationReport | None = None
 
     async def run(self, generate_report_file: bool = True) -> dict:
         """Fetch traces from Langfuse, evaluate them, and push scores back."""
         start_time = time.time()
         samples = await self.dataset.load()
-        self.report["total_traces"] = len(samples)
-
-        trace_results = {}
+        report_items: list[ReportItem] = []
 
         for index, sample in enumerate(tqdm(samples, desc="Evaluating traces")):
             trace_id = sample.source_id or f"sample-{index}"
-            trace_results[trace_id] = {
-                "success": False,
-                "metrics_evaluated": 0,
-                "metrics_succeeded": 0,
-                "metrics_results": {},
-            }
+            metric_results: list[MetricResult] = []
 
             for metric in tqdm(self.metrics, desc=f"Applying metrics to trace {trace_id[:8]}...", leave=False):
-                metric_name = metric.name
                 try:
                     score = await evaluate_metric(metric, sample)
                 except Exception as exc:
-                    logger.exception("Metric %s evaluation failed", metric_name)
-                    score = MetricResult(name=metric_name, error=str(exc))
+                    logger.exception("Metric %s evaluation failed", metric.name)
+                    score = MetricResult(name=metric.name, error=str(exc))
 
                 if score.value is not None and not score.error:
                     if sample.source_id:
                         self._push_to_langfuse(sample.source_id, score)
-                    update_success_metrics(self.report, trace_id, metric_name, score, trace_results)
                 else:
-                    logger.error("Metric %s evaluation failed: %s", metric_name, score.error)
-                    update_failure_metrics(self.report, trace_id, metric_name, trace_results)
+                    logger.error("Metric %s evaluation failed: %s", metric.name, score.error)
+                metric_results.append(score)
 
-                trace_results[trace_id]["metrics_evaluated"] += 1
-
-            process_trace_results(self.report, trace_id, trace_results, len(self.metrics))
+            report_items.append(make_report_item(sample, metric_results, item_id=trace_id))
             sleep(self.settings.evaluation_sleep_time)
 
-        self.report["duration_seconds"] = round(time.time() - start_time, 2)
-        calculate_avg_scores(self.report)
+        self.report = build_report(
+            run_type="trace_evaluation",
+            evaluation_model=self.settings.evaluation_llm,
+            dataset_source=get_dataset_source_name(self.dataset),
+            dataset_location=get_dataset_location(self.dataset),
+            total_items=len(samples),
+            items=report_items,
+            metrics=self.metrics,
+            duration_seconds=round(time.time() - start_time, 2),
+        )
 
         if generate_report_file:
-            generate_report(self.report)
+            write_report(self.report)
 
         logger.info(
-            "Evaluation completed: total_traces=%s successful_traces=%s failed_traces=%s duration_seconds=%s",
-            self.report["total_traces"],
-            self.report["successful_traces"],
-            self.report["failed_traces"],
-            self.report["duration_seconds"],
+            "Evaluation completed: total_items=%s successful_items=%s failed_items=%s duration_seconds=%s",
+            self.report.total_items,
+            self.report.successful_items,
+            self.report.failed_items,
+            self.report.duration_seconds,
         )
-        return self.report
+        return self.report.model_dump(mode="json")
 
     def _push_to_langfuse(self, trace_id: str, score: MetricResult) -> None:
         """Push evaluation score to Langfuse."""

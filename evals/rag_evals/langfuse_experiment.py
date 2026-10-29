@@ -1,8 +1,6 @@
 """Run Ragas RAG evaluation as a Langfuse experiment."""
 
-import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +8,8 @@ from langfuse import Evaluation, Langfuse
 from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperimentItem
 
 from evals.core.metrics import MetricDefinition, evaluate_metric
-from evals.core.schemas import EvalSample
+from evals.core.reporting import EvaluationReport, ReportItem, build_report, make_report_item, write_report
+from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
 from evals.rag_evals.metrics import build_metrics, create_openai_client
@@ -119,7 +118,7 @@ def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
         **kwargs: Any,
     ) -> Evaluation:
         if not isinstance(output, dict):
-            return Evaluation(name=metric.name, value=0, comment="Task output is missing retrieval payload")
+            return Evaluation(name=metric.name, value=0, comment="ERROR: Task output is missing retrieval payload")
 
         sample = experiment_item_to_sample(
             {
@@ -133,11 +132,11 @@ def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
             score = await evaluate_metric(metric, sample)
         except Exception as exc:
             logger.exception("Metric %s failed for input preview=%r", metric.name, str(input)[:80])
-            return Evaluation(name=metric.name, value=0, comment=str(exc))
+            return Evaluation(name=metric.name, value=0, comment=f"ERROR: {exc}")
 
         if score.error or score.value is None:
             comment = "Reference answer is required" if score.error == "reference is required" else score.error
-            return Evaluation(name=metric.name, value=0, comment=comment or "scoring failed")
+            return Evaluation(name=metric.name, value=0, comment=f"ERROR: {comment or 'scoring failed'}")
         return Evaluation(name=metric.name, value=score.value)
 
     return evaluator
@@ -152,54 +151,38 @@ def experiment_result_to_report(
     result: ExperimentResult,
     settings: RagEvalSettings,
     dataset_path: str | None = None,
-) -> dict[str, Any]:
-    """Convert a Langfuse experiment result into the local JSON report shape."""
-    metrics_summary: dict[str, dict[str, Any]] = {}
-    sample_results: list[dict[str, Any]] = []
+    metrics: list[MetricDefinition] | None = None,
+) -> EvaluationReport:
+    """Convert a Langfuse experiment result into the unified report shape."""
+    report_items: list[ReportItem] = []
 
     for item_result in result.item_results:
-        metric_scores: list[dict[str, Any]] = []
+        metric_results: list[MetricResult] = []
         for evaluation in item_result.evaluations:
-            summary = metrics_summary.setdefault(
-                evaluation.name,
-                {
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "avg_score": 0.0,
-                },
-            )
-            if isinstance(evaluation.value, (int, float)):
-                summary["success_count"] += 1
-                summary["avg_score"] += float(evaluation.value)
-                metric_scores.append({"name": evaluation.name, "value": float(evaluation.value), "error": None})
-            else:
-                summary["failure_count"] += 1
-                metric_scores.append(
-                    {
-                        "name": evaluation.name,
-                        "value": None,
-                        "error": evaluation.comment or "non-numeric evaluation",
-                    }
+            is_error = bool(evaluation.comment and evaluation.comment.startswith("ERROR: "))
+            is_numeric = isinstance(evaluation.value, (int, float))
+            error = None
+            if is_error:
+                error = (evaluation.comment or "").removeprefix("ERROR: ")
+            elif not is_numeric:
+                error = evaluation.comment or "non-numeric evaluation"
+            metric_results.append(
+                MetricResult(
+                    name=evaluation.name,
+                    value=float(evaluation.value) if is_numeric and not is_error else None,
+                    reasoning=evaluation.comment if not is_error else None,
+                    error=error,
                 )
-
-        user_input = extract_item_input(item_result.item)
-        expected_output = extract_item_expected_output(item_result.item)
-        output = item_result.output if isinstance(item_result.output, dict) else {}
-        sample_results.append(
-            {
-                "user_input": user_input,
-                "reference_preview": expected_output[:200],
-                "response_preview": str(output.get("response", ""))[:200],
-                "context_count": len(output.get("retrieved_contexts", [])),
-                "rerank_applied": bool(output.get("rerank_applied", False)),
-                "trace_id": item_result.trace_id,
-                "metrics": metric_scores,
-            }
+            )
+        sample = experiment_item_to_sample(item_result.item, item_result.output)
+        report_items.append(
+            make_report_item(
+                sample,
+                metric_results,
+                item_id=item_result.trace_id,
+                metadata={"trace_id": item_result.trace_id, "dataset_run_id": item_result.dataset_run_id},
+            )
         )
-
-    for summary in metrics_summary.values():
-        if summary["success_count"] > 0:
-            summary["avg_score"] = round(summary["avg_score"] / summary["success_count"], 4)
 
     run_evaluations = [
         {
@@ -210,23 +193,25 @@ def experiment_result_to_report(
         for evaluation in result.run_evaluations
     ]
 
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "experiment_name": result.name,
-        "run_name": result.run_name,
-        "description": result.description,
-        "experiment_id": result.experiment_id,
-        "dataset_run_id": result.dataset_run_id,
-        "dataset_run_url": result.dataset_run_url,
-        "evaluation_llm": settings.evaluation_llm,
-        "dataset_path": dataset_path,
-        "langfuse_dataset": settings.rag_eval_langfuse_dataset or None,
-        "evaluated_samples": len(result.item_results),
-        "run_evaluations": run_evaluations,
-        "metrics_summary": metrics_summary,
-        "sample_results": sample_results,
-        "formatted_summary": result.format(),
-    }
+    return build_report(
+        run_type="langfuse_experiment",
+        evaluation_model=settings.evaluation_llm,
+        dataset_source="langfuse_dataset" if dataset_path is None else "json_rag",
+        dataset_location=settings.rag_eval_langfuse_dataset or dataset_path,
+        total_items=len(result.item_results),
+        items=report_items,
+        metrics=metrics,
+        metadata={
+            "experiment_name": result.name,
+            "run_name": result.run_name,
+            "description": result.description,
+            "experiment_id": result.experiment_id,
+            "dataset_run_id": result.dataset_run_id,
+            "dataset_run_url": result.dataset_run_url,
+            "run_evaluations": run_evaluations,
+            "formatted_summary": result.format(),
+        },
+    )
 
 
 class RagLangfuseExperiment:
@@ -251,6 +236,7 @@ class RagLangfuseExperiment:
             openai_client=self.openai_client,
         )
         self.metrics = build_metrics(self.settings, self.openai_client)
+        self.report: EvaluationReport | None = None
 
     def run(
         self,
@@ -308,9 +294,14 @@ class RagLangfuseExperiment:
 
         self.langfuse.flush()
 
+        self.report = experiment_result_to_report(
+            result,
+            self.settings,
+            dataset_path=dataset_path,
+            metrics=self.metrics,
+        )
         if generate_report_file:
-            report = experiment_result_to_report(result, self.settings, dataset_path=dataset_path)
-            self._write_report_file(report)
+            write_report(self.report, reports_dir=REPORTS_DIR)
 
         logger.info(
             "Langfuse experiment completed: name=%s items=%s dataset_run_url=%s",
@@ -345,13 +336,3 @@ class RagLangfuseExperiment:
             "rerank_enabled": str(self.settings.rag_eval_rerank_enabled).lower(),
             "generate_responses": str(self.settings.rag_eval_generate_responses).lower(),
         }
-
-    def _write_report_file(self, report: dict[str, Any]) -> str:
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = REPORTS_DIR / f"langfuse_experiment_report_{timestamp}.json"
-        with report_path.open("w", encoding="utf-8") as handle:
-            json.dump(report, handle, indent=2)
-        report["report_path"] = str(report_path)
-        logger.info("Langfuse experiment report written to %s", report_path)
-        return str(report_path)

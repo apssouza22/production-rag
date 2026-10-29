@@ -35,10 +35,11 @@ def print_success(message: str) -> None:
 
 
 def display_summary(report: dict) -> None:
-    print_title("Ragas Evaluation Summary")
-    print(f"{Fore.CYAN}Model:{Style.RESET_ALL} {report['evaluation_llm']}")
-    print(f"{Fore.CYAN}Dataset:{Style.RESET_ALL} {report['dataset_path']}")
-    print(f"{Fore.CYAN}Samples:{Style.RESET_ALL} {report['evaluated_samples']}/{report['total_queries']}")
+    print_title("Evaluation Summary")
+    print(f"{Fore.CYAN}Model:{Style.RESET_ALL} {report['evaluation_model']}")
+    dataset = report["dataset_location"] or report["dataset_source"]
+    print(f"{Fore.CYAN}Dataset:{Style.RESET_ALL} {dataset}")
+    print(f"{Fore.CYAN}Items:{Style.RESET_ALL} {report['evaluated_items']}/{report['total_items']}")
     print(f"{Fore.CYAN}Duration:{Style.RESET_ALL} {report['duration_seconds']} seconds")
 
     print("\n" + f"{Fore.CYAN}Metrics:{Style.RESET_ALL}")
@@ -48,25 +49,12 @@ def display_summary(report: dict) -> None:
         if total == 0:
             print(f"  • {metric_name}: no scores")
         else:
-            print(
-                f"  • {metric_name}: avg={summary['avg_score']:.4f}, "
-                f"success={summary['success_count']}/{total}"
-            )
+            print(f"  • {metric_name}: avg={summary['average_score']:.4f}, success={summary['success_count']}/{total}")
         if description:
             print(f"    {description}")
 
     if report.get("report_path"):
         print(f"\n{Fore.CYAN}Report:{Style.RESET_ALL} {report['report_path']}")
-
-
-def display_langfuse_summary(result) -> None:
-    print_title("Langfuse Experiment Summary")
-    print(f"{Fore.CYAN}Experiment:{Style.RESET_ALL} {result.name}")
-    print(f"{Fore.CYAN}Run:{Style.RESET_ALL} {result.run_name}")
-    print(f"{Fore.CYAN}Items:{Style.RESET_ALL} {len(result.item_results)}")
-    if result.dataset_run_url:
-        print(f"{Fore.CYAN}Dataset run:{Style.RESET_ALL} {result.dataset_run_url}")
-    print("\n" + result.format())
 
 
 def run_langfuse_experiment(
@@ -82,14 +70,15 @@ def run_langfuse_experiment(
 
     try:
         runner = RagLangfuseExperiment(settings=settings)
-        result = runner.run(
+        runner.run(
             experiment_name=experiment_name,
             run_name=run_name,
             dataset_name=dataset_name,
             generate_report_file=generate_report,
         )
         print_success("Langfuse experiment completed successfully!")
-        display_langfuse_summary(result)
+        if runner.report is not None:
+            display_summary(runner.report.model_dump(mode="json"))
     except Exception as exc:
         print_error(f"Langfuse experiment failed: {exc}")
         logging.exception("Langfuse experiment failed")
