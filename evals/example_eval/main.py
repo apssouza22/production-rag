@@ -20,10 +20,10 @@ from evals.core import (
 
 
 class ExampleDataset:
-    """Provide one inline sample so the example needs no external services."""
+    """Provide inline samples so the example needs no external services."""
 
     source_name = "inline_example"
-    total_items = 1
+    total_items = 3
 
     async def load(self) -> list[EvalSample]:
         return [
@@ -31,8 +31,26 @@ class ExampleDataset:
                 input="What is the capital of France?",
                 output="Paris",
                 reference="Paris",
+                contexts=["France is a country in Europe."],
                 source_id="example-1",
-            )
+                metadata={"region": "europe"},
+            ),
+            EvalSample(
+                input="What is 2+2?",
+                output="5",
+                reference="4",
+                contexts=["Basic arithmetic."],
+                source_id="example-2",
+                metadata={"difficulty": "easy"},
+            ),
+            EvalSample(
+                input="What does RAG stand for?",
+                output="Retrieval-augmented generation",
+                reference="Retrieval-augmented generation",
+                contexts=["RAG combines retrieval with generation."],
+                source_id="example-3",
+                metadata={"topic": "rag"},
+            ),
         ]
 
 

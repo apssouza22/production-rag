@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "askable-labs": {
+      "url": "https://spark.platform.askable.com/mcp/participant"
+    }
+  }
+}

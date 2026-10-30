@@ -2,10 +2,21 @@
 
 Evaluation frameworks for the API, integrated with the main project:
 
+- **example_eval** — minimal, dependency-free example using the shared eval infrastructure
 - **live_req_evals** — scores Langfuse traces with LLM-as-judge metrics
 - **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
 
 Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.live_req_evals.config import get_settings`).
+
+## Minimal example
+
+`example_eval` demonstrates an inline dataset, a deterministic exact-match metric, the shared evaluator, and unified report generation:
+
+```bash
+uv run python -m evals.example_eval.main
+```
+
+It runs without API keys or external services.
 
 ## Prerequisites
 
