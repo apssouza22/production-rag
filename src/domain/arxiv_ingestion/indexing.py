@@ -1,83 +1,15 @@
-import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 
-from src.domain.db.factory import make_database
-from src.domain.indexing.factory import make_hybrid_indexing_service
 from src.domain.opensearch.factory import make_opensearch_client_fresh
 
 logger = logging.getLogger(__name__)
 
 
-async def _index_papers_with_chunks(papers):
-    """Async helper to index papers with chunking and embeddings."""
-    indexing_service = make_hybrid_indexing_service()
-
-    papers_data = []
-    for paper in papers:
-        if hasattr(paper, "__dict__"):
-            paper_dict = {
-                "id": str(paper.id),
-                "arxiv_id": paper.arxiv_id,
-                "title": paper.title,
-                "authors": paper.authors,
-                "abstract": paper.abstract,
-                "categories": paper.categories,
-                "published_date": paper.published_date,
-                "raw_text": paper.raw_text,
-                "sections": paper.sections,
-            }
-        else:
-            paper_dict = paper
-        papers_data.append(paper_dict)
-
-    stats = await indexing_service.index_papers_batch(papers=papers_data, replace_existing=True)
-
-    return stats
-
-
 def index_papers_hybrid(persist_results: dict | None = None) -> dict:
-    """Index papers with chunking and vector embeddings for hybrid search.
+    """Index papers via the ingestion gateway (backward-compatible entry point)."""
+    from src.domain.arxiv_ingestion.service import get_ingestion_service
 
-    This operation:
-    1. Fetches recently stored papers from PostgreSQL (using persistence results when provided)
-    2. Chunks them into overlapping segments (600 words, 100 overlap)
-    3. Generates embeddings using Jina AI
-    4. Indexes chunks with embeddings into OpenSearch
-    """
-    try:
-        database = make_database()
-
-        with database.get_session() as session:
-            from src.domain.paper import Paper
-
-            if persist_results and persist_results.get("papers_stored", 0) > 0:
-                from sqlalchemy import desc
-
-                papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(persist_results["papers_stored"]).all()
-            else:
-                cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
-                papers = session.query(Paper).filter(Paper.created_at >= cutoff_date).all()
-
-            if not papers:
-                logger.info("No papers to index for hybrid search")
-                return {"papers_indexed": 0, "chunks_created": 0}
-
-            logger.info(f"Indexing {len(papers)} papers for hybrid search")
-
-            stats = asyncio.run(_index_papers_with_chunks(papers))
-
-            logger.info(
-                f"Hybrid indexing complete: {stats['papers_processed']} papers, "
-                f"{stats['total_chunks_created']} chunks created, "
-                f"{stats['total_chunks_indexed']} chunks indexed"
-            )
-
-            return stats
-
-    except Exception as e:
-        logger.error(f"Failed to index papers for hybrid search: {e}")
-        raise
+    return get_ingestion_service().index_papers_hybrid(persist_results)
 
 
 def verify_hybrid_index() -> dict:

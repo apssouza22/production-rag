@@ -1,20 +1,25 @@
 from .exceptions import MetadataFetchingException, PipelineException
-from .fetching import download_papers, parse_pdfs_to_markdown, persist_papers
 from .indexing import index_papers_hybrid, verify_hybrid_index
 from .reporting import generate_daily_report
-from .service import MetadataFetcher, make_metadata_fetcher
+from .service import (
+    ArxivIngestionService,
+    MetadataFetcher,
+    get_ingestion_service,
+    make_arxiv_ingestion_service,
+    make_metadata_fetcher,
+)
 from .setup import setup_environment
 
 __all__ = [
+    "ArxivIngestionService",
     "MetadataFetcher",
     "MetadataFetchingException",
     "PipelineException",
-    "download_papers",
     "generate_daily_report",
+    "get_ingestion_service",
     "index_papers_hybrid",
+    "make_arxiv_ingestion_service",
     "make_metadata_fetcher",
-    "parse_pdfs_to_markdown",
-    "persist_papers",
     "setup_environment",
     "verify_hybrid_index",
 ]
