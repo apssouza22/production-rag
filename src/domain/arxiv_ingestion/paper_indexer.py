@@ -15,7 +15,12 @@ class PaperIndexer:
     def __init__(self, database: BaseDatabase) -> None:
         self.database = database
 
-    def index_papers_hybrid(self, persist_results: dict[str, Any] | None = None) -> dict[str, Any]:
+    def index_papers_hybrid(
+        self,
+        persist_results: dict[str, Any] | None = None,
+        *,
+        ingestion_name: str = "production",
+    ) -> dict[str, Any]:
         """Index papers with chunking and vector embeddings for hybrid search."""
         try:
             from src.domain.paper import Paper
@@ -39,7 +44,7 @@ class PaperIndexer:
                     return {"papers_indexed": 0, "chunks_created": 0}
 
                 logger.info("Indexing %s papers for hybrid search", len(papers))
-                stats = asyncio.run(self._index_papers_with_chunks(papers))
+                stats = asyncio.run(self._index_papers_with_chunks(papers, ingestion_name=ingestion_name))
                 logger.info(
                     "Hybrid indexing complete: %s papers, %s chunks created, %s chunks indexed",
                     stats["papers_processed"],
@@ -51,7 +56,7 @@ class PaperIndexer:
             logger.error("Failed to index papers for hybrid search: %s", e)
             raise
 
-    async def _index_papers_with_chunks(self, papers: list[Any]) -> dict[str, Any]:
+    async def _index_papers_with_chunks(self, papers: list[Any], ingestion_name: str) -> dict[str, Any]:
         """Index papers with chunking and embeddings."""
         indexing_service = make_hybrid_indexing_service()
 
@@ -73,7 +78,11 @@ class PaperIndexer:
                 paper_dict = paper
             papers_data.append(paper_dict)
 
-        return await indexing_service.index_papers_batch(papers=papers_data, replace_existing=True)
+        return await indexing_service.index_papers_batch(
+            papers=papers_data,
+            replace_existing=True,
+            ingestion_name=ingestion_name,
+        )
 
 
 def make_paper_indexer(database: BaseDatabase) -> PaperIndexer:

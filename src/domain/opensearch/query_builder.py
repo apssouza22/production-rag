@@ -18,6 +18,7 @@ class QueryBuilder:
         from_: int = 0,
         fields: Optional[List[str]] = None,
         categories: Optional[List[str]] = None,
+        ingestion_name: Optional[str] = None,
         track_total_hits: bool = True,
         latest_papers: bool = False,
         search_chunks: bool = False,
@@ -29,6 +30,7 @@ class QueryBuilder:
         :param from_: Offset for pagination
         :param fields: Fields to search in (if None, auto-determined based on search_chunks)
         :param categories: Filter by categories
+        :param ingestion_name: Filter by ingestion partition (exact match)
         :param track_total_hits: Whether to track total hits accurately
         :param latest_papers: Sort by publication date instead of relevance
         :param search_chunks: Whether searching chunks (True) or papers (False)
@@ -37,6 +39,7 @@ class QueryBuilder:
         self.size = size
         self.from_ = from_
         self.categories = categories
+        self.ingestion_name = ingestion_name
         self.track_total_hits = track_total_hits
         self.latest_papers = latest_papers
         self.search_chunks = search_chunks
@@ -119,6 +122,9 @@ class QueryBuilder:
 
         if self.categories:
             filters.append({"terms": {"categories": self.categories}})
+
+        if self.ingestion_name:
+            filters.append({"term": {"ingestion_name": self.ingestion_name}})
 
         return filters
 

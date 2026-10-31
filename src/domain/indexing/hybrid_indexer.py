@@ -44,7 +44,7 @@ class HybridIndexingService:
             contextualizer is not None,
         )
 
-    async def index_paper(self, paper_data: Dict) -> Dict[str, int]:
+    async def index_paper(self, paper_data: Dict, ingestion_name: str) -> Dict[str, int]:
         """Index a single paper with chunking and embeddings.
 
         :param paper_data: Paper data from database
@@ -122,6 +122,7 @@ class HybridIndexingService:
                     "abstract": paper_data.get("abstract", ""),
                     "categories": paper_data.get("categories", []),
                     "published_date": paper_data.get("published_date"),
+                    "ingestion_name": ingestion_name,
                 }
 
                 chunks_with_embeddings.append({"chunk_data": chunk_data, "embedding": embedding})
@@ -142,11 +143,17 @@ class HybridIndexingService:
             logger.error(f"Error indexing paper {arxiv_id}: {e}")
             return {"chunks_created": 0, "chunks_indexed": 0, "embeddings_generated": 0, "errors": 1}
 
-    async def index_papers_batch(self, papers: List[Dict], replace_existing: bool = False) -> Dict[str, int]:
+    async def index_papers_batch(
+        self,
+        papers: List[Dict],
+        replace_existing: bool = False,
+        ingestion_name: str = "production",
+    ) -> Dict[str, int]:
         """Index multiple papers in batch.
 
         :param papers: List of paper data
         :param replace_existing: If True, delete existing chunks before indexing
+        :param ingestion_name: OpenSearch partition label applied to every chunk
         :returns: Aggregated statistics
         """
         total_stats = {
@@ -162,10 +169,10 @@ class HybridIndexingService:
 
             # Optionally delete existing chunks
             if replace_existing and arxiv_id:
-                self.opensearch_client.delete_paper_chunks(arxiv_id)
+                self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
 
             # Index the paper
-            stats = await self.index_paper(paper)
+            stats = await self.index_paper(paper, ingestion_name=ingestion_name)
 
             # Update totals
             total_stats["papers_processed"] += 1
@@ -181,7 +188,7 @@ class HybridIndexingService:
 
         return total_stats
 
-    async def reindex_paper(self, arxiv_id: str, paper_data: Dict) -> Dict[str, int]:
+    async def reindex_paper(self, arxiv_id: str, paper_data: Dict, ingestion_name: str = "production") -> Dict[str, int]:
         """Reindex a paper by deleting old chunks and creating new ones.
 
         :param arxiv_id: ArXiv ID of the paper
@@ -189,9 +196,9 @@ class HybridIndexingService:
         :returns: Indexing statistics
         """
         # Delete existing chunks
-        deleted = self.opensearch_client.delete_paper_chunks(arxiv_id)
+        deleted = self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
         if deleted:
             logger.info(f"Deleted existing chunks for paper {arxiv_id}")
 
         # Index with new data
-        return await self.index_paper(paper_data)
+        return await self.index_paper(paper_data, ingestion_name=ingestion_name)

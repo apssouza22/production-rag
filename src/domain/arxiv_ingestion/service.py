@@ -139,9 +139,14 @@ class ArxivIngestionService:
         )
         return results
 
-    def index_papers_hybrid(self, persist_results: dict[str, Any] | None = None) -> dict[str, Any]:
+    def index_papers_hybrid(
+        self,
+        persist_results: dict[str, Any] | None = None,
+        *,
+        ingestion_name: str = "production",
+    ) -> dict[str, Any]:
         """Index papers with chunking and vector embeddings for hybrid search."""
-        return self.paper_indexer.index_papers_hybrid(persist_results)
+        return self.paper_indexer.index_papers_hybrid(persist_results, ingestion_name=ingestion_name)
 
 
 def make_arxiv_ingestion_service(

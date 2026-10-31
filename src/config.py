@@ -101,6 +101,8 @@ class OpenSearchSettings(BaseConfigSettings):
     host: str = "http://localhost:9200"
     index_name: str = "arxiv-papers"
     chunk_index_suffix: str = "chunks"  # Creates single hybrid index: {index_name}-{suffix}
+    # Partition label stamped on indexed chunks; all searches filter by this value.
+    ingestion_name: str = "production"
     max_text_size: int = 1000000
 
     # Vector search settings

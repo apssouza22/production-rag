@@ -9,11 +9,13 @@ Usage (from repo root, with ``.env`` configured):
     uv run python -m src.ingest --date 20251020
     uv run python -m src.ingest --skip-cleanup
     uv run python -m src.ingest --skip-download --pdfs-dir evals/experiments/arxiv_pdfs
+    uv run python -m src.ingest --ingestion-name evals-local-pdfs
 """
 
 import argparse
 import json
 import logging
+import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -27,6 +29,16 @@ from src.domain.arxiv_ingestion.service import get_ingestion_service
 logger = logging.getLogger(__name__)
 
 DEFAULT_PDF_RETENTION_DAYS = 30
+INGESTION_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+
+
+def _validate_ingestion_name(name: str) -> str:
+    normalized = name.strip().lower()
+    if not INGESTION_NAME_PATTERN.fullmatch(normalized):
+        raise ValueError(
+            "ingestion name must be 1-128 chars, lowercase alphanumeric, and may contain '.', '_', or '-'"
+        )
+    return normalized
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -71,6 +83,7 @@ def run_pipeline(
     skip_download: bool = False,
     pdfs_dir: Path | None = None,
     pdf_retention_days: int = DEFAULT_PDF_RETENTION_DAYS,
+    ingestion_name: str = "dev",
 ) -> dict:
     """Execute ingestion steps and return the daily report dict."""
     if not skip_setup:
@@ -85,13 +98,14 @@ def run_pipeline(
         download_results = ingestion.download_papers(target_date)
     markdown_results = ingestion.parse_pdfs_to_markdown(download_results)
     persist_results = ingestion.persist_papers(download_results, markdown_results)
-    hybrid_stats = ingestion.index_papers_hybrid(persist_results)
+    hybrid_stats = ingestion.index_papers_hybrid(persist_results, ingestion_name=ingestion_name)
     report = generate_daily_report(
         download_results,
         persist_results,
         hybrid_stats,
         execution_date=datetime.now(),
     )
+    report["ingestion_name"] = ingestion_name
 
     if not skip_cleanup:
         settings = get_settings()
@@ -113,6 +127,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--date",
         metavar="YYYYMMDD",
         help="Target ingestion date (default: yesterday, matching the Airflow DAG).",
+    )
+    parser.add_argument(
+        "--ingestion-name",
+        metavar="NAME",
+        help=(
+            "OpenSearch partition for indexed chunks (default: OPENSEARCH__INGESTION_NAME or 'production'). "
+            "Set the same value in OPENSEARCH__INGESTION_NAME when querying."
+        ),
     )
     parser.add_argument(
         "--skip-setup",
@@ -170,14 +192,22 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"PDF directory does not exist: {pdfs_dir}")
 
     target_date = args.date or _default_target_date()
+    settings = get_settings()
+    raw_ingestion_name = args.ingestion_name or settings.opensearch.ingestion_name
+    try:
+        ingestion_name = _validate_ingestion_name(raw_ingestion_name)
+    except ValueError as exc:
+        parser.error(str(exc))
+
     if args.skip_download:
         logger.info(
-            "Starting ingestion for target date %s using local PDFs from %s",
+            "Starting ingestion for target date %s using local PDFs from %s (ingestion_name=%s)",
             target_date,
             pdfs_dir,
+            ingestion_name,
         )
     else:
-        logger.info("Starting ingestion for target date %s", target_date)
+        logger.info("Starting ingestion for target date %s (ingestion_name=%s)", target_date, ingestion_name)
 
     try:
         report = run_pipeline(
@@ -187,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
             skip_download=args.skip_download,
             pdfs_dir=pdfs_dir,
             pdf_retention_days=args.pdf_retention_days,
+            ingestion_name=ingestion_name,
         )
     except Exception:
         logger.exception("Ingestion pipeline failed")
