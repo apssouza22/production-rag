@@ -10,6 +10,7 @@ from src.domain.arxiv.paper import ArxivPaper
 from src.domain.pdf_parser.parser import PDFParserService
 
 from .exceptions import PipelineException
+from .schemas import DownloadResults
 
 logger = logging.getLogger(__name__)
 
@@ -55,23 +56,14 @@ class PaperFetcher:
         max_results: Optional[int] = None,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
-    ) -> dict[str, Any]:
+    ) -> DownloadResults:
         """Fetch paper metadata from arXiv and download PDFs without parsing.
 
         :param max_results: Maximum papers to fetch
         :param from_date: Filter papers from this date (YYYYMMDD)
         :param to_date: Filter papers to this date (YYYYMMDD)
-        :returns: Dictionary with fetch/download statistics and serialized papers for XCom
+        :returns: Download step results for downstream parse/persist tasks
         """
-        results: dict[str, Any] = {
-            "papers_fetched": 0,
-            "pdfs_downloaded": 0,
-            "errors": [],
-            "papers": [],
-            "downloaded_paths": {},
-            "processing_time": 0,
-        }
-
         start_time = datetime.now()
 
         try:
@@ -82,28 +74,34 @@ class PaperFetcher:
                 sort_by="submittedDate",
                 sort_order="descending",
             )
-            results["papers_fetched"] = len(papers)
+            papers_fetched = len(papers)
 
             if not papers:
                 logger.warning("No papers found")
-                return results
+                return DownloadResults(
+                    papers_fetched=0,
+                    processing_time=(datetime.now() - start_time).total_seconds(),
+                )
 
-            download_results = await self._download_pdfs_batch(papers)
-            results["pdfs_downloaded"] = download_results["downloaded"]
-            results["errors"].extend(download_results["errors"])
-            results["downloaded_paths"] = {arxiv_id: str(path) for arxiv_id, path in download_results["paths"].items()}
-            results["papers"] = [paper.model_dump() for paper in papers]
-
-            results["processing_time"] = (datetime.now() - start_time).total_seconds()
+            batch = await self._download_pdfs_batch(papers)
+            downloaded_paths = {arxiv_id: str(path) for arxiv_id, path in batch["paths"].items()}
+            processing_time = (datetime.now() - start_time).total_seconds()
+            results = DownloadResults(
+                papers_fetched=papers_fetched,
+                pdfs_downloaded=batch["downloaded"],
+                errors=batch["errors"],
+                papers=papers,
+                downloaded_paths=downloaded_paths,
+                processing_time=processing_time,
+            )
             logger.info(
-                f"Download step completed in {results['processing_time']:.1f}s: "
-                f"{results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs"
+                f"Download step completed in {results.processing_time:.1f}s: "
+                f"{results.papers_fetched} papers, {results.pdfs_downloaded} PDFs"
             )
             return results
 
         except Exception as e:
             logger.error(f"Download step error: {e}")
-            results["errors"].append(f"Download step error: {str(e)}")
             raise PipelineException(f"Download step failed: {e}") from e
 
     async def _download_pdfs_batch(self, papers: list[ArxivPaper]) -> dict[str, Any]:
@@ -150,6 +148,59 @@ class PaperFetcher:
 
             logger.error(f"Download failed: {paper.arxiv_id}")
             return None
+
+    async def load_papers_from_pdf_directory(
+        self,
+        pdf_dir: Path,
+        *,
+        target_date: str,
+    ) -> DownloadResults:
+        """Build download-step results from existing PDFs and arXiv metadata (no PDF download)."""
+        resolved_dir = pdf_dir.resolve()
+        if not resolved_dir.is_dir():
+            raise PipelineException(f"PDF directory does not exist: {resolved_dir}")
+
+        pdf_paths = sorted(resolved_dir.glob("*.pdf"))
+        if not pdf_paths:
+            logger.warning("No PDF files found in %s", resolved_dir)
+            return DownloadResults(date=target_date)
+
+        start_time = datetime.now()
+        fetch_semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+        papers: list[ArxivPaper] = []
+        downloaded_paths: dict[str, str] = {}
+        errors: list[str] = []
+
+        async def load_one(pdf_path: Path) -> None:
+            arxiv_id_from_name = pdf_path.stem
+            async with fetch_semaphore:
+                paper = await self.arxiv_client.fetch_paper_by_id(arxiv_id_from_name)
+            if paper is None:
+                errors.append(f"Could not fetch metadata for {arxiv_id_from_name} ({pdf_path.name})")
+                return
+            papers.append(paper)
+            downloaded_paths[paper.arxiv_id] = str(pdf_path.resolve())
+
+        await asyncio.gather(*(load_one(path) for path in pdf_paths))
+
+        processing_time = (datetime.now() - start_time).total_seconds()
+        results = DownloadResults(
+            papers_fetched=len(papers),
+            pdfs_downloaded=len(downloaded_paths),
+            errors=errors,
+            papers=papers,
+            downloaded_paths=downloaded_paths,
+            processing_time=processing_time,
+            date=target_date,
+        )
+        logger.info(
+            "Local PDF load complete in %.1fs: %s metadata records, %s PDF paths from %s",
+            results.processing_time,
+            results.papers_fetched,
+            results.pdfs_downloaded,
+            resolved_dir,
+        )
+        return results
 
 
 def make_paper_fetcher(

@@ -3,6 +3,7 @@ from .paper_fetcher import PaperFetcher, make_paper_fetcher
 from .paper_indexer import PaperIndexer, make_paper_indexer
 from .paper_persist import PaperPersist, make_paper_persist
 from .reporting import generate_daily_report
+from .schemas import DownloadResults
 from .service import (
     ArxivIngestionService,
     get_ingestion_service,
@@ -12,6 +13,7 @@ from .setup import setup_environment
 
 __all__ = [
     "ArxivIngestionService",
+    "DownloadResults",
     "PaperFetcher",
     "PaperIndexer",
     "PaperPersist",

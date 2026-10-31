@@ -74,9 +74,9 @@ class TestMetadataFetcher:
         metadata_fetcher.arxiv_client.fetch_papers = AsyncMock(return_value=[])
         result = await metadata_fetcher.fetch_and_download_papers(max_results=0)
 
-        assert result["papers_fetched"] == 0
-        assert result["pdfs_downloaded"] == 0
-        assert len(result["errors"]) == 0
+        assert result.papers_fetched == 0
+        assert result.pdfs_downloaded == 0
+        assert len(result.errors) == 0
 
     @pytest.mark.asyncio
     async def test_rate_limiting_respected(self, metadata_fetcher):
@@ -97,8 +97,8 @@ class TestMetadataFetcher:
 
         result = await metadata_fetcher.fetch_and_download_papers(max_results=2)
 
-        assert result["papers_fetched"] == 2
-        assert result["pdfs_downloaded"] == 1
-        assert len(result["papers"]) == 2
-        assert result["papers"][0]["arxiv_id"] == "2024.0001v1"
-        assert len(result["downloaded_paths"]) == 1
+        assert result.papers_fetched == 2
+        assert result.pdfs_downloaded == 1
+        assert len(result.papers) == 2
+        assert result.papers[0].arxiv_id == "2024.0001v1"
+        assert len(result.downloaded_paths) == 1

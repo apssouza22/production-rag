@@ -8,6 +8,7 @@ Usage (from repo root, with ``.env`` configured):
     uv run python -m src.ingest
     uv run python -m src.ingest --date 20251020
     uv run python -m src.ingest --skip-cleanup
+    uv run python -m src.ingest --skip-download --pdfs-dir evals/experiments/arxiv_pdfs
 """
 
 import argparse
@@ -67,6 +68,8 @@ def run_pipeline(
     *,
     skip_setup: bool = False,
     skip_cleanup: bool = False,
+    skip_download: bool = False,
+    pdfs_dir: Path | None = None,
     pdf_retention_days: int = DEFAULT_PDF_RETENTION_DAYS,
 ) -> dict:
     """Execute ingestion steps and return the daily report dict."""
@@ -74,7 +77,12 @@ def run_pipeline(
         setup_environment()
 
     ingestion = get_ingestion_service()
-    download_results = ingestion.download_papers(target_date)
+    if skip_download:
+        if pdfs_dir is None:
+            raise ValueError("pdfs_dir is required when skip_download is True")
+        download_results = ingestion.load_papers_from_pdf_directory(pdfs_dir, target_date)
+    else:
+        download_results = ingestion.download_papers(target_date)
     markdown_results = ingestion.parse_pdfs_to_markdown(download_results)
     persist_results = ingestion.persist_papers(download_results, markdown_results)
     hybrid_stats = ingestion.index_papers_hybrid(persist_results)
@@ -112,6 +120,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip DB/OpenSearch verification and index setup.",
     )
     parser.add_argument(
+        "--skip-download",
+        action="store_true",
+        help="Skip arXiv fetch/download; use PDFs from --pdfs-dir (metadata still fetched from arXiv API).",
+    )
+    parser.add_argument(
+        "--pdfs-dir",
+        type=Path,
+        metavar="DIR",
+        help="Directory of *.pdf files to parse when --skip-download is set (required with --skip-download).",
+    )
+    parser.add_argument(
         "--skip-cleanup",
         action="store_true",
         help="Skip removal of cached PDFs older than the retention window.",
@@ -137,17 +156,36 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
     _configure_logging(args.verbose)
 
+    if args.skip_download and args.pdfs_dir is None:
+        parser.error("--pdfs-dir is required when using --skip-download")
+    if args.pdfs_dir is not None and not args.skip_download:
+        parser.error("--pdfs-dir can only be used together with --skip-download")
+
+    pdfs_dir = args.pdfs_dir.resolve() if args.pdfs_dir else None
+    if pdfs_dir is not None and not pdfs_dir.is_dir():
+        parser.error(f"PDF directory does not exist: {pdfs_dir}")
+
     target_date = args.date or _default_target_date()
-    logger.info("Starting ingestion for target date %s", target_date)
+    if args.skip_download:
+        logger.info(
+            "Starting ingestion for target date %s using local PDFs from %s",
+            target_date,
+            pdfs_dir,
+        )
+    else:
+        logger.info("Starting ingestion for target date %s", target_date)
 
     try:
         report = run_pipeline(
             target_date,
             skip_setup=args.skip_setup,
             skip_cleanup=args.skip_cleanup,
+            skip_download=args.skip_download,
+            pdfs_dir=pdfs_dir,
             pdf_retention_days=args.pdf_retention_days,
         )
     except Exception:

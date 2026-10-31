@@ -3,12 +3,13 @@ import logging
 from datetime import datetime
 
 from .common import get_cached_services
+from .schemas import DownloadResults
 
 logger = logging.getLogger(__name__)
 
 
 def generate_daily_report(
-    download_stats: dict,
+    download_stats: DownloadResults | None,
     parse_stats: dict,
     hybrid_stats: dict,
     execution_date: datetime | None = None,
@@ -16,12 +17,18 @@ def generate_daily_report(
     """Build a daily report from ingestion results and current service statistics."""
     logger.info("Generating daily ingestion report")
 
+    target_date = "unknown"
+    if download_stats and download_stats.date:
+        target_date = download_stats.date
+    elif parse_stats.get("date"):
+        target_date = parse_stats["date"]
+
     report = {
         "execution_date": (execution_date or datetime.now()).isoformat(),
         "download_statistics": {
-            "papers_fetched": download_stats.get("papers_fetched", 0),
-            "pdfs_downloaded": download_stats.get("pdfs_downloaded", 0),
-            "target_date": download_stats.get("date", parse_stats.get("date", "unknown")),
+            "papers_fetched": download_stats.papers_fetched if download_stats else 0,
+            "pdfs_downloaded": download_stats.pdfs_downloaded if download_stats else 0,
+            "target_date": target_date,
         },
         "parse_statistics": {
             "pdfs_parsed": parse_stats.get("pdfs_parsed", 0),
@@ -33,7 +40,7 @@ def generate_daily_report(
             "chunks_indexed": hybrid_stats.get("total_chunks_indexed", 0),
             "embeddings_generated": hybrid_stats.get("total_embeddings_generated", 0),
         },
-        "pipeline_status": "success" if download_stats and parse_stats and hybrid_stats else "partial",
+        "pipeline_status": "success" if download_stats is not None and parse_stats and hybrid_stats else "partial",
     }
 
     try:

@@ -6,7 +6,6 @@ from typing import Any, Optional
 
 from src.config import Settings
 from src.domain.arxiv.client import ArxivClient
-from src.domain.arxiv.paper import ArxivPaper
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.pdf_parser.artifacts import load_parsed_paper_artifact
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper
@@ -15,6 +14,7 @@ from src.domain.pdf_parser.parser import PDFParserService
 from .paper_fetcher import PaperFetcher, make_paper_fetcher
 from .paper_indexer import PaperIndexer, make_paper_indexer
 from .paper_persist import PaperPersist, make_paper_persist
+from .schemas import DownloadResults
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class ArxivIngestionService:
         self.paper_persist = paper_persist
         self.paper_indexer = paper_indexer
 
-    def download_papers(self, target_date: str) -> dict[str, Any]:
+    def download_papers(self, target_date: str) -> DownloadResults:
         """Fetch paper metadata and download PDFs for a date (YYYYMMDD)."""
         logger.info("Downloading papers for date: %s", target_date)
 
@@ -50,47 +50,62 @@ class ArxivIngestionService:
                 to_date=target_date,
             )
         )
-
-        results["date"] = target_date
+        results = results.model_copy(update={"date": target_date})
         logger.info(
             "Daily download complete: %s papers, %s PDFs for %s",
-            results["papers_fetched"],
-            results["pdfs_downloaded"],
+            results.papers_fetched,
+            results.pdfs_downloaded,
             target_date,
         )
         return results
 
-    def parse_pdfs_to_markdown(self, download_results: dict[str, Any]) -> dict[str, Any]:
+    def load_papers_from_pdf_directory(self, pdf_dir: Path, target_date: str) -> DownloadResults:
+        """Use PDFs from ``pdf_dir`` and fetch arXiv metadata instead of downloading."""
+        logger.info("Loading papers from PDF directory %s for date label %s", pdf_dir, target_date)
+        results = asyncio.run(
+            self.paper_fetcher.load_papers_from_pdf_directory(
+                pdf_dir,
+                target_date=target_date,
+            )
+        )
+        logger.info(
+            "Local PDF step complete: %s papers, %s PDF paths for %s",
+            results.papers_fetched,
+            results.pdfs_downloaded,
+            target_date,
+        )
+        return results
+
+    def parse_pdfs_to_markdown(self, download_results: DownloadResults) -> dict[str, Any]:
         """Parse downloaded PDFs into shared Markdown and JSON artifacts."""
         output_dir = Path(self.paper_fetcher.pdf_cache_dir).parent / "arxiv_md"
-        papers = [ArxivMetadata(**paper_data) for paper_data in download_results.get("papers", [])]
+        papers = [ArxivMetadata(**paper.model_dump()) for paper in download_results.papers]
         return asyncio.run(
             self.pdf_parser.parse_pdfs_to_markdown(
                 papers=papers,
-                downloaded_paths=download_results.get("downloaded_paths", {}),
+                downloaded_paths=download_results.downloaded_paths,
                 output_dir=output_dir,
                 max_concurrent_parsing=self.paper_fetcher.max_concurrent_parsing,
-                date=download_results.get("date"),
+                date=download_results.date,
             )
         )
 
-    def persist_papers(self, download_results: dict[str, Any], markdown_results: dict[str, Any]) -> dict[str, Any]:
+    def persist_papers(self, download_results: DownloadResults, markdown_results: dict[str, Any]) -> dict[str, Any]:
         """Persist paper metadata and parsed sidecars to PostgreSQL."""
         logger.info("Starting paper persistence task")
         start_time = datetime.now()
 
-        papers_data = download_results.get("papers", [])
-        if not papers_data:
+        if not download_results.papers:
             logger.info("No papers to persist")
             return {
                 "pdfs_parsed": markdown_results.get("pdfs_parsed", 0),
                 "papers_stored": 0,
                 "errors": list(markdown_results.get("errors", [])),
-                "date": download_results.get("date"),
+                "date": download_results.date,
                 "processing_time": 0,
             }
 
-        papers = [ArxivPaper(**paper_data) for paper_data in papers_data]
+        papers = download_results.papers
         parsed_papers: dict[str, ParsedPaper] = {}
         errors = list(markdown_results.get("errors", []))
 
@@ -114,7 +129,7 @@ class ArxivIngestionService:
             "pdfs_parsed": markdown_results.get("pdfs_parsed", 0),
             "papers_stored": papers_stored,
             "errors": errors,
-            "date": download_results.get("date"),
+            "date": download_results.date,
             "processing_time": (datetime.now() - start_time).total_seconds(),
         }
         logger.info(

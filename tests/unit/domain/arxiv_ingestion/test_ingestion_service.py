@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from src.domain.arxiv.paper import ArxivPaper
 from src.domain.arxiv_ingestion.paper_indexer import PaperIndexer
 from src.domain.arxiv_ingestion.paper_persist import PaperPersist
+from src.domain.arxiv_ingestion.schemas import DownloadResults
 from src.domain.arxiv_ingestion.service import ArxivIngestionService
 from src.domain.pdf_parser.artifacts import write_parsed_paper_artifacts
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
@@ -53,7 +54,7 @@ def test_persist_papers_loads_sidecars_and_stores_papers(mock_repo_cls, tmp_path
     service = _ingestion_service(MagicMock(), database)
 
     result = service.persist_papers(
-        {"papers": [paper.model_dump()], "date": "20240101"},
+        DownloadResults(papers=[paper], date="20240101"),
         {"pdfs_parsed": 1, "artifacts": {paper.arxiv_id: artifact}, "errors": []},
     )
 
@@ -73,7 +74,7 @@ def test_persist_papers_stores_metadata_when_sidecar_is_missing(mock_repo_cls, t
     service = _ingestion_service(MagicMock(), database)
 
     result = service.persist_papers(
-        {"papers": [paper.model_dump()], "date": "20240101"},
+        DownloadResults(papers=[paper], date="20240101"),
         {
             "pdfs_parsed": 1,
             "artifacts": {
