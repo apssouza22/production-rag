@@ -3,11 +3,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from src.domain.arxiv_ingestion.artifacts import (
-    artifact_stem,
-    load_parsed_paper_artifact,
-    write_parsed_paper_artifacts,
-)
+from src.domain.pdf_parser.artifacts import artifact_stem, load_parsed_paper_artifact, write_parsed_paper_artifacts
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
 
 

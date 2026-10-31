@@ -1,5 +1,5 @@
 from .exceptions import MetadataFetchingException, PipelineException
-from .fetching import download_papers, parse_pdfs_to_markdown, persist_papers, run_paper_ingestion_pipeline
+from .fetching import download_papers, persist_papers, run_paper_ingestion_pipeline
 from .indexing import index_papers_hybrid, verify_hybrid_index
 from .reporting import generate_daily_report
 from .service import MetadataFetcher, make_metadata_fetcher
@@ -13,7 +13,6 @@ __all__ = [
     "generate_daily_report",
     "index_papers_hybrid",
     "make_metadata_fetcher",
-    "parse_pdfs_to_markdown",
     "persist_papers",
     "run_paper_ingestion_pipeline",
     "setup_environment",

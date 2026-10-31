@@ -1,11 +1,10 @@
 import asyncio
 import logging
 from datetime import datetime
-from pathlib import Path
 
 from src.domain.arxiv.paper import ArxivPaper
+from src.domain.pdf_parser.artifacts import load_parsed_paper_artifact
 
-from .artifacts import load_parsed_paper_artifact, write_parsed_paper_artifacts
 from .common import get_cached_services
 
 logger = logging.getLogger(__name__)
@@ -57,60 +56,6 @@ def download_papers(target_date: str) -> dict:
         f"Daily download complete: {results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs for {target_date}"
     )
 
-    return results
-
-
-def parse_pdfs_to_markdown(download_results: dict) -> dict:
-    """Parse downloaded PDFs into shared Markdown and JSON artifacts."""
-    logger.info("Starting PDF-to-Markdown task")
-    start_time = datetime.now()
-
-    papers_data = download_results.get("papers", [])
-    if not papers_data:
-        logger.info("No papers to parse")
-        return {
-            "pdfs_parsed": 0,
-            "artifacts": {},
-            "errors": [],
-            "date": download_results.get("date"),
-            "processing_time": 0,
-        }
-
-    papers = [ArxivPaper(**paper_data) for paper_data in papers_data]
-    downloaded_paths = download_results.get("downloaded_paths", {})
-
-    _, _, _, metadata_fetcher, _ = get_cached_services()
-    output_dir = Path(metadata_fetcher.pdf_cache_dir).parent / "arxiv_md"
-    parse_results = asyncio.run(
-        metadata_fetcher.parse_papers(
-            papers=papers,
-            downloaded_paths=downloaded_paths,
-            artifacts_dir=output_dir,
-        )
-    )
-
-    artifacts = {}
-    errors = list(parse_results["errors"])
-    for arxiv_id, parsed_paper in parse_results["parsed_papers"].items():
-        try:
-            artifacts[arxiv_id] = write_parsed_paper_artifacts(output_dir, parsed_paper)
-        except Exception as exc:
-            error = f"Failed to write parsed artifacts for {arxiv_id}: {exc}"
-            logger.exception(error)
-            errors.append(error)
-
-    results = {
-        "pdfs_parsed": len(artifacts),
-        "artifacts": artifacts,
-        "errors": errors,
-        "date": download_results.get("date"),
-        "processing_time": (datetime.now() - start_time).total_seconds(),
-    }
-    logger.info(
-        "PDF-to-Markdown complete: %d parsed for %s",
-        results["pdfs_parsed"],
-        results["date"],
-    )
     return results
 
 

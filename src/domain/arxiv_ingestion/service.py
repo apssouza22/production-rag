@@ -12,10 +12,9 @@ from src.domain.arxiv.client import ArxivClient
 from src.domain.arxiv.paper import ArxivPaper, PaperCreate
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.paper import PaperRepository
-from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, PdfContent
+from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper
 from src.domain.pdf_parser.parser import PDFParserService
 
-from .artifacts import artifact_stem
 from .exceptions import MetadataFetchingException, PipelineException
 
 logger = logging.getLogger(__name__)
@@ -263,11 +262,13 @@ class MetadataFetcher:
         artifacts_dir: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """Parse downloaded PDFs and return parsed papers without persisting them."""
-        if not papers:
-            logger.warning("No papers to parse")
-            return {"parsed": 0, "parsed_papers": {}, "errors": [], "parse_failures": []}
-
-        return await self._parse_pdfs_batch(papers, downloaded_paths, artifacts_dir)
+        metadata = [ArxivMetadata(**paper.model_dump()) for paper in papers]
+        return await self.pdf_parser.parse_papers(
+            papers=metadata,
+            downloaded_paths=downloaded_paths,
+            artifacts_dir=artifacts_dir,
+            max_concurrent_parsing=self.max_concurrent_parsing,
+        )
 
     def store_papers(self, papers: List[ArxivPaper], parsed_papers: Dict[str, ParsedPaper], db_session: Session) -> int:
         """Persist parsed papers and metadata to PostgreSQL."""
@@ -397,51 +398,6 @@ class MetadataFetcher:
         logger.info(f"Download batch complete: {results['downloaded']}/{len(papers)} downloaded")
         return results
 
-    async def _parse_pdfs_batch(
-        self,
-        papers: List[ArxivPaper],
-        downloaded_paths: Dict[str, str],
-        artifacts_dir: Optional[Path] = None,
-    ) -> Dict[str, Any]:
-        """Parse already-downloaded PDFs for a batch of papers."""
-        results: Dict[str, Any] = {
-            "parsed": 0,
-            "parsed_papers": {},
-            "errors": [],
-            "parse_failures": [],
-        }
-
-        logger.info(f"Starting parse batch for {len(papers)} PDFs")
-        parse_semaphore = asyncio.Semaphore(self.max_concurrent_parsing)
-        parse_tasks = [
-            self._parse_pdf_only(
-                paper,
-                downloaded_paths.get(paper.arxiv_id),
-                parse_semaphore,
-                artifacts_dir,
-            )
-            for paper in papers
-        ]
-        parse_results = await asyncio.gather(*parse_tasks, return_exceptions=True)
-
-        for paper, result in zip(papers, parse_results):
-            if isinstance(result, Exception):
-                error_msg = f"Parse error for {paper.arxiv_id}: {result}"
-                logger.error(error_msg)
-                results["errors"].append(error_msg)
-                results["parse_failures"].append(paper.arxiv_id)
-            elif result:
-                results["parsed"] += 1
-                results["parsed_papers"][paper.arxiv_id] = result
-            else:
-                results["parse_failures"].append(paper.arxiv_id)
-
-        if results["parse_failures"]:
-            results["errors"].extend([f"PDF parse failed: {arxiv_id}" for arxiv_id in results["parse_failures"]])
-
-        logger.info(f"Parse batch complete: {results['parsed']}/{len(papers)} parsed")
-        return results
-
     async def _download_pdf_only(self, paper: ArxivPaper, download_semaphore: asyncio.Semaphore) -> Optional[Path]:
         """Download a single PDF with concurrency control."""
         async with download_semaphore:
@@ -460,7 +416,6 @@ class MetadataFetcher:
         paper: ArxivPaper,
         downloaded_path: Optional[str],
         parse_semaphore: asyncio.Semaphore,
-        artifacts_dir: Optional[Path] = None,
     ) -> Optional[ParsedPaper]:
         """Parse a single downloaded PDF with concurrency control."""
         pdf_path = Path(downloaded_path) if downloaded_path else self.arxiv_client._get_pdf_path(paper.arxiv_id)
@@ -470,23 +425,15 @@ class MetadataFetcher:
 
         async with parse_semaphore:
             logger.debug(f"Starting parse: {paper.arxiv_id}")
-            paper_artifacts_dir = artifacts_dir / f"{artifact_stem(paper.arxiv_id)}_assets" if artifacts_dir is not None else None
-            pdf_content = await self.pdf_parser.parse_pdf(pdf_path, artifacts_dir=paper_artifacts_dir)
-
-            if not pdf_content:
+            arxiv_metadata = ArxivMetadata(**paper.model_dump())
+            parsed_paper = await self.pdf_parser.parse_paper(pdf_path, arxiv_metadata)
+            if parsed_paper is None:
                 logger.warning(f"PDF parsing failed for {paper.arxiv_id}, continuing with metadata only")
                 return None
 
-            arxiv_metadata = ArxivMetadata(
-                title=paper.title,
-                authors=paper.authors,
-                abstract=paper.abstract,
-                arxiv_id=paper.arxiv_id,
-                categories=paper.categories,
-                published_date=paper.published_date,
-                pdf_url=paper.pdf_url,
-            )
-            parsed_paper = ParsedPaper(arxiv_metadata=arxiv_metadata, pdf_content=pdf_content)
+            pdf_content = parsed_paper.pdf_content
+            if pdf_content is None:
+                return None
             logger.debug(f"Parse complete: {paper.arxiv_id} - {len(pdf_content.raw_text)} chars extracted")
             return parsed_paper
 

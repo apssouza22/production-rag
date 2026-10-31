@@ -1,4 +1,4 @@
-"""Filesystem artifacts shared between PDF parsing and persistence tasks."""
+"""Filesystem artifacts produced and consumed by PDF parsing."""
 
 import hashlib
 import json
@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import TypedDict
 
-from src.domain.pdf_parser.models import ParsedPaper
+from .models import ParsedPaper
 
 
 class ParsedPaperArtifact(TypedDict):

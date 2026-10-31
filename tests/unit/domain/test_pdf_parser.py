@@ -1,12 +1,26 @@
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from src.domain.pdf_parser.docling import DoclingParser
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 from src.domain.pdf_parser.factory import make_pdf_parser_service
-from src.domain.pdf_parser.models import PaperSection, ParserType, PdfContent
+from src.domain.pdf_parser.models import ArxivMetadata, ParserType, PdfContent
 from src.domain.pdf_parser.parser import PDFParserService
+
+
+@pytest.fixture
+def metadata():
+    """Create metadata associated with a parsed PDF."""
+    return ArxivMetadata(
+        arxiv_id="2024.0001v1",
+        title="Test Paper",
+        authors=["Test Author"],
+        abstract="Test abstract",
+        categories=["cs.AI"],
+        published_date="2024-01-01T00:00:00Z",
+        pdf_url="https://arxiv.org/pdf/2024.0001v1",
+    )
 
 
 class TestDoclingParser:
@@ -140,6 +154,105 @@ class TestPDFParserService:
             await pdf_parser_service.parse_pdf(valid_pdf_path)
 
         assert "Docling parsing error" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_parse_pdfs_to_markdown_handles_empty_input(self, pdf_parser_service, tmp_path):
+        result = await pdf_parser_service.parse_pdfs_to_markdown(
+            papers=[],
+            downloaded_paths={},
+            output_dir=tmp_path,
+            date="20240101",
+        )
+
+        assert result == {
+            "pdfs_parsed": 0,
+            "artifacts": {},
+            "errors": [],
+            "date": "20240101",
+            "processing_time": 0,
+        }
+
+    @pytest.mark.asyncio
+    async def test_parse_pdfs_to_markdown_writes_artifacts(
+        self,
+        pdf_parser_service,
+        valid_pdf_path,
+        metadata,
+        tmp_path,
+    ):
+        pdf_content = PdfContent(
+            raw_text="Parsed text",
+            markdown="# Test Paper\n\nParsed text",
+            parser_used=ParserType.DOCLING,
+        )
+        pdf_parser_service.parse_pdf = AsyncMock(return_value=pdf_content)
+        output_dir = tmp_path / "arxiv_md"
+
+        result = await pdf_parser_service.parse_pdfs_to_markdown(
+            papers=[metadata],
+            downloaded_paths={metadata.arxiv_id: str(valid_pdf_path)},
+            output_dir=output_dir,
+            max_concurrent_parsing=1,
+            date="20240101",
+        )
+
+        assert result["pdfs_parsed"] == 1
+        assert result["errors"] == []
+        assert result["date"] == "20240101"
+        artifact = result["artifacts"][metadata.arxiv_id]
+        assert Path(artifact["markdown_path"]).read_text(encoding="utf-8") == pdf_content.markdown
+        pdf_parser_service.parse_pdf.assert_awaited_once()
+        assert pdf_parser_service.parse_pdf.await_args.kwargs["artifacts_dir"].parent == output_dir
+
+    @pytest.mark.asyncio
+    async def test_parse_pdfs_to_markdown_records_parse_failure(
+        self,
+        pdf_parser_service,
+        valid_pdf_path,
+        metadata,
+        tmp_path,
+    ):
+        pdf_parser_service.parse_pdf = AsyncMock(side_effect=PDFParsingException("broken PDF"))
+
+        result = await pdf_parser_service.parse_pdfs_to_markdown(
+            papers=[metadata],
+            downloaded_paths={metadata.arxiv_id: str(valid_pdf_path)},
+            output_dir=tmp_path,
+        )
+
+        assert result["pdfs_parsed"] == 0
+        assert result["artifacts"] == {}
+        assert result["errors"][0] == f"Parse error for {metadata.arxiv_id}: broken PDF"
+        assert result["errors"][1] == f"PDF parse failed: {metadata.arxiv_id}"
+
+    @patch("src.domain.pdf_parser.parser.write_parsed_paper_artifacts", side_effect=OSError("disk full"))
+    @pytest.mark.asyncio
+    async def test_parse_pdfs_to_markdown_records_artifact_failure(
+        self,
+        mock_write_artifacts,
+        pdf_parser_service,
+        valid_pdf_path,
+        metadata,
+        tmp_path,
+    ):
+        pdf_parser_service.parse_pdf = AsyncMock(
+            return_value=PdfContent(
+                raw_text="Parsed text",
+                markdown="# Test Paper",
+                parser_used=ParserType.DOCLING,
+            )
+        )
+
+        result = await pdf_parser_service.parse_pdfs_to_markdown(
+            papers=[metadata],
+            downloaded_paths={metadata.arxiv_id: str(valid_pdf_path)},
+            output_dir=tmp_path,
+        )
+
+        assert result["pdfs_parsed"] == 0
+        assert result["artifacts"] == {}
+        assert result["errors"] == [f"Failed to write parsed artifacts for {metadata.arxiv_id}: disk full"]
+        mock_write_artifacts.assert_called_once()
 
     def test_factory_creates_service(self):
         """Test that factory creates PDFParserService instance."""

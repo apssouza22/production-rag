@@ -1,9 +1,8 @@
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from src.domain.arxiv.paper import ArxivPaper
-from src.domain.arxiv_ingestion.artifacts import write_parsed_paper_artifacts
-from src.domain.arxiv_ingestion.fetching import parse_pdfs_to_markdown, persist_papers
+from src.domain.arxiv_ingestion.fetching import persist_papers
+from src.domain.pdf_parser.artifacts import write_parsed_paper_artifacts
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
 
 
@@ -27,44 +26,6 @@ def _parsed_paper(paper: ArxivPaper) -> ParsedPaper:
             markdown="# Test Paper\n\nParsed text",
             parser_used=ParserType.DOCLING,
         ),
-    )
-
-
-def test_parse_pdfs_to_markdown_writes_artifacts_without_database_session(tmp_path) -> None:
-    paper = _paper()
-    pdf_cache_dir = tmp_path / "arxiv_pdfs"
-    pdf_path = pdf_cache_dir / f"{paper.arxiv_id}.pdf"
-    metadata_fetcher = MagicMock()
-    metadata_fetcher.pdf_cache_dir = pdf_cache_dir
-    metadata_fetcher.parse_papers = AsyncMock(
-        return_value={
-            "parsed": 1,
-            "parsed_papers": {paper.arxiv_id: _parsed_paper(paper)},
-            "errors": [],
-            "parse_failures": [],
-        }
-    )
-    database = MagicMock()
-    download_results = {
-        "papers": [paper.model_dump()],
-        "downloaded_paths": {paper.arxiv_id: str(pdf_path)},
-        "date": "20240101",
-    }
-
-    with patch(
-        "src.domain.arxiv_ingestion.fetching.get_cached_services",
-        return_value=(MagicMock(), MagicMock(), database, metadata_fetcher, MagicMock()),
-    ):
-        result = parse_pdfs_to_markdown(download_results)
-
-    assert result["pdfs_parsed"] == 1
-    assert paper.arxiv_id in result["artifacts"]
-    assert Path(result["artifacts"][paper.arxiv_id]["markdown_path"]).read_text(encoding="utf-8").startswith("# Test Paper")
-    database.get_session.assert_not_called()
-    metadata_fetcher.parse_papers.assert_awaited_once_with(
-        papers=[paper],
-        downloaded_paths={paper.arxiv_id: str(pdf_path)},
-        artifacts_dir=tmp_path / "arxiv_md",
     )
 
 
