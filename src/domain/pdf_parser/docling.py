@@ -26,6 +26,25 @@ _CONTENT_LABELS = {
 }
 
 
+def assemble_markdown_from_sections(sections: list[PaperSection]) -> str:
+    """Build a Markdown document from extracted sections, preserving inline figures and tables."""
+    parts: list[str] = []
+    for section in sections:
+        if section.title == "Content" and section.breadcrumb is None:
+            if section.content.strip():
+                parts.append(section.content.strip())
+            continue
+
+        heading_level = min(max(section.level, 1), 6)
+        parts.append(f"{'#' * heading_level} {section.title}")
+        if section.content.strip():
+            parts.append(section.content.strip())
+
+    if not parts:
+        return ""
+    return "\n\n".join(parts).rstrip() + "\n"
+
+
 def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
     """Extract hierarchical sections with breadcrumbs from a Docling document.
 
@@ -41,7 +60,8 @@ def _extract_sections_and_artifacts(
     artifacts_dir: Optional[Path] = None,
 ) -> tuple[list[PaperSection], list[PaperFigure], list[PaperTable]]:
     sections: list[PaperSection] = []
-    artefact_extractor = ArtefactExtractor(artifacts_dir)
+    assets_link_prefix = artifacts_dir.name if artifacts_dir is not None else None
+    artefact_extractor = ArtefactExtractor(artifacts_dir, assets_link_prefix=assets_link_prefix)
     header_stack: list[tuple[int, str]] = []
     current: Optional[dict[str, Any]] = {
         "title": "Content",
@@ -207,6 +227,7 @@ class DoclingParser:
             if artifacts_dir is None:
                 artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
             sections, figures, tables = _extract_sections_and_artifacts(doc, artifacts_dir)
+            markdown = assemble_markdown_from_sections(sections)
 
             # Focus on what arXiv API doesn't provide: structured full text content only
             return PdfContent(
@@ -214,7 +235,7 @@ class DoclingParser:
                 figures=figures,
                 tables=tables,
                 raw_text=doc.export_to_text(),
-                markdown=doc.export_to_markdown(),
+                markdown=markdown or doc.export_to_markdown(),
                 references=[],
                 parser_used=ParserType.DOCLING,
                 metadata={"source": "docling", "note": "Content extracted from PDF, metadata comes from arXiv API"},

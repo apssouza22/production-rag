@@ -2,10 +2,21 @@
 
 Evaluation frameworks for the API, integrated with the main project:
 
-- **custom_evals** — scores Langfuse traces with LLM-as-judge metrics
+- **example_eval** — minimal, dependency-free example using the shared eval infrastructure
+- **live_req_evals** — scores Langfuse traces with LLM-as-judge metrics
 - **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
 
-Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.custom_evals.config import get_settings`).
+Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.live_req_evals.config import get_settings`).
+
+## Minimal example
+
+`example_eval` demonstrates an inline dataset, a deterministic exact-match metric, the shared evaluator, and unified report generation:
+
+```bash
+uv run python -m evals.example_eval.main
+```
+
+It runs without API keys or external services.
 
 ## Prerequisites
 
@@ -47,14 +58,14 @@ make eval-no-report  # skip JSON report
 Or directly:
 
 ```bash
-uv run python -m evals.custom_evals.main --quick
-uv run python -m evals.custom_evals.main --interactive
-uv run python -m evals.custom_evals.main --no-report
+uv run python -m evals.live_req_evals.main --quick
+uv run python -m evals.live_req_evals.main --interactive
+uv run python -m evals.live_req_evals.main --no-report
 ```
 
 ## Metrics
 
-Metric prompts live in `evals/custom_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
+Metric prompts live in `evals/live_req_evals/metrics/prompts/`. Add a new `.md` file and it is discovered automatically:
 
 - `relevancy`
 - `helpfulness`
@@ -122,7 +133,7 @@ make rag-eval-no-report
 uv run python -m evals.rag_evals.main --quick
 ```
 
-Reports are written to `evals/reports/ragas_evaluation_report_<timestamp>.json`.
+Reports use the unified schema described below.
 
 ### Langfuse Experiments (`rag_evals` + Langfuse SDK)
 
@@ -152,15 +163,34 @@ uv run python -m evals.rag_evals.main --langfuse-experiment --quick
 uv run python -m evals.rag_evals.main --langfuse-experiment --dataset-name my-rag-eval-set
 ```
 
-Local summaries are written to `evals/reports/langfuse_experiment_report_<timestamp>.json`. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
+Local summaries use the unified report schema. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
 
-## How custom_evals works
+## How live_req_evals works
 
 1. Fetches unscored Langfuse traces from the last 24 hours
 2. Extracts `query` and `answer` from each trace (supports RAG API and LangGraph trace formats)
 3. Scores each trace against every metric using the configured judge LLM
 4. Pushes scores back to Langfuse
-5. Optionally writes a JSON summary report to `evals/reports/evaluation_report_<timestamp>.json`
+5. Optionally writes a unified JSON report
+
+## Unified evaluator
+
+`evals.core.evaluator.Evaluator` is the only metric execution loop. It accepts any shared `Dataset` and `Metric` implementations and returns an `EvaluationResponse` without knowing about report formats or providers.
+
+The trace and RAG runners configure datasets, metrics, and integrations, then pass the evaluator response to the shared report builder. Langfuse experiments keep their SDK orchestration and adapt `ExperimentResult` into the same `EvaluationResponse` before report generation.
+
+## Unified reports
+
+All execution paths emit the same versioned schema:
+
+- `schema_version`, `timestamp`, and `run_type`
+- evaluation model and dataset source/location
+- total, evaluated, successful, and failed item counts
+- per-metric success/failure counts and average scores
+- normalized item previews, metadata, and metric results
+- runner-specific details under `metadata`
+
+Files are written to `evals/reports/evaluation_report_<run_type>_<timestamp>.json`.
 
 ## Tests
 

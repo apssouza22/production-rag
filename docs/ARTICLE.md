@@ -56,7 +56,7 @@ flowchart LR
     subgraph ops["Pipelines and observability"]
         AF["Airflow 3<br/>ingestion DAG"]
         LF["Langfuse Cloud<br/>traces + scores"]
-        EV["evals/<br/>custom_evals + rag_evals"]
+        EV["evals/<br/>live_req_evals + rag_evals"]
     end
 
     API --> AG
@@ -702,12 +702,12 @@ Traces alone tell you what happened, not whether it was good. That takes measure
 
 ```mermaid
 flowchart TB
-    subgraph prod["Production loop — custom_evals"]
+    subgraph prod["Production loop — live_req_evals"]
         A["Request"] --> B["Spans: embedding, search,<br/>prompt, generation, agent nodes"]
         B --> C["Langfuse trace"]
         A --> T["Trajectory in API response<br/>steps + events + summary"]
         C --> D["User feedback<br/>POST /api/v1/feedback"]
-        C --> E["custom_evals: fetch unscored<br/>traces, 24h window"]
+        C --> E["live_req_evals: fetch unscored<br/>traces, 24h window"]
         T --> E
         E --> F["LLM judge per metric:<br/>relevancy, helpfulness, conciseness,<br/>hallucination, toxicity"]
         F --> G["create_score on the trace"]
@@ -727,11 +727,11 @@ flowchart TB
 
 Both packages live under `evals/` as part of the main project. Eval-specific dependencies (Ragas, judge LLM clients) are installed via the `evals` dependency group and are not required in the production API container image.
 
-### 11.1 Production trace scoring (`custom_evals`)
+### 11.1 Production trace scoring (`live_req_evals`)
 
-`custom_evals` scores what users actually asked. It pulls Langfuse traces from the last 24 hours that have no scores yet, extracts `query` and `answer` from each trace (RAG API and LangGraph formats), scores each against every metric using an LLM judge with structured output, and writes the scores back onto the original trace.
+`live_req_evals` scores what users actually asked. It pulls Langfuse traces from the last 24 hours that have no scores yet, extracts `query` and `answer` from each trace (RAG API and LangGraph formats), scores each against every metric using an LLM judge with structured output, and writes the scores back onto the original trace.
 
-Metrics are markdown prompt files in `custom_evals/metrics/prompts/`. Dropping in a new `.md` file registers a new metric. Prompts are content, not code, and they should live somewhere a non-engineer can edit them:
+Metrics are markdown prompt files in `live_req_evals/metrics/prompts/`. Dropping in a new `.md` file registers a new metric. Prompts are content, not code, and they should live somewhere a non-engineer can edit them:
 
 | Metric | What it measures |
 |---|---|
@@ -742,7 +742,7 @@ Metrics are markdown prompt files in `custom_evals/metrics/prompts/`. Dropping i
 | `toxicity` | Is the response harmful or offensive? |
 
 ```bash
-make eval-quick    # or: uv run python -m evals.custom_evals.main --quick
+make eval-quick    # or: uv run python -m evals.live_req_evals.main --quick
 ```
 
 Scoring production traffic rather than a static test set is what makes this useful for drift detection. Your golden dataset represents the queries you imagined; your traces are the queries you actually got. You want both, but only one of them tells you about the users you have.
@@ -875,7 +875,7 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Generate | Grounding instructions + mandatory `[Source: title]` citations | Answers cite papers; validator enforces it post-generation | Longer system prompt + formatted retrieval context | Yes, agentic path |
 | Generate | Structured output for judgement nodes | Guardrail and grader return parseable scores, not prose | None | Yes |
 | Serve | Semantic cache with 0.90 confidence floor | Latency drops from 15-20s to 50-100ms without serving near-miss answers | Risk of a wrong hit if the threshold is lowered | Yes |
-| Measure | LLM-as-judge on production traces (`custom_evals`) | You find out whether live traffic got worse | Judge model calls, offline | Yes |
+| Measure | LLM-as-judge on production traces (`live_req_evals`) | You find out whether live traffic got worse | Judge model calls, offline | Yes |
 | Measure | **Ragas golden-set eval** (`rag_evals`) | Retrieval precision/recall/faithfulness on a fixed dataset via `/api/v1/rerank-search` | Judge model calls, requires indexed corpus | Yes |
 | Measure | Human feedback on the same trace objects | You find out whether the judge is right | An endpoint and a UI affordance | Yes |
 | Measure | **Request trajectory in API response** | Structural debugging and eval assertions without Langfuse UI | Slightly larger JSON payloads | Yes, agentic path |
@@ -921,7 +921,7 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Verification:** score retrieval confidence before generation, require verifiable citations, and add an LLM judge for answers where being wrong is worse than saying "I don't know."
 - **Failure:** decide the direction each fallback fails in, and make sure your failure handler cannot fail.
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.
-- **Observability:** trace per stage, score production traffic with `custom_evals` and retrieval quality with `rag_evals`, and put human and model judgements in the same place.
+- **Observability:** trace per stage, score production traffic with `live_req_evals` and retrieval quality with `rag_evals`, and put human and model judgements in the same place.
 - **Trajectory:** register graph execution via LangChain callbacks, return `steps` and `events` on the agentic API response, and use them for troubleshooting and structural evals alongside Langfuse traces.
 
 The uncomfortable summary is that the retrieval and generation logic, the part everyone writes tutorials about, is maybe a quarter of the code. The rest is ingestion that survives bad PDFs, fallbacks for every external call, a cache that doesn't lie, and enough instrumentation to answer "why did it say that?" three days later. That ratio is not a sign something went wrong. It is what production means.

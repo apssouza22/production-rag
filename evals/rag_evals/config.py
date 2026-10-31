@@ -3,8 +3,6 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from evals.custom_evals.config import build_openai_client_kwargs
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE_PATH = REPO_ROOT / ".env"
 DEFAULT_DATASET_PATH = Path(__file__).parent / "queries.json"
@@ -44,12 +42,3 @@ class RagEvalSettings(BaseSettings):
 
 def get_settings() -> RagEvalSettings:
     return RagEvalSettings()
-
-
-def build_eval_openai_client_kwargs(settings: RagEvalSettings | None = None) -> dict:
-    """Build kwargs for the OpenAI SDK client used by Ragas metrics."""
-    resolved = settings or get_settings()
-    return build_openai_client_kwargs(
-        api_key=resolved.evaluation_api_key or resolved.openai_api_key or None,
-        base_url=resolved.evaluation_base_url or None,
-    )

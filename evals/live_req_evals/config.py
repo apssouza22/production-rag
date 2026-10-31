@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from pydantic import Field
@@ -31,20 +30,3 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()
-
-
-def build_openai_client_kwargs(settings: Settings | None = None, **overrides) -> dict:
-    """Build kwargs for the OpenAI SDK client used by the judge LLM."""
-    resolved = settings or get_settings()
-
-    api_key = (
-        overrides.pop("api_key", None)
-        or resolved.evaluation_api_key
-        or resolved.openai_api_key
-        or os.getenv("OPENAI_API_KEY", "")
-    )
-    base_url = overrides.pop("base_url", None) or resolved.evaluation_base_url
-    client_kwargs = {"api_key": api_key, **overrides}
-    if base_url:
-        client_kwargs["base_url"] = base_url
-    return client_kwargs

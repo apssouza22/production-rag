@@ -5,11 +5,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
 from evals.rag_evals.retrieval import RerankSearchClient
 from evals.rag_evals.schemas import EvalQuery, RerankSearchDocument, RerankSearchResponse
+from langchain_core.messages import AIMessage
 
 
 @pytest.fixture
@@ -67,14 +67,10 @@ async def test_build_samples_uses_rerank_search_contexts(sample_dataset_path: Pa
             ),
         ]
     )
-    openai_client = Mock()
-    openai_client.chat = Mock()
-    openai_client.chat.completions = Mock()
-    openai_client.chat.completions.create = AsyncMock(
-        return_value=Mock(choices=[Mock(message=Mock(content="Hybrid search combines BM25 and vectors."))])
-    )
+    chat_model = Mock()
+    chat_model.ainvoke = AsyncMock(return_value=AIMessage(content="Hybrid search combines BM25 and vectors."))
 
-    builder = DatasetBuilder(settings=settings, retrieval_client=retrieval_client, openai_client=openai_client)
+    builder = DatasetBuilder(settings=settings, retrieval_client=retrieval_client, chat_model=chat_model)
     samples = await builder.build_samples(
         [
             EvalQuery(

@@ -1,10 +1,8 @@
 """Ragas metrics for retrieval and response evaluation."""
 
-from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Any
 
-from openai import AsyncOpenAI
-from ragas.llms import llm_factory
+from langchain_core.language_models.chat_models import BaseChatModel
 from ragas.metrics.collections import (
     ContextPrecisionWithReference,
     ContextRecall,
@@ -14,128 +12,128 @@ from ragas.metrics.collections import (
     Faithfulness,
 )
 
-from evals.rag_evals.config import RagEvalSettings, build_eval_openai_client_kwargs
-from evals.rag_evals.schemas import EvalSample, MetricScore
-
-MetricScorer = Callable[[EvalSample], Awaitable[MetricScore]]
-
-
-@dataclass(frozen=True)
-class MetricDefinition:
-    name: str
-    description: str
-    requires_reference: bool
-    scorer: MetricScorer
+from evals.core.llm import RagasChatModel
+from evals.core.metrics import Metric, SampleField
+from evals.core.schemas import EvalSample, MetricResult
 
 
-def build_metrics(settings: RagEvalSettings, openai_client: AsyncOpenAI) -> list[MetricDefinition]:
-    """Create Ragas scorers for retrieval and response evaluation."""
-    ragas_llm = llm_factory(settings.evaluation_llm, client=openai_client)
+class ContextRelevanceMetric(Metric):
+    name = "context_relevance"
+    description = "Checks whether retrieved chunks are relevant to the query (0–1, higher is better)."
+    required_fields = frozenset({SampleField.INPUT, SampleField.CONTEXTS})
 
-    context_relevance = ContextRelevance(llm=ragas_llm)
-    context_utilization = ContextUtilization(llm=ragas_llm)
-    faithfulness = Faithfulness(llm=ragas_llm)
-    context_precision = ContextPrecisionWithReference(llm=ragas_llm)
-    context_recall = ContextRecall(llm=ragas_llm)
-    factual_correctness = FactualCorrectness(llm=ragas_llm)
+    def __init__(self, llm: Any) -> None:
+        self.evaluator = ContextRelevance(llm=llm)
 
-    async def score_context_relevance(sample: EvalSample) -> MetricScore:
-        result = await context_relevance.ascore(
-            user_input=sample.user_input,
-            retrieved_contexts=sample.retrieved_contexts,
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        result = await self.evaluator.ascore(
+            user_input=sample.input,
+            retrieved_contexts=sample.contexts,
         )
-        return MetricScore(name="context_relevance", value=float(result.value))
+        return MetricResult(name=self.name, value=float(result.value))
 
-    async def score_context_utilization(sample: EvalSample) -> MetricScore:
-        result = await context_utilization.ascore(
-            user_input=sample.user_input,
-            response=sample.response,
-            retrieved_contexts=sample.retrieved_contexts,
+
+class ContextUtilizationMetric(Metric):
+    name = "context_utilization"
+    description = (
+        "Measures retrieval ranking quality by checking if useful chunks appear before "
+        "irrelevant ones, using the generated response instead of a reference answer."
+    )
+    required_fields = frozenset({SampleField.INPUT, SampleField.OUTPUT, SampleField.CONTEXTS})
+
+    def __init__(self, llm: Any) -> None:
+        self.evaluator = ContextUtilization(llm=llm)
+
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        result = await self.evaluator.ascore(
+            user_input=sample.input,
+            response=sample.output,
+            retrieved_contexts=sample.contexts,
         )
-        return MetricScore(name="context_utilization", value=float(result.value))
+        return MetricResult(name=self.name, value=float(result.value))
 
-    async def score_faithfulness(sample: EvalSample) -> MetricScore:
-        result = await faithfulness.ascore(
-            user_input=sample.user_input,
-            response=sample.response,
-            retrieved_contexts=sample.retrieved_contexts,
+
+class FaithfulnessMetric(Metric):
+    name = "faithfulness"
+    description = "Checks whether the response claims are supported by the retrieved contexts (0–1, higher is better)."
+    required_fields = frozenset({SampleField.INPUT, SampleField.OUTPUT, SampleField.CONTEXTS})
+
+    def __init__(self, llm: Any) -> None:
+        self.evaluator = Faithfulness(llm=llm)
+
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        result = await self.evaluator.ascore(
+            user_input=sample.input,
+            response=sample.output,
+            retrieved_contexts=sample.contexts,
         )
-        return MetricScore(name="faithfulness", value=float(result.value))
+        return MetricResult(name=self.name, value=float(result.value))
 
-    async def score_context_precision(sample: EvalSample) -> MetricScore:
-        result = await context_precision.ascore(
-            user_input=sample.user_input,
+
+class ContextPrecisionMetric(Metric):
+    name = "context_precision"
+    description = (
+        "Measures whether relevant chunks are ranked above irrelevant ones, "
+        "using the reference answer to judge chunk usefulness (0–1, higher is better)."
+    )
+    required_fields = frozenset({SampleField.INPUT, SampleField.REFERENCE, SampleField.CONTEXTS})
+
+    def __init__(self, llm: Any) -> None:
+        self.evaluator = ContextPrecisionWithReference(llm=llm)
+
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        result = await self.evaluator.ascore(
+            user_input=sample.input,
             reference=sample.reference,
-            retrieved_contexts=sample.retrieved_contexts,
+            retrieved_contexts=sample.contexts,
         )
-        return MetricScore(name="context_precision", value=float(result.value))
+        return MetricResult(name=self.name, value=float(result.value))
 
-    async def score_context_recall(sample: EvalSample) -> MetricScore:
-        result = await context_recall.ascore(
-            user_input=sample.user_input,
+
+class ContextRecallMetric(Metric):
+    name = "context_recall"
+    description = "Measures how much of the reference answer can be attributed to the retrieved contexts (0–1, higher is better)."
+    required_fields = frozenset({SampleField.INPUT, SampleField.REFERENCE, SampleField.CONTEXTS})
+
+    def __init__(self, llm: Any) -> None:
+        self.evaluator = ContextRecall(llm=llm)
+
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        result = await self.evaluator.ascore(
+            user_input=sample.input,
             reference=sample.reference,
-            retrieved_contexts=sample.retrieved_contexts,
+            retrieved_contexts=sample.contexts,
         )
-        return MetricScore(name="context_recall", value=float(result.value))
+        return MetricResult(name=self.name, value=float(result.value))
 
-    async def score_factual_correctness(sample: EvalSample) -> MetricScore:
-        result = await factual_correctness.ascore(
-            response=sample.response,
+
+class FactualCorrectnessMetric(Metric):
+    name = "factual_correctness"
+    description = (
+        "Compares claims in the generated response against the reference answer "
+        "using claim-level verification (0–1, higher is better)."
+    )
+    required_fields = frozenset({SampleField.OUTPUT, SampleField.REFERENCE})
+
+    def __init__(self, llm: Any) -> None:
+        self.evaluator = FactualCorrectness(llm=llm)
+
+    async def _score(self, sample: EvalSample) -> MetricResult:
+        result = await self.evaluator.ascore(
+            response=sample.output,
             reference=sample.reference,
         )
-        return MetricScore(name="factual_correctness", value=float(result.value))
+        return MetricResult(name=self.name, value=float(result.value))
 
+
+def build_metrics(chat_model: BaseChatModel) -> list[Metric]:
+    """Create object-oriented Ragas metrics."""
+    ragas_llm = RagasChatModel(chat_model)
     return [
-        MetricDefinition(
-            name="context_relevance",
-            description="Checks whether retrieved chunks are relevant to the query (0–1, higher is better).",
-            requires_reference=False,
-            scorer=score_context_relevance,
-        ),
-        MetricDefinition(
-            name="context_utilization",
-            description=(
-                "Measures retrieval ranking quality by checking if useful chunks appear before "
-                "irrelevant ones, using the generated response instead of a reference answer."
-            ),
-            requires_reference=False,
-            scorer=score_context_utilization,
-        ),
-        MetricDefinition(
-            name="faithfulness",
-            description="Checks whether the response claims are supported by the retrieved contexts (0–1, higher is better).",
-            requires_reference=False,
-            scorer=score_faithfulness,
-        ),
-        MetricDefinition(
-            name="context_precision",
-            description=(
-                "Measures whether relevant chunks are ranked above irrelevant ones, "
-                "using the reference answer to judge chunk usefulness (0–1, higher is better)."
-            ),
-            requires_reference=True,
-            scorer=score_context_precision,
-        ),
-        MetricDefinition(
-            name="context_recall",
-            description=(
-                "Measures how much of the reference answer can be attributed to the retrieved contexts "
-                "(0–1, higher is better)."
-            ),
-            requires_reference=True,
-            scorer=score_context_recall,
-        ),
-        MetricDefinition(
-            name="factual_correctness",
-            description=(
-                "Compares claims in the generated response against the reference answer "
-                "using claim-level verification (0–1, higher is better)."
-            ),
-            requires_reference=True,
-            scorer=score_factual_correctness,
-        ),
+        ContextRelevanceMetric(ragas_llm),
+        ContextUtilizationMetric(ragas_llm),
+        FaithfulnessMetric(ragas_llm),
+        ContextPrecisionMetric(ragas_llm),
+        ContextRecallMetric(ragas_llm),
+        FactualCorrectnessMetric(ragas_llm),
     ]
-
-
-def create_openai_client(settings: RagEvalSettings) -> AsyncOpenAI:
-    return AsyncOpenAI(**build_eval_openai_client_kwargs(settings))

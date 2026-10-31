@@ -48,13 +48,13 @@ test-cov: ## Run tests with coverage
 
 # Evaluations (uses root .env)
 eval: ## Run Langfuse trace evaluation (interactive)
-	uv run python -m evals.custom_evals.main --interactive
+	uv run python -m evals.live_req_evals.main --interactive
 
 eval-quick: ## Run Langfuse trace evaluation with defaults
-	uv run python -m evals.custom_evals.main --quick
+	uv run python -m evals.live_req_evals.main --quick
 
 eval-no-report: ## Run Langfuse trace evaluation without JSON report
-	uv run python -m evals.custom_evals.main --no-report
+	uv run python -m evals.live_req_evals.main --no-report
 
 rag-eval: ## Run Ragas retrieval evaluation
 	uv run python -m evals.rag_evals.main --quick

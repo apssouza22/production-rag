@@ -4,10 +4,12 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+from evals.core.metrics import MetricDefinition
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.langfuse_experiment import (
     RagLangfuseExperiment,
     build_langfuse_evaluators,
+    experiment_result_to_evaluation_response,
     experiment_result_to_report,
     extract_item_expected_output,
     extract_item_input,
@@ -15,7 +17,6 @@ from evals.rag_evals.langfuse_experiment import (
     make_ragas_evaluator,
     queries_to_experiment_items,
 )
-from evals.rag_evals.metrics import MetricDefinition
 from evals.rag_evals.schemas import EvalQuery, EvalSample, MetricScore
 from langfuse.experiment import Evaluation, ExperimentItemResult, ExperimentResult
 
@@ -110,7 +111,7 @@ async def test_make_ragas_evaluator_handles_missing_reference():
     )
 
     assert result.value == 0
-    assert result.comment == "Reference answer is required"
+    assert result.comment == "ERROR: Reference answer is required"
 
 
 def test_experiment_result_to_report_aggregates_scores():
@@ -139,11 +140,16 @@ def test_experiment_result_to_report_aggregates_scores():
     )
 
     report = experiment_result_to_report(result, settings, dataset_path="evals/rag_evals/queries.json")
+    response = experiment_result_to_evaluation_response(result)
 
-    assert report["evaluated_samples"] == 1
-    assert report["metrics_summary"]["context_relevance"]["avg_score"] == 0.9
-    assert report["sample_results"][0]["trace_id"] == "trace-1"
-    assert report["dataset_run_url"] == "https://cloud.langfuse.com/project/run-1"
+    assert response.items[0].item_id == "trace-1"
+    assert response.items[0].metrics[0].value == 0.9
+    assert report.schema_version == "1.0"
+    assert report.run_type == "langfuse_experiment"
+    assert report.evaluated_items == 1
+    assert report.metrics_summary["context_relevance"].average_score == 0.9
+    assert report.items[0].id == "trace-1"
+    assert report.metadata["dataset_run_url"] == "https://cloud.langfuse.com/project/run-1"
 
 
 def test_rag_langfuse_experiment_runs_local_dataset(tmp_path):
@@ -176,7 +182,7 @@ def test_rag_langfuse_experiment_runs_local_dataset(tmp_path):
 
     with (
         patch("evals.rag_evals.langfuse_experiment.Langfuse") as langfuse_cls,
-        patch("evals.rag_evals.langfuse_experiment.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.langfuse_experiment.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.langfuse_experiment.RerankSearchClient"),
         patch("evals.rag_evals.langfuse_experiment.DatasetBuilder"),
         patch("evals.rag_evals.langfuse_experiment.build_metrics", return_value=[]),
@@ -192,6 +198,9 @@ def test_rag_langfuse_experiment_runs_local_dataset(tmp_path):
     assert call_kwargs["data"][0]["input"] == "What is RAG?"
     assert call_kwargs["metadata"]["top_k"] == "5"
     assert result.experiment_id == "exp-1"
+    assert runner.report is not None
+    assert runner.report.run_type == "langfuse_experiment"
+    assert runner.report.dataset_source == "json_rag"
 
 
 def test_rag_langfuse_experiment_uses_hosted_dataset(tmp_path):
@@ -214,7 +223,7 @@ def test_rag_langfuse_experiment_uses_hosted_dataset(tmp_path):
 
     with (
         patch("evals.rag_evals.langfuse_experiment.Langfuse") as langfuse_cls,
-        patch("evals.rag_evals.langfuse_experiment.create_openai_client", return_value=Mock()),
+        patch("evals.rag_evals.langfuse_experiment.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.langfuse_experiment.RerankSearchClient"),
         patch("evals.rag_evals.langfuse_experiment.DatasetBuilder"),
         patch("evals.rag_evals.langfuse_experiment.build_metrics", return_value=[]),
@@ -227,6 +236,8 @@ def test_rag_langfuse_experiment_uses_hosted_dataset(tmp_path):
     langfuse_client.get_dataset.assert_called_once_with("hosted-rag-eval")
     dataset_client.run_experiment.assert_called_once()
     assert result.dataset_run_url == "https://cloud.langfuse.com/project/run-2"
+    assert runner.report is not None
+    assert runner.report.dataset_source == "langfuse_dataset"
 
 
 def test_build_langfuse_evaluators_creates_one_evaluator_per_metric():

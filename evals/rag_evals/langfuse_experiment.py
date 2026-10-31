@@ -1,19 +1,22 @@
 """Run Ragas RAG evaluation as a Langfuse experiment."""
 
-import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from langfuse import Evaluation, Langfuse
 from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperimentItem
 
+from evals.core.evaluator import EvaluationItemResult, EvaluationResponse, MetricMetadata
+from evals.core.llm import make_eval_chat_model
+from evals.core.metrics import Metric
+from evals.core.reporting import EvaluationReport, build_report, write_report
+from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
-from evals.rag_evals.metrics import MetricDefinition, build_metrics, create_openai_client
+from evals.rag_evals.metrics import build_metrics
 from evals.rag_evals.retrieval import RerankSearchClient
-from evals.rag_evals.schemas import EvalQuery, EvalSample
+from evals.rag_evals.schemas import EvalQuery
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,23 @@ def queries_to_experiment_items(queries: list[EvalQuery]) -> list[LocalExperimen
             }
         )
     return items
+
+
+def experiment_item_to_sample(item: Any, output: Any = None) -> EvalSample:
+    """Normalize a local or hosted Langfuse experiment item."""
+    output_payload = output if isinstance(output, dict) else {}
+    raw_metadata = item.get("metadata") if isinstance(item, dict) else getattr(item, "metadata", None)
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    metadata["rerank_applied"] = bool(output_payload.get("rerank_applied", False))
+    source_id = item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+    return EvalSample(
+        input=extract_item_input(item),
+        output=output_payload.get("response") or extract_item_preset_response(item),
+        reference=extract_item_expected_output(item),
+        contexts=list(output_payload.get("retrieved_contexts", [])),
+        source_id=str(source_id) if source_id else None,
+        metadata=metadata,
+    )
 
 
 def extract_item_input(item: Any) -> str:
@@ -82,13 +102,13 @@ def extract_item_preset_response(item: Any) -> str | None:
 def sample_to_task_output(sample: EvalSample) -> dict[str, Any]:
     """Serialize a Ragas sample as Langfuse task output for evaluators."""
     return {
-        "response": sample.response,
-        "retrieved_contexts": sample.retrieved_contexts,
+        "response": sample.output,
+        "retrieved_contexts": sample.contexts,
         "rerank_applied": sample.rerank_applied,
     }
 
 
-def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
+def make_ragas_evaluator(metric: Metric) -> EvaluatorFunction:
     """Wrap a Ragas metric scorer as a Langfuse item-level evaluator."""
 
     async def evaluator(
@@ -100,33 +120,31 @@ def make_ragas_evaluator(metric: MetricDefinition) -> EvaluatorFunction:
         **kwargs: Any,
     ) -> Evaluation:
         if not isinstance(output, dict):
-            return Evaluation(name=metric.name, value=0, comment="Task output is missing retrieval payload")
+            return Evaluation(name=metric.name, value=0, comment="ERROR: Task output is missing retrieval payload")
 
-        reference = str(expected_output) if expected_output else ""
-        if metric.requires_reference and not reference:
-            return Evaluation(name=metric.name, value=0, comment="Reference answer is required")
-
-        sample = EvalSample(
-            user_input=str(input),
-            reference=reference,
-            response=str(output.get("response", "")),
-            retrieved_contexts=list(output.get("retrieved_contexts", [])),
-            rerank_applied=bool(output.get("rerank_applied", False)),
+        sample = experiment_item_to_sample(
+            {
+                "input": input,
+                "expected_output": expected_output,
+                "metadata": metadata,
+            },
+            output,
         )
         try:
-            score = await metric.scorer(sample)
+            score = await metric.score(sample)
         except Exception as exc:
             logger.exception("Metric %s failed for input preview=%r", metric.name, str(input)[:80])
-            return Evaluation(name=metric.name, value=0, comment=str(exc))
+            return Evaluation(name=metric.name, value=0, comment=f"ERROR: {exc}")
 
         if score.error or score.value is None:
-            return Evaluation(name=metric.name, value=0, comment=score.error or "scoring failed")
+            comment = "Reference answer is required" if score.error == "reference is required" else score.error
+            return Evaluation(name=metric.name, value=0, comment=f"ERROR: {comment or 'scoring failed'}")
         return Evaluation(name=metric.name, value=score.value)
 
     return evaluator
 
 
-def build_langfuse_evaluators(metrics: list[MetricDefinition]) -> list[EvaluatorFunction]:
+def build_langfuse_evaluators(metrics: list[Metric]) -> list[EvaluatorFunction]:
     """Create Langfuse evaluators for all configured Ragas metrics."""
     return [make_ragas_evaluator(metric) for metric in metrics]
 
@@ -135,55 +153,10 @@ def experiment_result_to_report(
     result: ExperimentResult,
     settings: RagEvalSettings,
     dataset_path: str | None = None,
-) -> dict[str, Any]:
-    """Convert a Langfuse experiment result into the local JSON report shape."""
-    metrics_summary: dict[str, dict[str, Any]] = {}
-    sample_results: list[dict[str, Any]] = []
-
-    for item_result in result.item_results:
-        metric_scores: list[dict[str, Any]] = []
-        for evaluation in item_result.evaluations:
-            summary = metrics_summary.setdefault(
-                evaluation.name,
-                {
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "avg_score": 0.0,
-                },
-            )
-            if isinstance(evaluation.value, (int, float)):
-                summary["success_count"] += 1
-                summary["avg_score"] += float(evaluation.value)
-                metric_scores.append({"name": evaluation.name, "value": float(evaluation.value), "error": None})
-            else:
-                summary["failure_count"] += 1
-                metric_scores.append(
-                    {
-                        "name": evaluation.name,
-                        "value": None,
-                        "error": evaluation.comment or "non-numeric evaluation",
-                    }
-                )
-
-        user_input = extract_item_input(item_result.item)
-        expected_output = extract_item_expected_output(item_result.item)
-        output = item_result.output if isinstance(item_result.output, dict) else {}
-        sample_results.append(
-            {
-                "user_input": user_input,
-                "reference_preview": expected_output[:200],
-                "response_preview": str(output.get("response", ""))[:200],
-                "context_count": len(output.get("retrieved_contexts", [])),
-                "rerank_applied": bool(output.get("rerank_applied", False)),
-                "trace_id": item_result.trace_id,
-                "metrics": metric_scores,
-            }
-        )
-
-    for summary in metrics_summary.values():
-        if summary["success_count"] > 0:
-            summary["avg_score"] = round(summary["avg_score"] / summary["success_count"], 4)
-
+    metrics: list[Metric] | None = None,
+) -> EvaluationReport:
+    """Convert a Langfuse experiment result into the unified report shape."""
+    response = experiment_result_to_evaluation_response(result, metrics=metrics)
     run_evaluations = [
         {
             "name": evaluation.name,
@@ -193,23 +166,88 @@ def experiment_result_to_report(
         for evaluation in result.run_evaluations
     ]
 
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "experiment_name": result.name,
-        "run_name": result.run_name,
-        "description": result.description,
-        "experiment_id": result.experiment_id,
-        "dataset_run_id": result.dataset_run_id,
-        "dataset_run_url": result.dataset_run_url,
-        "evaluation_llm": settings.evaluation_llm,
-        "dataset_path": dataset_path,
-        "langfuse_dataset": settings.rag_eval_langfuse_dataset or None,
-        "evaluated_samples": len(result.item_results),
-        "run_evaluations": run_evaluations,
-        "metrics_summary": metrics_summary,
-        "sample_results": sample_results,
-        "formatted_summary": result.format(),
-    }
+    return build_report(
+        response=response,
+        run_type="langfuse_experiment",
+        evaluation_model=settings.evaluation_llm,
+        dataset_source="langfuse_dataset" if dataset_path is None else "json_rag",
+        dataset_location=settings.rag_eval_langfuse_dataset or dataset_path,
+        metadata={
+            "experiment_name": result.name,
+            "run_name": result.run_name,
+            "description": result.description,
+            "experiment_id": result.experiment_id,
+            "dataset_run_id": result.dataset_run_id,
+            "dataset_run_url": result.dataset_run_url,
+            "run_evaluations": run_evaluations,
+            "formatted_summary": result.format(),
+        },
+    )
+
+
+def experiment_result_to_evaluation_response(
+    result: ExperimentResult,
+    *,
+    metrics: list[Metric] | None = None,
+) -> EvaluationResponse:
+    """Adapt Langfuse's experiment result to the shared evaluator response."""
+    items: list[EvaluationItemResult] = []
+    for item_result in result.item_results:
+        metric_results: list[MetricResult] = []
+        for evaluation in item_result.evaluations:
+            is_error = bool(evaluation.comment and evaluation.comment.startswith("ERROR: "))
+            is_numeric = isinstance(evaluation.value, (int, float))
+            error = None
+            if is_error:
+                error = (evaluation.comment or "").removeprefix("ERROR: ")
+            elif not is_numeric:
+                error = evaluation.comment or "non-numeric evaluation"
+            metric_results.append(
+                MetricResult(
+                    name=evaluation.name,
+                    value=float(evaluation.value) if is_numeric and not is_error else None,
+                    reasoning=evaluation.comment if not is_error else None,
+                    error=error,
+                )
+            )
+        sample = experiment_item_to_sample(item_result.item, item_result.output)
+        sample_metadata = {
+            **sample.metadata,
+            "trace_id": item_result.trace_id,
+            "dataset_run_id": item_result.dataset_run_id,
+        }
+        items.append(
+            EvaluationItemResult(
+                item_id=item_result.trace_id,
+                sample=sample.model_copy(
+                    update={
+                        "source_id": item_result.trace_id,
+                        "metadata": sample_metadata,
+                    }
+                ),
+                metrics=metric_results,
+            )
+        )
+
+    definitions = {metric.name: metric for metric in metrics or []}
+    metric_names = set(definitions)
+    metric_names.update(metric_result.name for item in items for metric_result in item.metrics)
+    return EvaluationResponse(
+        total_items=len(result.item_results),
+        evaluated_items=len(items),
+        duration_seconds=0.0,
+        metrics=[
+            MetricMetadata(
+                name=name,
+                description=definitions[name].description if name in definitions else "",
+                required_fields=(
+                    sorted(field.value for field in definitions[name].required_fields) if name in definitions else []
+                ),
+            )
+            for name in sorted(metric_names)
+        ],
+        items=items,
+    )
 
 
 class RagLangfuseExperiment:
@@ -218,9 +256,7 @@ class RagLangfuseExperiment:
     def __init__(self, settings: RagEvalSettings | None = None) -> None:
         self.settings = settings or get_settings()
         if not self.settings.langfuse_public_key or not self.settings.langfuse_secret_key:
-            raise ValueError(
-                "Langfuse credentials are required. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env"
-            )
+            raise ValueError("Langfuse credentials are required. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env")
 
         self.langfuse = Langfuse(
             public_key=self.settings.langfuse_public_key,
@@ -228,14 +264,19 @@ class RagLangfuseExperiment:
             host=self.settings.langfuse_host,
             timeout=60,
         )
-        self.openai_client = create_openai_client(self.settings)
+        self.chat_model = make_eval_chat_model(
+            model=self.settings.evaluation_llm,
+            api_key=self.settings.evaluation_api_key or self.settings.openai_api_key,
+            base_url=self.settings.evaluation_base_url,
+        )
         self.retrieval_client = RerankSearchClient(self.settings)
         self.dataset_builder = DatasetBuilder(
             settings=self.settings,
             retrieval_client=self.retrieval_client,
-            openai_client=self.openai_client,
+            chat_model=self.chat_model,
         )
-        self.metrics = build_metrics(self.settings, self.openai_client)
+        self.metrics = build_metrics(self.chat_model)
+        self.report: EvaluationReport | None = None
 
     def run(
         self,
@@ -293,9 +334,14 @@ class RagLangfuseExperiment:
 
         self.langfuse.flush()
 
+        self.report = experiment_result_to_report(
+            result,
+            self.settings,
+            dataset_path=dataset_path,
+            metrics=self.metrics,
+        )
         if generate_report_file:
-            report = experiment_result_to_report(result, self.settings, dataset_path=dataset_path)
-            self._write_report_file(report)
+            write_report(self.report, reports_dir=REPORTS_DIR)
 
         logger.info(
             "Langfuse experiment completed: name=%s items=%s dataset_run_url=%s",
@@ -309,16 +355,14 @@ class RagLangfuseExperiment:
         dataset_builder = self.dataset_builder
 
         async def rag_task(*, item, **kwargs):
-            user_input = extract_item_input(item)
-            reference = extract_item_expected_output(item)
-            preset_response = extract_item_preset_response(item)
+            base_sample = experiment_item_to_sample(item)
             sample = await dataset_builder.build_sample_from_inputs(
-                user_input=user_input,
-                reference=reference,
-                response=preset_response,
+                user_input=base_sample.user_input,
+                reference=base_sample.reference or "",
+                response=base_sample.output,
             )
             if sample is None:
-                raise RuntimeError(f"No retrieval sample built for query: {user_input}")
+                raise RuntimeError(f"No retrieval sample built for query: {base_sample.user_input}")
             return sample_to_task_output(sample)
 
         return rag_task
@@ -332,13 +376,3 @@ class RagLangfuseExperiment:
             "rerank_enabled": str(self.settings.rag_eval_rerank_enabled).lower(),
             "generate_responses": str(self.settings.rag_eval_generate_responses).lower(),
         }
-
-    def _write_report_file(self, report: dict[str, Any]) -> str:
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = REPORTS_DIR / f"langfuse_experiment_report_{timestamp}.json"
-        with report_path.open("w", encoding="utf-8") as handle:
-            json.dump(report, handle, indent=2)
-        report["report_path"] = str(report_path)
-        logger.info("Langfuse experiment report written to %s", report_path)
-        return str(report_path)

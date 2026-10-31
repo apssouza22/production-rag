@@ -10,8 +10,8 @@ from typing import Any, Dict, Optional
 import colorama
 from colorama import Fore, Style
 
-from evals.custom_evals.config import get_settings
-from evals.custom_evals.evaluator import Evaluator
+from evals.live_req_evals.config import get_settings
+from evals.live_req_evals.runner import TraceEvaluationRunner
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +73,14 @@ def display_summary(report: Dict[str, Any]) -> None:
     """Display a summary of the evaluation results."""
     print_title("Evaluation Summary")
 
-    print(f"{Fore.CYAN}Model:{Style.RESET_ALL} {report['model']}")
+    print(f"{Fore.CYAN}Model:{Style.RESET_ALL} {report['evaluation_model']}")
+    print(f"{Fore.CYAN}Dataset:{Style.RESET_ALL} {report['dataset_source']}")
     print(f"{Fore.CYAN}Duration:{Style.RESET_ALL} {report['duration_seconds']} seconds")
-    print(f"{Fore.CYAN}Total Traces:{Style.RESET_ALL} {report['total_traces']}")
+    print(f"{Fore.CYAN}Items:{Style.RESET_ALL} {report['evaluated_items']}/{report['total_items']}")
 
     success_rate = 0
-    if report["total_traces"] > 0:
-        success_rate = (report["successful_traces"] / report["total_traces"]) * 100
+    if report["evaluated_items"] > 0:
+        success_rate = (report["successful_items"] / report["evaluated_items"]) * 100
 
     if success_rate > 80:
         status_color = Fore.GREEN
@@ -90,7 +91,7 @@ def display_summary(report: Dict[str, Any]) -> None:
 
     print(
         f"{Fore.CYAN}Success Rate:{Style.RESET_ALL} {status_color}{success_rate:.1f}%{Style.RESET_ALL} "
-        f"({report['successful_traces']}/{report['total_traces']})"
+        f"({report['successful_items']}/{report['evaluated_items']})"
     )
 
     print("\n" + f"{Fore.CYAN}Metrics Summary:{Style.RESET_ALL}")
@@ -109,11 +110,11 @@ def display_summary(report: Dict[str, Any]) -> None:
 
         print(
             f"  • {metric_name}: {status_color}{success_percent:.1f}%{Style.RESET_ALL} success, "
-            f"avg score: {data['avg_score']:.2f}"
+            f"avg score: {data['average_score']:.2f}"
         )
 
-    if report.get("generate_report_path"):
-        print(f"\n{Fore.CYAN}Report generated at:{Style.RESET_ALL} {report['generate_report_path']}")
+    if report.get("report_path"):
+        print(f"\n{Fore.CYAN}Report generated at:{Style.RESET_ALL} {report['report_path']}")
 
 
 async def run_evaluation(generate_report: bool = True) -> None:
@@ -123,11 +124,11 @@ async def run_evaluation(generate_report: bool = True) -> None:
     print_info(f"Report generation: {'Enabled' if generate_report else 'Disabled'}")
 
     try:
-        evaluator = Evaluator()
-        await evaluator.run(generate_report_file=generate_report)
+        runner = TraceEvaluationRunner()
+        report = await runner.run_eval(generate_report_file=generate_report)
 
         print_success("Evaluation completed successfully!")
-        display_summary(evaluator.report)
+        display_summary(report)
 
     except Exception as e:
         print_error(f"Evaluation failed: {str(e)}")

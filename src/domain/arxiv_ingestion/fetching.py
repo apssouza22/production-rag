@@ -1,9 +1,7 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
 
 from src.domain.arxiv.paper import ArxivPaper
-
 from .common import get_cached_services
 
 logger = logging.getLogger(__name__)
