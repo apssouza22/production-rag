@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from src.domain.arxiv.client import ArxivClient
 from src.domain.arxiv.paper import ArxivPaper
-from src.domain.arxiv_ingestion import MetadataFetcher
+from src.domain.arxiv_ingestion import PaperFetcher
 from src.domain.pdf_parser.parser import PDFParserService
 
 
@@ -26,7 +26,7 @@ class TestMetadataFetcher:
     @pytest.fixture
     def metadata_fetcher(self, mock_arxiv_client, mock_pdf_parser, tmp_path):
         """Create MetadataFetcher instance for testing."""
-        return MetadataFetcher(
+        return PaperFetcher(
             arxiv_client=mock_arxiv_client,
             pdf_parser=mock_pdf_parser,
             pdf_cache_dir=tmp_path,
@@ -71,25 +71,22 @@ class TestMetadataFetcher:
     @pytest.mark.asyncio
     async def test_empty_papers_list(self, metadata_fetcher):
         """Test handling of empty papers list."""
-        result = await metadata_fetcher.fetch_and_process_papers(max_results=0, process_pdfs=False, store_to_db=False)
+        metadata_fetcher.arxiv_client.fetch_papers = AsyncMock(return_value=[])
+        result = await metadata_fetcher.fetch_and_download_papers(max_results=0)
 
         assert result["papers_fetched"] == 0
         assert result["pdfs_downloaded"] == 0
-        assert result["pdfs_parsed"] == 0
         assert len(result["errors"]) == 0
 
     @pytest.mark.asyncio
     async def test_rate_limiting_respected(self, metadata_fetcher):
         """Test that rate limiting delays are respected."""
-        # This is a basic test to ensure the rate limiting logic exists
-        # More comprehensive testing would require timing analysis
         metadata_fetcher.arxiv_client.fetch_papers = AsyncMock(return_value=[])
 
         start_time = time.time()
-        await metadata_fetcher.fetch_and_process_papers(max_results=1)
+        await metadata_fetcher.fetch_and_download_papers(max_results=1)
         end_time = time.time()
 
-        # Should complete quickly for empty result
         assert end_time - start_time < 1.0
 
     @pytest.mark.asyncio

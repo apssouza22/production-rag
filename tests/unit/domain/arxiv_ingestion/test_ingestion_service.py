@@ -1,6 +1,8 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.domain.arxiv.paper import ArxivPaper
+from src.domain.arxiv_ingestion.paper_indexer import PaperIndexer
+from src.domain.arxiv_ingestion.paper_persist import PaperPersist
 from src.domain.arxiv_ingestion.service import ArxivIngestionService
 from src.domain.pdf_parser.artifacts import write_parsed_paper_artifacts
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
@@ -35,18 +37,20 @@ def _ingestion_service(metadata_fetcher: MagicMock, database: MagicMock) -> Arxi
         pdf_parser=MagicMock(),
         database=database,
         metadata_fetcher=metadata_fetcher,
+        paper_persist=PaperPersist(),
+        paper_indexer=PaperIndexer(database),
     )
 
 
-def test_persist_papers_loads_sidecars_and_stores_papers(tmp_path) -> None:
+@patch("src.domain.arxiv_ingestion.paper_persist.PaperRepository")
+def test_persist_papers_loads_sidecars_and_stores_papers(mock_repo_cls, tmp_path) -> None:
     paper = _paper()
     artifact = write_parsed_paper_artifacts(tmp_path / "arxiv_md", _parsed_paper(paper))
     database = MagicMock()
     session = MagicMock()
     database.get_session.return_value.__enter__.return_value = session
-    metadata_fetcher = MagicMock()
-    metadata_fetcher.store_papers.return_value = 1
-    service = _ingestion_service(metadata_fetcher, database)
+    mock_repo_cls.return_value.upsert.return_value = MagicMock()
+    service = _ingestion_service(MagicMock(), database)
 
     result = service.persist_papers(
         {"papers": [paper.model_dump()], "date": "20240101"},
@@ -54,19 +58,19 @@ def test_persist_papers_loads_sidecars_and_stores_papers(tmp_path) -> None:
     )
 
     assert result["papers_stored"] == 1
-    stored_papers = metadata_fetcher.store_papers.call_args.args[1]
-    assert stored_papers[paper.arxiv_id].pdf_content.raw_text == "Parsed text"
-    metadata_fetcher.store_papers.assert_called_once_with([paper], stored_papers, session)
+    paper_create = mock_repo_cls.return_value.upsert.call_args[0][0]
+    assert paper_create.raw_text == "Parsed text"
+    session.commit.assert_called_once()
 
 
-def test_persist_papers_stores_metadata_when_sidecar_is_missing(tmp_path) -> None:
+@patch("src.domain.arxiv_ingestion.paper_persist.PaperRepository")
+def test_persist_papers_stores_metadata_when_sidecar_is_missing(mock_repo_cls, tmp_path) -> None:
     paper = _paper()
     database = MagicMock()
     session = MagicMock()
     database.get_session.return_value.__enter__.return_value = session
-    metadata_fetcher = MagicMock()
-    metadata_fetcher.store_papers.return_value = 1
-    service = _ingestion_service(metadata_fetcher, database)
+    mock_repo_cls.return_value.upsert.return_value = MagicMock()
+    service = _ingestion_service(MagicMock(), database)
 
     result = service.persist_papers(
         {"papers": [paper.model_dump()], "date": "20240101"},
@@ -84,4 +88,6 @@ def test_persist_papers_stores_metadata_when_sidecar_is_missing(tmp_path) -> Non
 
     assert result["papers_stored"] == 1
     assert result["errors"][0].startswith(f"Failed to load parsed artifact for {paper.arxiv_id}")
-    metadata_fetcher.store_papers.assert_called_once_with([paper], {}, session)
+    paper_create = mock_repo_cls.return_value.upsert.call_args[0][0]
+    assert paper_create.pdf_processed is False
+    session.commit.assert_called_once()

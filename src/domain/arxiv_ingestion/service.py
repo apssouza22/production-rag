@@ -1,551 +1,22 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-from dateutil import parser as date_parser
-from sqlalchemy.orm import Session
+from typing import Any, Optional
 
 from src.config import Settings
 from src.domain.arxiv.client import ArxivClient
-from src.domain.arxiv.paper import ArxivPaper, PaperCreate
+from src.domain.arxiv.paper import ArxivPaper
 from src.domain.db.interfaces.base import BaseDatabase
-from src.domain.indexing.factory import make_hybrid_indexing_service
-from src.domain.paper import PaperRepository
 from src.domain.pdf_parser.artifacts import load_parsed_paper_artifact
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper
 from src.domain.pdf_parser.parser import PDFParserService
 
-from .exceptions import MetadataFetchingException, PipelineException
+from .paper_fetcher import PaperFetcher, make_paper_fetcher
+from .paper_indexer import PaperIndexer, make_paper_indexer
+from .paper_persist import PaperPersist, make_paper_persist
 
 logger = logging.getLogger(__name__)
-
-
-class MetadataFetcher:
-    """Service for fetching arXiv papers with PDF processing and database storage."""
-
-    def __init__(
-        self,
-        arxiv_client: ArxivClient,
-        pdf_parser: PDFParserService,
-        pdf_cache_dir: Optional[Path] = None,
-        max_concurrent_downloads: int = 5,
-        max_concurrent_parsing: int = 3,
-        settings: Optional[Settings] = None,
-    ):
-        """Initialize metadata fetcher with services and settings.
-
-        :param arxiv_client: Client for arXiv API operations
-        :param pdf_parser: Service for parsing PDF documents
-        :param pdf_cache_dir: Directory for caching downloaded PDFs
-        :param max_concurrent_downloads: Maximum concurrent PDF downloads
-        :param max_concurrent_parsing: Maximum concurrent PDF parsing operations
-        :param settings: Application settings instance
-        :type arxiv_client: ArxivClient
-        :type pdf_parser: PDFParserService
-        :type pdf_cache_dir: Optional[Path]
-        :type max_concurrent_downloads: int
-        :type max_concurrent_parsing: int
-        :type settings: Optional[Settings]
-        """
-        from src.config import get_settings
-
-        self.arxiv_client = arxiv_client
-        self.pdf_parser = pdf_parser
-        self.pdf_cache_dir = pdf_cache_dir or self.arxiv_client.pdf_cache_dir
-        self.max_concurrent_downloads = max_concurrent_downloads
-        self.max_concurrent_parsing = max_concurrent_parsing
-        self.settings = settings or get_settings()
-
-    async def fetch_and_process_papers(
-        self,
-        max_results: Optional[int] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-        process_pdfs: bool = True,
-        store_to_db: bool = True,
-        db_session: Optional[Session] = None,
-    ) -> Dict[str, Any]:
-        """Fetch papers from arXiv, process PDFs, and store to database.
-
-        :param max_results: Maximum papers to fetch
-        :param from_date: Filter papers from this date (YYYYMMDD)
-        :param to_date: Filter papers to this date (YYYYMMDD)
-        :param process_pdfs: Whether to download and parse PDFs
-        :param store_to_db: Whether to store results in database
-        :param db_session: Database session (required if store_to_db=True)
-        :type max_results: Optional[int]
-        :type from_date: Optional[str]
-        :type to_date: Optional[str]
-        :type process_pdfs: bool
-        :type store_to_db: bool
-        :type db_session: Optional[Session]
-        :returns: Dictionary with processing results and statistics
-        :rtype: Dict[str, Any]
-        """
-
-        results = {
-            "papers_fetched": 0,
-            "pdfs_downloaded": 0,
-            "pdfs_parsed": 0,
-            "papers_stored": 0,
-            "papers_indexed": 0,
-            "errors": [],
-            "processing_time": 0,
-        }
-
-        start_time = datetime.now()
-
-        try:
-            # Step 1: Fetch paper metadata from arXiv
-            papers = await self.arxiv_client.fetch_papers(
-                max_results=max_results,
-                from_date=from_date,
-                to_date=to_date,
-                sort_by="submittedDate",
-                sort_order="descending",
-            )
-
-            results["papers_fetched"] = len(papers)
-
-            if not papers:
-                logger.warning("No papers found")
-                return results
-
-            # Step 2: Process PDFs if requested
-            pdf_results = {}
-            if process_pdfs:
-                pdf_results = await self._process_pdfs_batch(papers)
-                results["pdfs_downloaded"] = pdf_results["downloaded"]
-                results["pdfs_parsed"] = pdf_results["parsed"]
-                results["errors"].extend(pdf_results["errors"])
-
-            # Step 3: Store to database if requested
-            if store_to_db and db_session:
-                logger.info("Step 3: Storing papers to database...")
-                stored_count = self._store_papers_to_db(papers, pdf_results.get("parsed_papers", {}), db_session)
-                results["papers_stored"] = stored_count
-            elif store_to_db:
-                logger.warning("Database storage requested but no session provided")
-                results["errors"].append("Database session not provided for storage")
-
-            # Calculate total processing time
-            processing_time = (datetime.now() - start_time).total_seconds()
-            results["processing_time"] = processing_time
-
-            # Simple logging summary
-            logger.info(
-                f"Pipeline completed in {processing_time:.1f}s: {results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs, {len(results['errors'])} errors"
-            )
-
-            if results["errors"]:
-                logger.warning("Errors summary:")
-                for i, error in enumerate(results["errors"][:5], 1):  # Show first 5 errors
-                    logger.warning(f"  {i}. {error}")
-                if len(results["errors"]) > 5:
-                    logger.warning(f"  ... and {len(results['errors']) - 5} more errors")
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Pipeline error: {e}")
-            results["errors"].append(f"Pipeline error: {str(e)}")
-            raise PipelineException(f"Pipeline execution failed: {e}") from e
-
-    async def fetch_and_download_papers(
-        self,
-        max_results: Optional[int] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Fetch paper metadata from arXiv and download PDFs without parsing.
-
-        :param max_results: Maximum papers to fetch
-        :param from_date: Filter papers from this date (YYYYMMDD)
-        :param to_date: Filter papers to this date (YYYYMMDD)
-        :returns: Dictionary with fetch/download statistics and serialized papers for XCom
-        """
-        results: Dict[str, Any] = {
-            "papers_fetched": 0,
-            "pdfs_downloaded": 0,
-            "errors": [],
-            "papers": [],
-            "downloaded_paths": {},
-            "processing_time": 0,
-        }
-
-        start_time = datetime.now()
-
-        try:
-            papers = await self.arxiv_client.fetch_papers(
-                max_results=max_results,
-                from_date=from_date,
-                to_date=to_date,
-                sort_by="submittedDate",
-                sort_order="descending",
-            )
-            results["papers_fetched"] = len(papers)
-
-            if not papers:
-                logger.warning("No papers found")
-                return results
-
-            download_results = await self._download_pdfs_batch(papers)
-            results["pdfs_downloaded"] = download_results["downloaded"]
-            results["errors"].extend(download_results["errors"])
-            results["downloaded_paths"] = {arxiv_id: str(path) for arxiv_id, path in download_results["paths"].items()}
-            results["papers"] = [paper.model_dump() for paper in papers]
-
-            results["processing_time"] = (datetime.now() - start_time).total_seconds()
-            logger.info(
-                f"Download step completed in {results['processing_time']:.1f}s: "
-                f"{results['papers_fetched']} papers, {results['pdfs_downloaded']} PDFs"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Download step error: {e}")
-            results["errors"].append(f"Download step error: {str(e)}")
-            raise PipelineException(f"Download step failed: {e}") from e
-
-    def store_papers(self, papers: List[ArxivPaper], parsed_papers: Dict[str, ParsedPaper], db_session: Session) -> int:
-        """Persist parsed papers and metadata to PostgreSQL."""
-        return self._store_papers_to_db(papers, parsed_papers, db_session)
-
-    async def _process_pdfs_batch(self, papers: List[ArxivPaper]) -> Dict[str, Any]:
-        """
-        Process PDFs for a batch of papers with async concurrency.
-
-        Uses overlapping download+parse pipeline:
-        - Downloads happen concurrently (up to max_concurrent_downloads)
-        - As each download completes, parsing starts immediately
-        - Multiple PDFs can be parsing while others are still downloading
-
-        This is optimal for production workloads like 100 papers/day.
-
-        Args:
-            papers: List of ArxivPaper objects
-
-        Returns:
-            Dictionary with processing results and statistics
-        """
-        results = {
-            "downloaded": 0,
-            "parsed": 0,
-            "parsed_papers": {},
-            "errors": [],
-            "download_failures": [],
-            "parse_failures": [],
-        }
-
-        logger.info(f"Starting async pipeline for {len(papers)} PDFs...")
-        logger.info(f"Concurrent downloads: {self.max_concurrent_downloads}")
-        logger.info(f"Concurrent parsing: {self.max_concurrent_parsing}")
-
-        # Create semaphores for controlled concurrency
-        download_semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
-        parse_semaphore = asyncio.Semaphore(self.max_concurrent_parsing)
-
-        # Start all download+parse pipelines concurrently
-        pipeline_tasks = [self._download_and_parse_pipeline(paper, download_semaphore, parse_semaphore) for paper in papers]
-
-        # Wait for all pipelines to complete
-        pipeline_results = await asyncio.gather(*pipeline_tasks, return_exceptions=True)
-
-        # Process results with detailed error tracking
-        for paper, result in zip(papers, pipeline_results):
-            if isinstance(result, Exception):
-                error_msg = f"Pipeline error for {paper.arxiv_id}: {str(result)}"
-                logger.error(error_msg)
-                results["errors"].append(error_msg)
-            elif result:
-                # Check if result is a tuple before unpacking
-                # Handle unexpected task termination and other non-tuple results
-                if isinstance(result, tuple) and len(result) == 2:
-                    # Result is tuple: (download_success, parsed_paper)
-                    download_success, parsed_paper = result
-                else:
-                    # The result is not a tuple, so record it as an unexpected result.
-                    error_msg = f"Pipeline error for {paper.arxiv_id}: Unexpected result type {type(result).__name__}"
-                    logger.error(error_msg)
-                    results["errors"].append(error_msg)
-                    continue
-
-                if download_success:
-                    results["downloaded"] += 1
-
-                    if parsed_paper:
-                        results["parsed"] += 1
-                        results["parsed_papers"][paper.arxiv_id] = parsed_paper
-                    else:
-                        # Download succeeded but parsing failed
-                        results["parse_failures"].append(paper.arxiv_id)
-                else:
-                    # Download failed
-                    results["download_failures"].append(paper.arxiv_id)
-            else:
-                # No result returned (shouldn't happen but handle gracefully)
-                results["download_failures"].append(paper.arxiv_id)
-
-        # Simple processing summary
-        logger.info(f"PDF processing: {results['downloaded']}/{len(papers)} downloaded, {results['parsed']} parsed")
-
-        if results["download_failures"]:
-            logger.warning(f"Download failures: {len(results['download_failures'])}")
-
-        if results["parse_failures"]:
-            logger.warning(f"Parse failures: {len(results['parse_failures'])}")
-
-        # Add specific failure info to general errors list for backward compatibility
-        if results["download_failures"]:
-            results["errors"].extend([f"Download failed: {arxiv_id}" for arxiv_id in results["download_failures"]])
-        if results["parse_failures"]:
-            results["errors"].extend([f"PDF parse failed: {arxiv_id}" for arxiv_id in results["parse_failures"]])
-
-        return results
-
-    async def _download_pdfs_batch(self, papers: List[ArxivPaper]) -> Dict[str, Any]:
-        """Download PDFs for a batch of papers without parsing."""
-        results: Dict[str, Any] = {
-            "downloaded": 0,
-            "paths": {},
-            "errors": [],
-            "download_failures": [],
-        }
-
-        logger.info(f"Starting download batch for {len(papers)} PDFs")
-        download_semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
-        download_tasks = [self._download_pdf_only(paper, download_semaphore) for paper in papers]
-        download_results = await asyncio.gather(*download_tasks, return_exceptions=True)
-
-        for paper, result in zip(papers, download_results):
-            if isinstance(result, Exception):
-                error_msg = f"Download error for {paper.arxiv_id}: {result}"
-                logger.error(error_msg)
-                results["errors"].append(error_msg)
-                results["download_failures"].append(paper.arxiv_id)
-            elif result:
-                results["downloaded"] += 1
-                results["paths"][paper.arxiv_id] = result
-            else:
-                results["download_failures"].append(paper.arxiv_id)
-
-        if results["download_failures"]:
-            results["errors"].extend([f"Download failed: {arxiv_id}" for arxiv_id in results["download_failures"]])
-
-        logger.info(f"Download batch complete: {results['downloaded']}/{len(papers)} downloaded")
-        return results
-
-    async def _download_pdf_only(self, paper: ArxivPaper, download_semaphore: asyncio.Semaphore) -> Optional[Path]:
-        """Download a single PDF with concurrency control."""
-        async with download_semaphore:
-            logger.debug(f"Starting download: {paper.arxiv_id}")
-            pdf_path = await self.arxiv_client.download_pdf(paper, False)
-
-            if pdf_path:
-                logger.debug(f"Download complete: {paper.arxiv_id}")
-                return pdf_path
-
-            logger.error(f"Download failed: {paper.arxiv_id}")
-            return None
-
-    async def _parse_pdf_only(
-        self,
-        paper: ArxivPaper,
-        downloaded_path: Optional[str],
-        parse_semaphore: asyncio.Semaphore,
-    ) -> Optional[ParsedPaper]:
-        """Parse a single downloaded PDF with concurrency control."""
-        pdf_path = Path(downloaded_path) if downloaded_path else self.arxiv_client._get_pdf_path(paper.arxiv_id)
-        if not pdf_path.exists():
-            logger.warning(f"No PDF available for parsing: {paper.arxiv_id}")
-            return None
-
-        async with parse_semaphore:
-            logger.debug(f"Starting parse: {paper.arxiv_id}")
-            arxiv_metadata = ArxivMetadata(**paper.model_dump())
-            parsed_paper = await self.pdf_parser.parse_paper(pdf_path, arxiv_metadata)
-            if parsed_paper is None:
-                logger.warning(f"PDF parsing failed for {paper.arxiv_id}, continuing with metadata only")
-                return None
-
-            pdf_content = parsed_paper.pdf_content
-            if pdf_content is None:
-                return None
-            logger.debug(f"Parse complete: {paper.arxiv_id} - {len(pdf_content.raw_text)} chars extracted")
-            return parsed_paper
-
-    async def _download_and_parse_pipeline(
-        self, paper: ArxivPaper, download_semaphore: asyncio.Semaphore, parse_semaphore: asyncio.Semaphore
-    ) -> tuple:
-        """
-        Complete download+parse pipeline for a single paper with true parallelism.
-        Downloads PDF, then immediately starts parsing while other downloads continue.
-
-        Returns:
-            Tuple of (download_success: bool, parsed_paper: Optional[ParsedPaper])
-        """
-        try:
-            pdf_path = await self._download_pdf_only(paper, download_semaphore)
-            if not pdf_path:
-                return (False, None)
-
-            parsed_paper = await self._parse_pdf_only(paper, str(pdf_path), parse_semaphore)
-            return (True, parsed_paper)
-
-        except Exception as e:
-            logger.error(f"Pipeline error for {paper.arxiv_id}: {e}")
-            raise MetadataFetchingException(f"Pipeline error for {paper.arxiv_id}: {e}") from e
-
-    def _serialize_parsed_content(self, parsed_paper: ParsedPaper) -> Dict[str, Any]:
-        """Serialize ParsedPaper content for database storage.
-
-        :param parsed_paper: ParsedPaper object with PDF content
-        :type parsed_paper: ParsedPaper
-        :returns: Dictionary with serialized content for database storage
-        :rtype: Dict[str, Any]
-        """
-        try:
-            pdf_content = parsed_paper.pdf_content
-
-            # Serialize sections
-            sections = [
-                {
-                    "title": section.title,
-                    "content": section.content,
-                    "level": section.level,
-                    "breadcrumb": section.breadcrumb,
-                    "figure_paths": section.figure_paths,
-                    "table_paths": section.table_paths,
-                }
-                for section in pdf_content.sections
-            ]
-
-            # Serialize references
-            references = list(pdf_content.references)  #
-
-            return {
-                "raw_text": pdf_content.raw_text,
-                "sections": sections,
-                "references": references,
-                "parser_used": pdf_content.parser_used.value if pdf_content.parser_used else None,
-                "parser_metadata": pdf_content.metadata or {},
-                "pdf_processed": True,
-                "pdf_processing_date": datetime.now(),
-            }
-        except Exception as e:
-            logger.error(f"Failed to serialize parsed content: {e}")
-            return {"pdf_processed": False, "parser_metadata": {"error": str(e)}}
-
-    def _store_papers_to_db(
-        self,
-        papers: List[ArxivPaper],
-        parsed_papers: Dict[str, ParsedPaper],
-        db_session: Session,
-    ) -> int:
-        """
-        Store papers and parsed content to database with comprehensive content storage.
-
-        Args:
-            papers: List of ArxivPaper metadata
-            parsed_papers: Dictionary of parsed PDF content by arxiv_id
-            db_session: Database session
-
-        Returns:
-            Number of papers stored successfully
-        """
-        paper_repo = PaperRepository(db_session)
-        stored_count = 0
-
-        for paper in papers:
-            try:
-                # Get parsed content if available
-                parsed_paper = parsed_papers.get(paper.arxiv_id)
-
-                # Base paper data
-                published_date = (
-                    date_parser.parse(paper.published_date) if isinstance(paper.published_date, str) else paper.published_date
-                )
-                paper_data = {
-                    "arxiv_id": paper.arxiv_id,
-                    "title": paper.title,
-                    "authors": paper.authors,
-                    "abstract": paper.abstract,
-                    "categories": paper.categories,
-                    "published_date": published_date,
-                    "pdf_url": paper.pdf_url,
-                }
-
-                # Add parsed content if available
-                if parsed_paper:
-                    parsed_content = self._serialize_parsed_content(parsed_paper)
-                    paper_data.update(parsed_content)
-                    logger.debug(
-                        f"Storing paper {paper.arxiv_id} with parsed content ({len(parsed_content.get('raw_text', '')) if parsed_content.get('raw_text') else 0} chars)"
-                    )
-                else:
-                    # No parsed content - just store metadata
-                    paper_data.update(
-                        {"pdf_processed": False, "parser_metadata": {"note": "PDF processing not available or failed"}}
-                    )
-                    logger.debug(f"Storing paper {paper.arxiv_id} with metadata only")
-
-                paper_create = PaperCreate(**paper_data)
-                stored_paper = paper_repo.upsert(paper_create)
-
-                if stored_paper:
-                    stored_count += 1
-                    content_info = "with parsed content" if parsed_paper else "metadata only"
-                    logger.debug(f"Stored paper {paper.arxiv_id} to database ({content_info})")
-
-            except Exception as e:
-                logger.error(f"Failed to store paper {paper.arxiv_id}: {e}")
-
-        # Commit all changes
-        try:
-            db_session.commit()
-            logger.info(f"Committed {stored_count} papers to database with full content storage")
-        except Exception as e:
-            logger.error(f"Failed to commit papers to database: {e}")
-            db_session.rollback()
-            stored_count = 0
-
-        return stored_count
-
-
-def make_metadata_fetcher(
-    arxiv_client: ArxivClient,
-    pdf_parser: PDFParserService,
-    pdf_cache_dir: Optional[Path] = None,
-    settings: Optional[Settings] = None,
-) -> MetadataFetcher:
-    """Create MetadataFetcher instance with configuration settings.
-
-    :param arxiv_client: Client for arXiv API operations
-    :param pdf_parser: Service for parsing PDF documents
-    :param pdf_cache_dir: Directory for caching downloaded PDFs
-    :param settings: Application settings instance (uses default if None)
-    :type arxiv_client: ArxivClient
-    :type pdf_parser: PDFParserService
-    :type pdf_cache_dir: Optional[Path]
-    :type settings: Optional[Settings]
-    :returns: Configured MetadataFetcher instance
-    :rtype: MetadataFetcher
-    """
-    from src.config import get_settings
-
-    if settings is None:
-        settings = get_settings()
-
-    return MetadataFetcher(
-        arxiv_client=arxiv_client,
-        pdf_parser=pdf_parser,
-        pdf_cache_dir=pdf_cache_dir,
-        max_concurrent_downloads=settings.arxiv.max_concurrent_downloads,
-        max_concurrent_parsing=settings.arxiv.max_concurrent_parsing,
-        settings=settings,
-    )
 
 
 class ArxivIngestionService:
@@ -556,12 +27,16 @@ class ArxivIngestionService:
         arxiv_client: ArxivClient,
         pdf_parser: PDFParserService,
         database: BaseDatabase,
-        metadata_fetcher: MetadataFetcher,
+        metadata_fetcher: PaperFetcher,
+        paper_persist: PaperPersist,
+        paper_indexer: PaperIndexer,
     ) -> None:
         self.arxiv_client = arxiv_client
         self.pdf_parser = pdf_parser
         self.database = database
-        self.metadata_fetcher = metadata_fetcher
+        self.paper_fetcher = metadata_fetcher
+        self.paper_persist = paper_persist
+        self.paper_indexer = paper_indexer
 
     def download_papers(self, target_date: str) -> dict[str, Any]:
         """Fetch paper metadata and download PDFs for a date (YYYYMMDD)."""
@@ -569,7 +44,7 @@ class ArxivIngestionService:
 
         max_results = self.arxiv_client.max_results
         results = asyncio.run(
-            self.metadata_fetcher.fetch_and_download_papers(
+            self.paper_fetcher.fetch_and_download_papers(
                 max_results=max_results,
                 from_date=target_date,
                 to_date=target_date,
@@ -587,14 +62,14 @@ class ArxivIngestionService:
 
     def parse_pdfs_to_markdown(self, download_results: dict[str, Any]) -> dict[str, Any]:
         """Parse downloaded PDFs into shared Markdown and JSON artifacts."""
-        output_dir = Path(self.metadata_fetcher.pdf_cache_dir).parent / "arxiv_md"
+        output_dir = Path(self.paper_fetcher.pdf_cache_dir).parent / "arxiv_md"
         papers = [ArxivMetadata(**paper_data) for paper_data in download_results.get("papers", [])]
         return asyncio.run(
             self.pdf_parser.parse_pdfs_to_markdown(
                 papers=papers,
                 downloaded_paths=download_results.get("downloaded_paths", {}),
                 output_dir=output_dir,
-                max_concurrent_parsing=self.metadata_fetcher.max_concurrent_parsing,
+                max_concurrent_parsing=self.paper_fetcher.max_concurrent_parsing,
                 date=download_results.get("date"),
             )
         )
@@ -633,7 +108,7 @@ class ArxivIngestionService:
                 errors.append(error)
 
         with self.database.get_session() as session:
-            papers_stored = self.metadata_fetcher.store_papers(papers, parsed_papers, session)
+            papers_stored = self.paper_persist.store_papers(papers, parsed_papers, session)
 
         results = {
             "pdfs_parsed": markdown_results.get("pdfs_parsed", 0),
@@ -651,64 +126,7 @@ class ArxivIngestionService:
 
     def index_papers_hybrid(self, persist_results: dict[str, Any] | None = None) -> dict[str, Any]:
         """Index papers with chunking and vector embeddings for hybrid search."""
-        try:
-            from src.domain.paper import Paper
-
-            with self.database.get_session() as session:
-                if persist_results and persist_results.get("papers_stored", 0) > 0:
-                    from sqlalchemy import desc
-
-                    papers = (
-                        session.query(Paper)
-                        .order_by(desc(Paper.created_at))
-                        .limit(persist_results["papers_stored"])
-                        .all()
-                    )
-                else:
-                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
-                    papers = session.query(Paper).filter(Paper.created_at >= cutoff_date).all()
-
-                if not papers:
-                    logger.info("No papers to index for hybrid search")
-                    return {"papers_indexed": 0, "chunks_created": 0}
-
-                logger.info("Indexing %s papers for hybrid search", len(papers))
-                stats = asyncio.run(_index_papers_with_chunks(papers))
-                logger.info(
-                    "Hybrid indexing complete: %s papers, %s chunks created, %s chunks indexed",
-                    stats["papers_processed"],
-                    stats["total_chunks_created"],
-                    stats["total_chunks_indexed"],
-                )
-                return stats
-        except Exception as e:
-            logger.error("Failed to index papers for hybrid search: %s", e)
-            raise
-
-
-async def _index_papers_with_chunks(papers: list[Any]) -> dict[str, Any]:
-    """Async helper to index papers with chunking and embeddings."""
-    indexing_service = make_hybrid_indexing_service()
-
-    papers_data = []
-    for paper in papers:
-        if hasattr(paper, "__dict__"):
-            paper_dict = {
-                "id": str(paper.id),
-                "arxiv_id": paper.arxiv_id,
-                "title": paper.title,
-                "authors": paper.authors,
-                "abstract": paper.abstract,
-                "categories": paper.categories,
-                "published_date": paper.published_date,
-                "raw_text": paper.raw_text,
-                "sections": paper.sections,
-            }
-        else:
-            paper_dict = paper
-        papers_data.append(paper_dict)
-
-    return await indexing_service.index_papers_batch(papers=papers_data, replace_existing=True)
+        return self.paper_indexer.index_papers_hybrid(persist_results)
 
 
 def make_arxiv_ingestion_service(
@@ -718,12 +136,14 @@ def make_arxiv_ingestion_service(
     settings: Optional[Settings] = None,
 ) -> ArxivIngestionService:
     """Create ArxivIngestionService with configured dependencies."""
-    metadata_fetcher = make_metadata_fetcher(arxiv_client, pdf_parser, settings=settings)
+    metadata_fetcher = make_paper_fetcher(arxiv_client, pdf_parser, settings=settings)
     return ArxivIngestionService(
         arxiv_client=arxiv_client,
         pdf_parser=pdf_parser,
         database=database,
         metadata_fetcher=metadata_fetcher,
+        paper_persist=make_paper_persist(),
+        paper_indexer=make_paper_indexer(database),
     )
 
 
