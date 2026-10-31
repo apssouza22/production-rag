@@ -95,11 +95,12 @@ flowchart TD
     B --> C["download_papers"]
     C --> C1["arXiv Atom API<br/>3s delay between requests"]
     C1 --> C2["PDF download<br/>5 concurrent, 3 retries, 5s backoff base"]
-    C2 --> P["parse_pdfs"]
+    C2 --> P["parse_pdfs_to_markdown"]
     P --> P1["Docling parse<br/>1 at a time, max 30 pages / 20 MB"]
-    P1 -->|"success"| D[("PostgreSQL<br/>upsert on arxiv_id")]
-    P1 -->|"parse fails"| P2["Keep metadata, mark unprocessed"]
-    P2 --> D
+    P1 -->|"success"| M[("Shared data volume<br/>Markdown + JSON sidecar")]
+    P1 -->|"parse fails"| S["persist_papers<br/>keep metadata, mark unprocessed"]
+    M --> S
+    S --> D[("PostgreSQL<br/>upsert on arxiv_id")]
     D --> E["index_papers_hybrid"]
     E --> F["generate_daily_report"]
     F --> G["cleanup_temp_files<br/>delete PDFs older than 30 days"]
@@ -107,7 +108,7 @@ flowchart TD
 
 A few design choices here that took real thought:
 
-**Download and parse are separate Airflow tasks.** `download_papers` fetches metadata and writes PDFs to a local cache; `parse_pdfs` reads those paths via XCom and runs Docling. Network-bound work and CPU-bound work get different retry boundaries — a parse failure retries only the parse step, not the arXiv fetch or the PDF download.
+**Download, parse, and persistence are separate Airflow tasks.** `download_papers` fetches metadata and writes PDFs to a local cache; `parse_pdfs_to_markdown` runs Docling and writes Markdown plus compact JSON sidecars to the shared data volume; `persist_papers` reloads those sidecars and upserts PostgreSQL. XCom carries only paths and statistics, not full documents. Network-bound work, CPU-bound work, and database writes get independent retry boundaries.
 
 **Concurrency is asymmetric on purpose.** Downloads run five at a time; PDF parsing runs one at a time (`max_concurrent_parsing: 1`). Docling is CPU-bound and memory-hungry, so parallelising it turns a working pipeline into an OOM loop. Network waits and CPU work need different concurrency limits, and treating them the same is a common mistake.
 

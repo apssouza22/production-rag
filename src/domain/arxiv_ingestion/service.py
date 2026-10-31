@@ -15,6 +15,7 @@ from src.domain.paper import PaperRepository
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, PdfContent
 from src.domain.pdf_parser.parser import PDFParserService
 
+from .artifacts import artifact_stem
 from .exceptions import MetadataFetchingException, PipelineException
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ class MetadataFetcher:
                 from_date=from_date,
                 to_date=to_date,
                 sort_by="submittedDate",
-                sort_order="descending"
+                sort_order="descending",
             )
 
             results["papers_fetched"] = len(papers)
@@ -183,7 +184,7 @@ class MetadataFetcher:
                 from_date=from_date,
                 to_date=to_date,
                 sort_by="submittedDate",
-                sort_order="descending"
+                sort_order="descending",
             )
             results["papers_fetched"] = len(papers)
 
@@ -255,13 +256,18 @@ class MetadataFetcher:
             results["errors"].append(f"Parse step error: {str(e)}")
             raise PipelineException(f"Parse step failed: {e}") from e
 
-    async def parse_papers(self, papers: List[ArxivPaper], downloaded_paths: Dict[str, str]) -> Dict[str, Any]:
+    async def parse_papers(
+        self,
+        papers: List[ArxivPaper],
+        downloaded_paths: Dict[str, str],
+        artifacts_dir: Optional[Path] = None,
+    ) -> Dict[str, Any]:
         """Parse downloaded PDFs and return parsed papers without persisting them."""
         if not papers:
             logger.warning("No papers to parse")
             return {"parsed": 0, "parsed_papers": {}, "errors": [], "parse_failures": []}
 
-        return await self._parse_pdfs_batch(papers, downloaded_paths)
+        return await self._parse_pdfs_batch(papers, downloaded_paths, artifacts_dir)
 
     def store_papers(self, papers: List[ArxivPaper], parsed_papers: Dict[str, ParsedPaper], db_session: Session) -> int:
         """Persist parsed papers and metadata to PostgreSQL."""
@@ -391,7 +397,12 @@ class MetadataFetcher:
         logger.info(f"Download batch complete: {results['downloaded']}/{len(papers)} downloaded")
         return results
 
-    async def _parse_pdfs_batch(self, papers: List[ArxivPaper], downloaded_paths: Dict[str, str]) -> Dict[str, Any]:
+    async def _parse_pdfs_batch(
+        self,
+        papers: List[ArxivPaper],
+        downloaded_paths: Dict[str, str],
+        artifacts_dir: Optional[Path] = None,
+    ) -> Dict[str, Any]:
         """Parse already-downloaded PDFs for a batch of papers."""
         results: Dict[str, Any] = {
             "parsed": 0,
@@ -402,7 +413,15 @@ class MetadataFetcher:
 
         logger.info(f"Starting parse batch for {len(papers)} PDFs")
         parse_semaphore = asyncio.Semaphore(self.max_concurrent_parsing)
-        parse_tasks = [self._parse_pdf_only(paper, downloaded_paths.get(paper.arxiv_id), parse_semaphore) for paper in papers]
+        parse_tasks = [
+            self._parse_pdf_only(
+                paper,
+                downloaded_paths.get(paper.arxiv_id),
+                parse_semaphore,
+                artifacts_dir,
+            )
+            for paper in papers
+        ]
         parse_results = await asyncio.gather(*parse_tasks, return_exceptions=True)
 
         for paper, result in zip(papers, parse_results):
@@ -441,6 +460,7 @@ class MetadataFetcher:
         paper: ArxivPaper,
         downloaded_path: Optional[str],
         parse_semaphore: asyncio.Semaphore,
+        artifacts_dir: Optional[Path] = None,
     ) -> Optional[ParsedPaper]:
         """Parse a single downloaded PDF with concurrency control."""
         pdf_path = Path(downloaded_path) if downloaded_path else self.arxiv_client._get_pdf_path(paper.arxiv_id)
@@ -450,7 +470,8 @@ class MetadataFetcher:
 
         async with parse_semaphore:
             logger.debug(f"Starting parse: {paper.arxiv_id}")
-            pdf_content = await self.pdf_parser.parse_pdf(pdf_path)
+            paper_artifacts_dir = artifacts_dir / f"{artifact_stem(paper.arxiv_id)}_assets" if artifacts_dir is not None else None
+            pdf_content = await self.pdf_parser.parse_pdf(pdf_path, artifacts_dir=paper_artifacts_dir)
 
             if not pdf_content:
                 logger.warning(f"PDF parsing failed for {paper.arxiv_id}, continuing with metadata only")

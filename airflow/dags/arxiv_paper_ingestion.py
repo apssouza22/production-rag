@@ -3,7 +3,13 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
-from arxiv_ingestion_tasks import download_papers, generate_daily_report, index_papers_hybrid, parse_pdfs
+from arxiv_ingestion_tasks import (
+    download_papers,
+    generate_daily_report,
+    index_papers_hybrid,
+    parse_pdfs_to_markdown,
+    persist_papers,
+)
 from src.domain.arxiv_ingestion import setup_environment
 
 # Default DAG arguments
@@ -42,9 +48,15 @@ download_task = PythonOperator(
     dag=dag,
 )
 
-parse_task = PythonOperator(
-    task_id="parse_pdfs",
-    python_callable=parse_pdfs,
+parse_to_markdown_task = PythonOperator(
+    task_id="parse_pdfs_to_markdown",
+    python_callable=parse_pdfs_to_markdown,
+    dag=dag,
+)
+
+persist_task = PythonOperator(
+    task_id="persist_papers",
+    python_callable=persist_papers,
     dag=dag,
 )
 
@@ -72,4 +84,4 @@ cleanup_task = BashOperator(
 )
 
 # Task dependencies
-setup_task >> download_task >> parse_task >> index_hybrid_task >> report_task >> cleanup_task
+setup_task >> download_task >> parse_to_markdown_task >> persist_task >> index_hybrid_task >> report_task >> cleanup_task
