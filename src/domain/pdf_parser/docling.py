@@ -45,19 +45,31 @@ def assemble_markdown_from_sections(sections: list[PaperSection]) -> str:
     return "\n\n".join(parts).rstrip() + "\n"
 
 
-def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
+def extract_sections_from_document(
+    doc: DoclingDocument,
+    *,
+    extract_figures: bool = False,
+    extract_tables: bool = False,
+) -> list[PaperSection]:
     """Extract hierarchical sections with breadcrumbs from a Docling document.
 
     Walks the document tree via ``iterate_items`` and maintains a header stack so
     nested sections retain their full path (e.g. ``Methods > Training``).
     """
-    sections, _, _ = _extract_sections_and_artifacts(doc)
+    sections, _, _ = _extract_sections_and_artifacts(
+        doc,
+        extract_figures=extract_figures,
+        extract_tables=extract_tables,
+    )
     return sections
 
 
 def _extract_sections_and_artifacts(
     doc: DoclingDocument,
     artifacts_dir: Optional[Path] = None,
+    *,
+    extract_figures: bool = False,
+    extract_tables: bool = False,
 ) -> tuple[list[PaperSection], list[PaperFigure], list[PaperTable]]:
     sections: list[PaperSection] = []
     assets_link_prefix = artifacts_dir.name if artifacts_dir is not None else None
@@ -115,9 +127,9 @@ def _extract_sections_and_artifacts(
                 "figure_paths": [],
                 "table_paths": [],
             }
-        elif isinstance(item, PictureItem):
+        elif isinstance(item, PictureItem) and extract_figures:
             artefact_extractor.save_figure(item, doc, current, items_by_ref)
-        elif isinstance(item, TableItem):
+        elif isinstance(item, TableItem) and extract_tables:
             artefact_extractor.save_table(item, doc, current, items_by_ref)
         elif current is not None and label in _CONTENT_LABELS:
             if text:
@@ -130,19 +142,29 @@ def _extract_sections_and_artifacts(
 class DoclingParser:
     """Docling PDF parser for scientific document processing."""
 
-    def __init__(self, max_pages: int, max_file_size_mb: int, do_ocr: bool = False, do_table_structure: bool = True):
+    def __init__(
+        self,
+        max_pages: int,
+        max_file_size_mb: int,
+        do_ocr: bool = False,
+        do_table_structure: bool = False,
+        do_figure_extraction: bool = False,
+    ):
         """Initialize DocumentConverter with optimized pipeline options.
 
         :param max_pages: Maximum number of pages to process
         :param max_file_size_mb: Maximum file size in MB
         :param do_ocr: Enable OCR for scanned PDFs (default: False, very slow)
-        :param do_table_structure: Extract table structures (default: True)
+        :param do_table_structure: Extract table structures (default: False)
+        :param do_figure_extraction: Extract figure images and embed in Markdown (default: False)
         """
+        self.do_table_structure = do_table_structure
+        self.do_figure_extraction = do_figure_extraction
         # Configure pipeline options
         pipeline_options = PdfPipelineOptions(
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
-            generate_picture_images=True,
+            generate_picture_images=do_figure_extraction,
         )
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
@@ -224,9 +246,18 @@ class DoclingParser:
 
             # Extract structured content
             doc = result.document
-            if artifacts_dir is None:
-                artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
-            sections, figures, tables = _extract_sections_and_artifacts(doc, artifacts_dir)
+            extract_artifacts = self.do_figure_extraction or self.do_table_structure
+            if extract_artifacts:
+                if artifacts_dir is None:
+                    artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
+            else:
+                artifacts_dir = None
+            sections, figures, tables = _extract_sections_and_artifacts(
+                doc,
+                artifacts_dir,
+                extract_figures=self.do_figure_extraction,
+                extract_tables=self.do_table_structure,
+            )
             markdown = assemble_markdown_from_sections(sections)
 
             # Focus on what arXiv API doesn't provide: structured full text content only

@@ -73,7 +73,9 @@ class TestExtractSectionsFromDocument:
         picture.get_image.return_value = saved_image
 
         artifacts_dir = tmp_path / "paper_assets"
-        sections, figures, _ = _extract_sections_and_artifacts(doc, artifacts_dir)
+        sections, figures, _ = _extract_sections_and_artifacts(
+            doc, artifacts_dir, extract_figures=True, extract_tables=False
+        )
 
         assert len(figures) == 1
         assert len(sections) == 1
