@@ -36,11 +36,11 @@ async def _index_papers_with_chunks(papers):
     return stats
 
 
-def index_papers_hybrid(parse_results: dict | None = None) -> dict:
+def index_papers_hybrid(persist_results: dict | None = None) -> dict:
     """Index papers with chunking and vector embeddings for hybrid search.
 
     This operation:
-    1. Fetches recently stored papers from PostgreSQL (using parse results when provided)
+    1. Fetches recently stored papers from PostgreSQL (using persistence results when provided)
     2. Chunks them into overlapping segments (600 words, 100 overlap)
     3. Generates embeddings using Jina AI
     4. Indexes chunks with embeddings into OpenSearch
@@ -51,10 +51,10 @@ def index_papers_hybrid(parse_results: dict | None = None) -> dict:
         with database.get_session() as session:
             from src.domain.paper import Paper
 
-            if parse_results and parse_results.get("papers_stored", 0) > 0:
+            if persist_results and persist_results.get("papers_stored", 0) > 0:
                 from sqlalchemy import desc
 
-                papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(parse_results["papers_stored"]).all()
+                papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(persist_results["papers_stored"]).all()
             else:
                 cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
                 papers = session.query(Paper).filter(Paper.created_at >= cutoff_date).all()

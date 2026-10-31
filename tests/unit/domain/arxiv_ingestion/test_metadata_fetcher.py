@@ -7,6 +7,7 @@ import pytest
 from src.domain.arxiv.client import ArxivClient
 from src.domain.arxiv.paper import ArxivPaper
 from src.domain.arxiv_ingestion import MetadataFetcher, make_metadata_fetcher
+from src.domain.arxiv_ingestion.artifacts import artifact_stem
 from src.domain.arxiv_ingestion.exceptions import MetadataFetchingException, PipelineException
 from src.domain.pdf_parser.models import ParserType, PdfContent
 from src.domain.pdf_parser.parser import PDFParserService
@@ -116,6 +117,34 @@ class TestMetadataFetcher:
         assert len(result["papers"]) == 2
         assert result["papers"][0]["arxiv_id"] == "2024.0001v1"
         assert len(result["downloaded_paths"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_parse_papers_writes_parser_assets_to_artifact_directory(
+        self,
+        metadata_fetcher,
+        sample_arxiv_papers,
+        sample_pdf_content,
+        tmp_path,
+    ):
+        """Test parse-only pipeline step and its shared artifact directory."""
+        paper = sample_arxiv_papers[0]
+        pdf_path = tmp_path / f"{paper.arxiv_id}.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4")
+        artifacts_dir = tmp_path / "arxiv_md"
+        metadata_fetcher.pdf_parser.parse_pdf = AsyncMock(return_value=sample_pdf_content)
+
+        result = await metadata_fetcher.parse_papers(
+            papers=[paper],
+            downloaded_paths={paper.arxiv_id: str(pdf_path)},
+            artifacts_dir=artifacts_dir,
+        )
+
+        assert result["parsed"] == 1
+        assert result["parsed_papers"][paper.arxiv_id].pdf_content == sample_pdf_content
+        metadata_fetcher.pdf_parser.parse_pdf.assert_awaited_once_with(
+            pdf_path,
+            artifacts_dir=artifacts_dir / f"{artifact_stem(paper.arxiv_id)}_assets",
+        )
 
     @pytest.mark.asyncio
     async def test_parse_and_store_papers(self, metadata_fetcher, sample_arxiv_papers, sample_pdf_content, tmp_path):
