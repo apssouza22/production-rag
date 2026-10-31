@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from src.config import Settings
 from src.domain.arxiv.client import ArxivClient
 from src.domain.arxiv.paper import ArxivPaper, PaperCreate
-from src.domain.opensearch.client import OpenSearchClient
 from src.domain.paper import PaperRepository
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper
 from src.domain.pdf_parser.parser import PDFParserService
@@ -36,14 +35,12 @@ class MetadataFetcher:
 
         :param arxiv_client: Client for arXiv API operations
         :param pdf_parser: Service for parsing PDF documents
-        :param opensearch_client: Optional OpenSearch client for indexing
         :param pdf_cache_dir: Directory for caching downloaded PDFs
         :param max_concurrent_downloads: Maximum concurrent PDF downloads
         :param max_concurrent_parsing: Maximum concurrent PDF parsing operations
         :param settings: Application settings instance
         :type arxiv_client: ArxivClient
         :type pdf_parser: PDFParserService
-        :type opensearch_client: Optional[OpenSearchClient]
         :type pdf_cache_dir: Optional[Path]
         :type max_concurrent_downloads: int
         :type max_concurrent_parsing: int
@@ -208,67 +205,6 @@ class MetadataFetcher:
             logger.error(f"Download step error: {e}")
             results["errors"].append(f"Download step error: {str(e)}")
             raise PipelineException(f"Download step failed: {e}") from e
-
-    async def parse_and_store_papers(
-        self,
-        papers: List[ArxivPaper],
-        downloaded_paths: Dict[str, str],
-        db_session: Session,
-    ) -> Dict[str, Any]:
-        """Parse downloaded PDFs and store papers with content in PostgreSQL.
-
-        :param papers: Paper metadata fetched in the download step
-        :param downloaded_paths: Mapping of arxiv_id to local PDF path
-        :param db_session: Database session for storage
-        :returns: Dictionary with parse/store statistics
-        """
-        results: Dict[str, Any] = {
-            "pdfs_parsed": 0,
-            "papers_stored": 0,
-            "errors": [],
-            "processing_time": 0,
-        }
-
-        start_time = datetime.now()
-
-        try:
-            if not papers:
-                logger.warning("No papers to parse")
-                return results
-
-            parse_results = await self.parse_papers(papers, downloaded_paths)
-            results["pdfs_parsed"] = parse_results["parsed"]
-            results["errors"].extend(parse_results["errors"])
-
-            stored_count = self.store_papers(papers, parse_results["parsed_papers"], db_session)
-            results["papers_stored"] = stored_count
-
-            results["processing_time"] = (datetime.now() - start_time).total_seconds()
-            logger.info(
-                f"Parse step completed in {results['processing_time']:.1f}s: "
-                f"{results['pdfs_parsed']} parsed, {results['papers_stored']} stored"
-            )
-            return results
-
-        except Exception as e:
-            logger.error(f"Parse step error: {e}")
-            results["errors"].append(f"Parse step error: {str(e)}")
-            raise PipelineException(f"Parse step failed: {e}") from e
-
-    async def parse_papers(
-        self,
-        papers: List[ArxivPaper],
-        downloaded_paths: Dict[str, str],
-        artifacts_dir: Optional[Path] = None,
-    ) -> Dict[str, Any]:
-        """Parse downloaded PDFs and return parsed papers without persisting them."""
-        metadata = [ArxivMetadata(**paper.model_dump()) for paper in papers]
-        return await self.pdf_parser.parse_papers(
-            papers=metadata,
-            downloaded_paths=downloaded_paths,
-            artifacts_dir=artifacts_dir,
-            max_concurrent_parsing=self.max_concurrent_parsing,
-        )
 
     def store_papers(self, papers: List[ArxivPaper], parsed_papers: Dict[str, ParsedPaper], db_session: Session) -> int:
         """Persist parsed papers and metadata to PostgreSQL."""

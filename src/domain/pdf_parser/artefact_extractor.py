@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from docling_core.types.doc import DoclingDocument, PictureItem, TableItem
 
-from .models import PaperFigure, PaperSection, PaperTable
+from .models import PaperFigure, PaperTable
 
 logger = logging.getLogger(__name__)
 

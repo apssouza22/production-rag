@@ -1,14 +1,10 @@
-import asyncio
 import time
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from src.domain.arxiv.client import ArxivClient
 from src.domain.arxiv.paper import ArxivPaper
-from src.domain.arxiv_ingestion import MetadataFetcher, make_metadata_fetcher
-from src.domain.arxiv_ingestion.exceptions import MetadataFetchingException, PipelineException
-from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
+from src.domain.arxiv_ingestion import MetadataFetcher
 from src.domain.pdf_parser.parser import PDFParserService
 
 
@@ -62,13 +58,6 @@ class TestMetadataFetcher:
             ),
         ]
 
-    @pytest.fixture
-    def sample_pdf_content(self):
-        """Create sample PdfContent."""
-        return PdfContent(
-            raw_text="Sample PDF content", sections=[], tables=[], figures=[], parser_used=ParserType.DOCLING, metadata={}
-        )
-
     def test_metadata_fetcher_initialization(self, metadata_fetcher, tmp_path):
         """Test MetadataFetcher initialization."""
         assert metadata_fetcher.pdf_cache_dir == tmp_path
@@ -116,71 +105,3 @@ class TestMetadataFetcher:
         assert len(result["papers"]) == 2
         assert result["papers"][0]["arxiv_id"] == "2024.0001v1"
         assert len(result["downloaded_paths"]) == 1
-
-    @pytest.mark.asyncio
-    async def test_parse_papers_delegates_to_pdf_parser_service(
-        self,
-        metadata_fetcher,
-        sample_arxiv_papers,
-        sample_pdf_content,
-        tmp_path,
-    ):
-        """Test parse-only pipeline delegation and its shared artifact directory."""
-        paper = sample_arxiv_papers[0]
-        pdf_path = tmp_path / f"{paper.arxiv_id}.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        artifacts_dir = tmp_path / "arxiv_md"
-        metadata = ArxivMetadata(**paper.model_dump())
-        parse_results = {
-            "parsed": 1,
-            "parsed_papers": {paper.arxiv_id: ParsedPaper(arxiv_metadata=metadata, pdf_content=sample_pdf_content)},
-            "errors": [],
-            "parse_failures": [],
-        }
-        metadata_fetcher.pdf_parser.parse_papers = AsyncMock(return_value=parse_results)
-
-        result = await metadata_fetcher.parse_papers(
-            papers=[paper],
-            downloaded_paths={paper.arxiv_id: str(pdf_path)},
-            artifacts_dir=artifacts_dir,
-        )
-
-        assert result == parse_results
-        metadata_fetcher.pdf_parser.parse_papers.assert_awaited_once_with(
-            papers=[metadata],
-            downloaded_paths={paper.arxiv_id: str(pdf_path)},
-            artifacts_dir=artifacts_dir,
-            max_concurrent_parsing=1,
-        )
-
-    @pytest.mark.asyncio
-    async def test_parse_and_store_papers(self, metadata_fetcher, sample_arxiv_papers, sample_pdf_content, tmp_path):
-        """Test parse-and-store pipeline step."""
-        pdf_path = tmp_path / "2024.0001v1.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-
-        paper = sample_arxiv_papers[0]
-        metadata = ArxivMetadata(**paper.model_dump())
-        metadata_fetcher.pdf_parser.parse_papers = AsyncMock(
-            return_value={
-                "parsed": 1,
-                "parsed_papers": {paper.arxiv_id: ParsedPaper(arxiv_metadata=metadata, pdf_content=sample_pdf_content)},
-                "errors": [],
-                "parse_failures": [],
-            }
-        )
-        mock_session = MagicMock()
-        mock_repo = MagicMock()
-        mock_repo.upsert.return_value = MagicMock()
-
-        with patch("src.domain.arxiv_ingestion.service.PaperRepository", return_value=mock_repo):
-            result = await metadata_fetcher.parse_and_store_papers(
-                papers=sample_arxiv_papers[:1],
-                downloaded_paths={sample_arxiv_papers[0].arxiv_id: str(pdf_path)},
-                db_session=mock_session,
-            )
-
-        assert result["pdfs_parsed"] == 1
-        assert result["papers_stored"] == 1
-        mock_repo.upsert.assert_called_once()
-        mock_session.commit.assert_called_once()

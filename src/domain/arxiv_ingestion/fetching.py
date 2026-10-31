@@ -1,39 +1,15 @@
 import asyncio
 import logging
 from datetime import datetime
+from pathlib import Path
 
 from src.domain.arxiv.paper import ArxivPaper
 from src.domain.pdf_parser.artifacts import load_parsed_paper_artifact
+from src.domain.pdf_parser.models import ArxivMetadata
 
 from .common import get_cached_services
 
 logger = logging.getLogger(__name__)
-
-
-async def run_paper_ingestion_pipeline(
-    target_date: str,
-    process_pdfs: bool = True,
-) -> dict:
-    """Async wrapper for the paper ingestion pipeline.
-
-    :param target_date: Date to fetch papers for (YYYYMMDD format)
-    :param process_pdfs: Whether to download and process PDFs
-    :returns: Dictionary with ingestion statistics
-    """
-    arxiv_client, _, database, metadata_fetcher, _ = get_cached_services()
-
-    max_results = arxiv_client.max_results
-    logger.info(f"Using default max_results from config: {max_results}")
-
-    with database.get_session() as session:
-        return await metadata_fetcher.fetch_and_process_papers(
-            max_results=max_results,
-            from_date=target_date,
-            to_date=target_date,
-            process_pdfs=process_pdfs,
-            store_to_db=True,
-            db_session=session,
-        )
 
 
 def download_papers(target_date: str) -> dict:
@@ -57,6 +33,22 @@ def download_papers(target_date: str) -> dict:
     )
 
     return results
+
+
+def parse_pdfs_to_markdown(download_results: dict) -> dict:
+    """Parse downloaded PDFs into shared Markdown and JSON artifacts."""
+    _, pdf_parser, _, metadata_fetcher, _ = get_cached_services()
+    output_dir = Path(metadata_fetcher.pdf_cache_dir).parent / "arxiv_md"
+    papers = [ArxivMetadata(**paper_data) for paper_data in download_results.get("papers", [])]
+    return asyncio.run(
+        pdf_parser.parse_pdfs_to_markdown(
+            papers=papers,
+            downloaded_paths=download_results.get("downloaded_paths", {}),
+            output_dir=output_dir,
+            max_concurrent_parsing=metadata_fetcher.max_concurrent_parsing,
+            date=download_results.get("date"),
+        )
+    )
 
 
 def persist_papers(download_results: dict, markdown_results: dict) -> dict:

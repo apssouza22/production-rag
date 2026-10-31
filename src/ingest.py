@@ -20,7 +20,7 @@ from pathlib import Path
 
 from src.config import get_settings
 from src.domain.arxiv_ingestion import setup_environment
-from src.domain.arxiv_ingestion.fetching import download_papers, parse_pdfs
+from src.domain.arxiv_ingestion.fetching import download_papers, parse_pdfs_to_markdown, persist_papers
 from src.domain.arxiv_ingestion.indexing import index_papers_hybrid
 from src.domain.arxiv_ingestion.reporting import generate_daily_report
 
@@ -75,11 +75,12 @@ def run_pipeline(
         setup_environment()
 
     download_results = download_papers(target_date)
-    parse_results = parse_pdfs(download_results)
-    hybrid_stats = index_papers_hybrid(parse_results)
+    markdown_results = parse_pdfs_to_markdown(download_results)
+    persist_results = persist_papers(download_results, markdown_results)
+    hybrid_stats = index_papers_hybrid(persist_results)
     report = generate_daily_report(
         download_results,
-        parse_results,
+        persist_results,
         hybrid_stats,
         execution_date=datetime.now(),
     )

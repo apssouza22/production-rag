@@ -1,16 +1,13 @@
 """Airflow task adapters for the arXiv ingestion domain."""
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
-from pathlib import Path
 
-from src.domain.arxiv_ingestion.common import get_cached_services
 from src.domain.arxiv_ingestion.fetching import download_papers as fetch_papers
+from src.domain.arxiv_ingestion.fetching import parse_pdfs_to_markdown as parse_downloaded_pdfs
 from src.domain.arxiv_ingestion.fetching import persist_papers as persist_downloaded_papers
 from src.domain.arxiv_ingestion.indexing import index_papers_hybrid as index_papers
 from src.domain.arxiv_ingestion.reporting import generate_daily_report as build_daily_report
-from src.domain.pdf_parser.models import ArxivMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +34,7 @@ def parse_pdfs_to_markdown(**context) -> dict:
     """Parse downloaded PDFs to shared Markdown artifacts."""
     ti = context.get("ti")
     download_results = ti.xcom_pull(task_ids="download_papers", key="download_results") or {} if ti else {}
-    _, pdf_parser, _, metadata_fetcher, _ = get_cached_services()
-    output_dir = Path(metadata_fetcher.pdf_cache_dir).parent / "arxiv_md"
-    papers = [ArxivMetadata(**paper_data) for paper_data in download_results.get("papers", [])]
-    results = asyncio.run(
-        pdf_parser.parse_pdfs_to_markdown(
-            papers=papers,
-            downloaded_paths=download_results.get("downloaded_paths", {}),
-            output_dir=output_dir,
-            max_concurrent_parsing=metadata_fetcher.max_concurrent_parsing,
-            date=download_results.get("date"),
-        )
-    )
+    results = parse_downloaded_pdfs(download_results)
     if ti:
         ti.xcom_push(key="markdown_results", value=results)
     return results
