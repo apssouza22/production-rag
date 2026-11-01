@@ -1,0 +1,62 @@
+[
+  {
+    "user_input": "What is the primary focus of the PlantShade framework in relation to agricultural operations?",
+    "reference": "The primary focus of the PlantShade framework is to simulate plant shadows to support lighting-aware planning and robotic agricultural operations.",
+    "arxiv_id": "2609.21059v1"
+  },
+  {
+    "user_input": "How many image pairs are included in the PlantShade dataset and what dimensions do they have?",
+    "reference": "The PlantShade dataset includes 38,500 image pairs with a resolution of 1920 \u00d7 1080.",
+    "arxiv_id": "2609.21059v1"
+  },
+  {
+    "user_input": "What types of plants are covered in the dataset used by the PlantShade framework?",
+    "reference": "The dataset covers four plant species: soybean, tomato, sugarbeet, and strawberry.",
+    "arxiv_id": "2609.21059v1"
+  },
+  {
+    "user_input": "What innovative model is proposed for generating realistic plant shadows in the PlantShade system, and how does it function?",
+    "reference": "The PlantShade system proposes a generative shade simulation model based on ControlNet-conditioned diffusion that generates shadow maps based on plant appearance and light position prompts.",
+    "arxiv_id": "2609.21059v1"
+  },
+  {
+    "user_input": "What is the main contribution of the Low-Rank Adaptation (LoRA) stage in the framework for underwater synthetic aperture sonar (SAS) automatic target recognition (ATR)?",
+    "reference": "LoRA accounts for the primary effect, increasing area under the precision-recall curve (AUPRC) from 0.300 to 0.679 +/- 0.027 using the same frozen backbone.",
+    "arxiv_id": "2609.21061v1"
+  },
+  {
+    "user_input": "How does the performance change after implementing hard-negative mining in the adaptation process?",
+    "reference": "Hard-negative mining changes AUPRC by -0.0045 +/- 0.0119 versus an equal-size random curriculum.",
+    "arxiv_id": "2609.21061v1"
+  },
+  {
+    "user_input": "What does the Supervised Contrastive Learning (SupCon) stage aim to achieve in the adaptation framework?",
+    "reference": "The Supervised Contrastive Learning (SupCon) stage aims to separate target and clutter representations.",
+    "arxiv_id": "2609.21061v1"
+  },
+  {
+    "user_input": "What conclusion is drawn regarding the necessity of multiple refinement stages after evaluation of the adaptation framework?",
+    "reference": "One efficient adaptation stage is sufficient; stacked refinement is not.",
+    "arxiv_id": "2609.21061v1"
+  },
+  {
+    "user_input": "What dataset was introduced to evaluate the alignment of Large Language Models (LLMs) with community perspectives on mental health support seeking queries?",
+    "reference": "The COmmunity-centered Peer Engaged Support (COPES) dataset.",
+    "arxiv_id": "2609.21075v1"
+  },
+  {
+    "user_input": "How much did post-training on the COPES dataset improve Strategy Alignment for general-purpose models compared to zero-shot models?",
+    "reference": "Post-training on COPES significantly improves Strategy Alignment by over 50% for general-purpose models.",
+    "arxiv_id": "2609.21075v1"
+  },
+  {
+    "user_input": "Which coping strategy type showed the highest gains in Strategy Alignment after post-training on the COPES dataset?",
+    "reference": "Meaning-focused coping strategies exhibited the highest gains in Strategy Alignment.",
+    "arxiv_id": "2609.21075v1"
+  },
+  {
+    "user_input": "What was a notable outcome observed across different subreddit categories after post-training of the models?",
+    "reference": "Post-training resulted in heterogeneous improvements in alignment, significantly varying across different subreddit categories and requested coping strategies.",
+    "arxiv_id": "2609.21075v1"
+  }
+]

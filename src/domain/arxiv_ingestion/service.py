@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -144,9 +145,14 @@ class ArxivIngestionService:
         persist_results: dict[str, Any] | None = None,
         *,
         ingestion_name: str = "production",
+        arxiv_ids: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Index papers with chunking and vector embeddings for hybrid search."""
-        return self.paper_indexer.index_papers_hybrid(persist_results, ingestion_name=ingestion_name)
+        return self.paper_indexer.index_papers_hybrid(
+            persist_results,
+            ingestion_name=ingestion_name,
+            arxiv_ids=arxiv_ids,
+        )
 
 
 def make_arxiv_ingestion_service(

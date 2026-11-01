@@ -324,10 +324,13 @@ class OpenSearchClient:
         bm25_query = bm25_search_body["query"]
         embedding_query = {"knn": {"embedding": {"vector": query_embedding, "k": size * 2}}}
 
-        hybrid_query: Dict[str, Any] = {"hybrid": {"queries": [bm25_query, embedding_query]}}
+        # A hybrid query must stay at the top level, so filters are applied to each
+        # sub-query instead. The BM25 side is already filtered by the query builder.
         filter_clauses = self._build_search_filters(categories=categories, ingestion_name=ingestion_name)
         if filter_clauses:
-            hybrid_query = self._wrap_query_with_filters(hybrid_query, filter_clauses)
+            embedding_query = self._wrap_query_with_filters(embedding_query, filter_clauses)
+
+        hybrid_query: Dict[str, Any] = {"hybrid": {"queries": [bm25_query, embedding_query]}}
 
         search_body = {
             "size": size,
