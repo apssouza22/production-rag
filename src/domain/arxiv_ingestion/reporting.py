@@ -3,14 +3,14 @@ import logging
 from datetime import datetime
 
 from .common import get_cached_services
-from .schemas import DownloadResults
+from .schemas import DownloadResults, PersistResults
 
 logger = logging.getLogger(__name__)
 
 
 def generate_daily_report(
     download_stats: DownloadResults | None,
-    parse_stats: dict,
+    parse_stats: PersistResults | None,
     hybrid_stats: dict,
     execution_date: datetime | None = None,
 ) -> dict:
@@ -20,8 +20,8 @@ def generate_daily_report(
     target_date = "unknown"
     if download_stats and download_stats.date:
         target_date = download_stats.date
-    elif parse_stats.get("date"):
-        target_date = parse_stats["date"]
+    elif parse_stats and parse_stats.date:
+        target_date = parse_stats.date
 
     report = {
         "execution_date": (execution_date or datetime.now()).isoformat(),
@@ -31,8 +31,8 @@ def generate_daily_report(
             "target_date": target_date,
         },
         "parse_statistics": {
-            "pdfs_parsed": parse_stats.get("pdfs_parsed", 0),
-            "papers_stored": parse_stats.get("papers_stored", 0),
+            "pdfs_parsed": parse_stats.pdfs_parsed if parse_stats else 0,
+            "papers_stored": parse_stats.papers_stored if parse_stats else 0,
         },
         "indexing_statistics": {
             "papers_processed": hybrid_stats.get("papers_processed", 0),

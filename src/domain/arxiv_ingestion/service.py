@@ -15,7 +15,7 @@ from src.domain.pdf_parser.parser import PDFParserService
 from .paper_fetcher import PaperFetcher, make_paper_fetcher
 from .paper_indexer import PaperIndexer, make_paper_indexer
 from .paper_persist import PaperPersist, make_paper_persist
-from .schemas import DownloadResults
+from .schemas import DownloadResults, PersistResults
 
 logger = logging.getLogger(__name__)
 
@@ -91,20 +91,20 @@ class ArxivIngestionService:
             )
         )
 
-    def persist_papers(self, download_results: DownloadResults, markdown_results: dict[str, Any]) -> dict[str, Any]:
+    def persist_papers(self, download_results: DownloadResults, markdown_results: dict[str, Any]) -> PersistResults:
         """Persist paper metadata and parsed sidecars to PostgreSQL."""
         logger.info("Starting paper persistence task")
         start_time = datetime.now()
 
         if not download_results.papers:
             logger.info("No papers to persist")
-            return {
-                "pdfs_parsed": markdown_results.get("pdfs_parsed", 0),
-                "papers_stored": 0,
-                "errors": list(markdown_results.get("errors", [])),
-                "date": download_results.date,
-                "processing_time": 0,
-            }
+            return PersistResults(
+                pdfs_parsed=markdown_results.get("pdfs_parsed", 0),
+                papers_stored=0,
+                errors=list(markdown_results.get("errors", [])),
+                date=download_results.date,
+                processing_time=0,
+            )
 
         papers = download_results.papers
         parsed_papers: dict[str, ParsedPaper] = {}
@@ -126,23 +126,23 @@ class ArxivIngestionService:
         with self.database.get_session() as session:
             papers_stored = self.paper_persist.store_papers(papers, parsed_papers, session)
 
-        results = {
-            "pdfs_parsed": markdown_results.get("pdfs_parsed", 0),
-            "papers_stored": papers_stored,
-            "errors": errors,
-            "date": download_results.date,
-            "processing_time": (datetime.now() - start_time).total_seconds(),
-        }
+        results = PersistResults(
+            pdfs_parsed=markdown_results.get("pdfs_parsed", 0),
+            papers_stored=papers_stored,
+            errors=errors,
+            date=download_results.date,
+            processing_time=(datetime.now() - start_time).total_seconds(),
+        )
         logger.info(
             "Paper persistence complete: %d stored for %s",
-            results["papers_stored"],
-            results["date"],
+            results.papers_stored,
+            results.date,
         )
         return results
 
     def index_papers_hybrid(
         self,
-        persist_results: dict[str, Any] | None = None,
+        persist_results: PersistResults | None = None,
         *,
         ingestion_name: str = "production",
         arxiv_ids: Sequence[str] | None = None,

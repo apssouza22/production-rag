@@ -58,7 +58,7 @@ def test_persist_papers_loads_sidecars_and_stores_papers(mock_repo_cls, tmp_path
         {"pdfs_parsed": 1, "artifacts": {paper.arxiv_id: artifact}, "errors": []},
     )
 
-    assert result["papers_stored"] == 1
+    assert result.papers_stored == 1
     paper_create = mock_repo_cls.return_value.upsert.call_args[0][0]
     assert paper_create.raw_text == "Parsed text"
     session.commit.assert_called_once()
@@ -87,8 +87,8 @@ def test_persist_papers_stores_metadata_when_sidecar_is_missing(mock_repo_cls, t
         },
     )
 
-    assert result["papers_stored"] == 1
-    assert result["errors"][0].startswith(f"Failed to load parsed artifact for {paper.arxiv_id}")
+    assert result.papers_stored == 1
+    assert result.errors[0].startswith(f"Failed to load parsed artifact for {paper.arxiv_id}")
     paper_create = mock_repo_cls.return_value.upsert.call_args[0][0]
     assert paper_create.pdf_processed is False
     session.commit.assert_called_once()

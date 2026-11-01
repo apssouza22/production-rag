@@ -80,7 +80,7 @@ def ensure_ingested(
         "ingestion_name": ingestion_name,
         "pdfs_dir": str(pdfs_dir),
         "arxiv_ids": arxiv_ids,
-        "papers_stored": persist_results.get("papers_stored", 0),
+        "papers_stored": persist_results.papers_stored,
         "pdfs_parsed": markdown_results.get("pdfs_parsed", 0),
         "chunks_indexed": hybrid_stats.get("total_chunks_indexed", 0),
     }

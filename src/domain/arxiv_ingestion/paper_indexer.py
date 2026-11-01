@@ -2,10 +2,14 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Sequence
 
+from sqlalchemy.orm import Session
+
+from src.domain.arxiv_ingestion.schemas import PersistResults
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.indexing.factory import make_hybrid_indexing_service
+from src.domain.paper import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -18,28 +22,22 @@ class PaperIndexer:
 
     def index_papers_hybrid(
         self,
-        persist_results: dict[str, Any] | None = None,
+        persist_results: PersistResults | None = None,
         *,
         ingestion_name: str = "production",
         arxiv_ids: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Index papers with chunking and vector embeddings for hybrid search.
 
+        :param ingestion_name:
+        :param persist_results:
         :param arxiv_ids: Index exactly these papers instead of the most recently stored ones
         """
         try:
             from src.domain.paper import Paper
 
             with self.database.get_session() as session:
-                if arxiv_ids:
-                    papers = session.query(Paper).filter(Paper.arxiv_id.in_(list(arxiv_ids))).all()
-                elif persist_results and persist_results.get("papers_stored", 0) > 0:
-                    from sqlalchemy import desc
-
-                    papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(persist_results["papers_stored"]).all()
-                else:
-                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
-                    papers = session.query(Paper).filter(Paper.created_at >= cutoff_date).all()
+                papers = self._get_papers(arxiv_ids, persist_results, session)
 
                 if not papers:
                     logger.info("No papers to index for hybrid search")
@@ -58,7 +56,21 @@ class PaperIndexer:
             logger.error("Failed to index papers for hybrid search: %s", e)
             raise
 
-    async def _index_papers_with_chunks(self, papers: list[Any], ingestion_name: str) -> dict[str, Any]:
+    @staticmethod
+    def _get_papers(arxiv_ids: Sequence[str] | None, persist_results: PersistResults | None, session: Session) -> list[Paper]:
+        if arxiv_ids:
+            papers = session.query(Paper).filter(Paper.arxiv_id.in_(list(arxiv_ids))).all()
+        elif persist_results and persist_results.papers_stored > 0:
+            from sqlalchemy import desc
+
+            papers = session.query(Paper).order_by(desc(Paper.created_at)).limit(persist_results.papers_stored).all()
+        else:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=1)
+            papers = session.query(Paper).filter(Paper.created_at >= cutoff_date).all()
+        return papers
+
+    @staticmethod
+    async def _index_papers_with_chunks(papers: list[Any], ingestion_name: str) -> dict[str, Any]:
         """Index papers with chunking and embeddings."""
         indexing_service = make_hybrid_indexing_service()
 
