@@ -24,7 +24,7 @@ class PaperIndexer:
         self,
         persist_results: PersistResults | None = None,
         *,
-        ingestion_name: str = "production",
+        ingestion_name: str = "dev",
         arxiv_ids: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Index papers with chunking and vector embeddings for hybrid search.

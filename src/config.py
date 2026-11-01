@@ -102,7 +102,7 @@ class OpenSearchSettings(BaseConfigSettings):
     index_name: str = "arxiv-papers"
     chunk_index_suffix: str = "chunks"  # Creates single hybrid index: {index_name}-{suffix}
     # Partition label stamped on indexed chunks; all searches filter by this value.
-    ingestion_name: str = "production"
+    ingestion_name: str = "dev"
     max_text_size: int = 1000000
 
     # Vector search settings

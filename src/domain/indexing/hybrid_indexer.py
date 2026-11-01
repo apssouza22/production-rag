@@ -44,9 +44,10 @@ class HybridIndexingService:
             contextualizer is not None,
         )
 
-    async def index_paper(self, paper_data: Dict, ingestion_name: str) -> Dict[str, int]:
+    async def _index_paper(self, paper_data: Dict, ingestion_name: str) -> Dict[str, int]:
         """Index a single paper with chunking and embeddings.
 
+        :param ingestion_name:
         :param paper_data: Paper data from database
         :returns: Dictionary with indexing statistics
         """
@@ -147,7 +148,7 @@ class HybridIndexingService:
         self,
         papers: List[Dict],
         replace_existing: bool = False,
-        ingestion_name: str = "production",
+        ingestion_name: str = "dev",
     ) -> Dict[str, int]:
         """Index multiple papers in batch.
 
@@ -172,7 +173,7 @@ class HybridIndexingService:
                 self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
 
             # Index the paper
-            stats = await self.index_paper(paper, ingestion_name=ingestion_name)
+            stats = await self._index_paper(paper, ingestion_name=ingestion_name)
 
             # Update totals
             total_stats["papers_processed"] += 1
@@ -188,9 +189,10 @@ class HybridIndexingService:
 
         return total_stats
 
-    async def reindex_paper(self, arxiv_id: str, paper_data: Dict, ingestion_name: str = "production") -> Dict[str, int]:
+    async def _reindex_paper(self, arxiv_id: str, paper_data: Dict, ingestion_name: str = "dev") -> Dict[str, int]:
         """Reindex a paper by deleting old chunks and creating new ones.
 
+        :param ingestion_name:
         :param arxiv_id: ArXiv ID of the paper
         :param paper_data: Updated paper data
         :returns: Indexing statistics
@@ -201,4 +203,4 @@ class HybridIndexingService:
             logger.info(f"Deleted existing chunks for paper {arxiv_id}")
 
         # Index with new data
-        return await self.index_paper(paper_data, ingestion_name=ingestion_name)
+        return await self._index_paper(paper_data, ingestion_name=ingestion_name)
