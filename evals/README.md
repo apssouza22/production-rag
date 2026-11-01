@@ -187,6 +187,26 @@ Everything is scoped to a dedicated ingestion partition (default `evals-experime
 
 ### Configuration
 
+Settings load from [`evals/experiments/data/settings/experiment-config.json`](../evals/experiments/data/settings/experiment-config.json) by default. The file has four sections:
+
+| Section | Purpose |
+|---------|---------|
+| `pdf_parser` | Docling PDF parser limits (`max_pages`, `do_ocr`, …) — applied as `PDF_PARSER__*` env vars before ingestion |
+| `chunking` | Chunk size, overlap, contextualization — applied as `CHUNKING__*` before indexing |
+| `query` | Retrieval knobs for `rerank_search_service` (`use_hybrid`, `rerank_enabled`, `rerank_model`, `rerank_candidate_multiplier`) |
+| `experiment` | Judge model, ingestion partition, PDF directory, query cache paths, question counts, `experiment_top_k` |
+
+Merge order for the `experiment` section: defaults → JSON → environment variables. API keys (`OPENAI_API_KEY`, `EVALUATION_API_KEY`) stay in the root `.env`, not in the JSON file.
+
+Pass a different file with `--settings` (path relative to the repo root unless absolute):
+
+```bash
+uv run python -m evals.experiments.main --settings evals/experiments/data/settings/my-variant.json
+make experiment-eval EXPERIMENT_SETTINGS=evals/experiments/data/settings/my-variant.json
+```
+
+Environment variables still override individual fields when set:
+
 | Variable | Description |
 |----------|-------------|
 | `EXPERIMENT_INGESTION_NAME` | OpenSearch partition for the experiment (default: `evals-experiments`) |

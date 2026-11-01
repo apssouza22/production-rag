@@ -20,7 +20,7 @@ from evals.core.reporting import (
     write_report,
 )
 from evals.core.runner import EvalRunner
-from evals.experiments.config import ExperimentSettings, get_settings
+from evals.experiments.config import ExperimentRunConfig, get_settings
 from evals.experiments.dataset import ExperimentDataset
 from evals.experiments.ingestion import ensure_ingested
 from evals.experiments.question_gen import QuestionGenerator
@@ -36,13 +36,14 @@ class ExperimentRunner(EvalRunner):
 
     def __init__(
         self,
-        settings: ExperimentSettings | None = None,
+        run_config: ExperimentRunConfig | None = None,
         metrics: list[Metric] | None = None,
         *,
         force_ingest: bool = False,
         regenerate_queries: bool = False,
     ) -> None:
-        self.settings = settings or get_settings()
+        self.run_config = run_config or get_settings()
+        self.settings = self.run_config.experiment
         self.force_ingest = force_ingest
         self.regenerate_queries = regenerate_queries
 
@@ -56,6 +57,7 @@ class ExperimentRunner(EvalRunner):
             opensearch_client=self.opensearch_client,
             embeddings_client=make_embeddings_service(),
             reranker_client=make_reranker_client(),
+            config=self.run_config.query.to_rerank_config(),
         )
         self.question_generator = QuestionGenerator(
             opensearch_client=self.opensearch_client,
@@ -87,6 +89,7 @@ class ExperimentRunner(EvalRunner):
         if not response.items:
             raise RuntimeError("No evaluation samples were built. Check that the experiment partition is indexed.")
 
+        query_settings = self.run_config.query.model_dump(mode="json")
         self.report = build_report(
             response=response,
             run_type="experiment_evaluation",
@@ -94,10 +97,12 @@ class ExperimentRunner(EvalRunner):
             dataset_source=get_dataset_source_name(dataset),
             dataset_location=get_dataset_location(dataset),
             metadata={
+                "settings_path": str(self.run_config.config_path),
                 "ingestion": {key: ingestion[key] for key in ("skipped", "chunk_count", "ingestion_name")},
                 "retrieval": {
                     "top_k": self.settings.experiment_top_k,
                     "ingestion_name": self.settings.experiment_ingestion_name,
+                    **query_settings,
                 },
             },
         )

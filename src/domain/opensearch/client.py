@@ -157,8 +157,13 @@ class OpenSearchClient:
             return query
         return {"bool": {"must": [query], "filter": filters}}
 
-    def search_papers(
-        self, query: str, size: int = 10, from_: int = 0, categories: Optional[List[str]] = None, latest: bool = True
+    def keyword_search(
+        self,
+        query: str,
+        size: int = 10,
+        from_: int = 0,
+        categories: Optional[List[str]] = None,
+        latest: bool = True
     ) -> Dict[str, Any]:
         """BM25 search for papers."""
         return self._search_bm25_only(
@@ -170,7 +175,7 @@ class OpenSearchClient:
             latest=latest,
         )
 
-    def search_chunks_vector(
+    def vector_search(
         self,
         query_embedding: List[float],
         size: int = 10,
@@ -179,6 +184,7 @@ class OpenSearchClient:
     ) -> Dict[str, Any]:
         """Pure vector search on chunks.
 
+        :param ingestion_name:
         :param query_embedding: Query embedding vector
         :param size: Number of results
         :param categories: Optional category filter
@@ -226,6 +232,7 @@ class OpenSearchClient:
     ) -> Dict[str, Any]:
         """Unified search method supporting BM25, vector, and hybrid modes.
 
+        :param ingestion_name:
         :param query: Text query for search
         :param query_embedding: Optional embedding for vector/hybrid search
         :param size: Number of results to return
@@ -365,25 +372,6 @@ class OpenSearchClient:
         results["total"] = len(results["hits"])
         logger.info(f"Native hybrid search for '{query[:50]}...' returned {results['total']} results")
         return results
-
-    def search_chunks_hybrid(
-        self,
-        query: str,
-        query_embedding: List[float],
-        size: int = 10,
-        categories: Optional[List[str]] = None,
-        ingestion_name: Optional[str] = None,
-        min_score: float = 0.0,
-    ) -> Dict[str, Any]:
-        """Hybrid search combining BM25 and vector similarity using native RRF."""
-        return self._search_hybrid_native(
-            query=query,
-            query_embedding=query_embedding,
-            size=size,
-            categories=categories,
-            ingestion_name=ingestion_name,
-            min_score=min_score,
-        )
 
     def index_chunk(self, chunk_data: Dict[str, Any], embedding: List[float]) -> bool:
         """Index a single chunk with its embedding.

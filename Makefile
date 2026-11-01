@@ -69,10 +69,10 @@ rag-eval-experiment-no-report: ## Run Langfuse experiment without local JSON rep
 	uv run python -m evals.rag_evals.main --langfuse-experiment --quick --no-report
 
 experiment-eval: ## Ingest evals/experiments/arxiv_pdfs (if needed) and run the Ragas experiment
-	uv run python -m evals.experiments.main
+	uv run python -m evals.experiments.main $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
 
 experiment-eval-fresh: ## Same, but force re-ingestion and regenerate the question dataset
-	uv run python -m evals.experiments.main --force-ingest --regenerate-queries
+	uv run python -m evals.experiments.main --force-ingest --regenerate-queries $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
 
 # Cleanup
 clean: ## Clean up everything

@@ -10,7 +10,13 @@ import sys
 import colorama
 from colorama import Fore, Style
 
-from evals.experiments.config import get_settings
+from evals.experiments.config import (
+    DEFAULT_EXPERIMENT_CONFIG_PATH,
+    REPO_ROOT,
+    ExperimentRunConfig,
+    build_run_config,
+    resolve_settings_path,
+)
 from evals.experiments.runner import ExperimentRunner
 
 
@@ -56,16 +62,17 @@ def display_summary(report: dict) -> None:
         print(f"\n{Fore.CYAN}Report:{Style.RESET_ALL} {report['report_path']}")
 
 
-async def run_experiment(args: argparse.Namespace) -> None:
-    settings = get_settings()
+async def run_experiment(args: argparse.Namespace, run_config: ExperimentRunConfig) -> None:
+    settings = run_config.experiment
     print_title("Starting Local-PDF Retrieval Experiment")
+    print_info(f"Settings: {run_config.config_path}")
     print_info(f"PDFs: {settings.experiment_pdfs_dir}")
     print_info(f"Ingestion partition: {settings.experiment_ingestion_name}")
     print_info(f"Judge model: {settings.evaluation_llm}")
 
     try:
         runner = ExperimentRunner(
-            settings=settings,
+            run_config=run_config,
             force_ingest=args.force_ingest,
             regenerate_queries=args.regenerate_queries,
         )
@@ -82,7 +89,14 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     colorama.init()
 
+    default_settings = str(DEFAULT_EXPERIMENT_CONFIG_PATH.relative_to(REPO_ROOT))
+
     parser = argparse.ArgumentParser(description="Ingest local arXiv PDFs and evaluate retrieval with Ragas")
+    parser.add_argument(
+        "--settings",
+        default=default_settings,
+        help="Path to experiment JSON settings (default: evals/experiments/data/settings/experiment-config.json)",
+    )
     parser.add_argument("--ingestion-name", help="Override EXPERIMENT_INGESTION_NAME for this run")
     parser.add_argument("--force-ingest", action="store_true", help="Re-run ingestion even if the partition has chunks")
     parser.add_argument("--regenerate-queries", action="store_true", help="Regenerate the cached question dataset")
@@ -92,11 +106,13 @@ def main() -> None:
     if args.ingestion_name:
         os.environ["EXPERIMENT_INGESTION_NAME"] = args.ingestion_name
 
+    run_config = build_run_config(resolve_settings_path(args.settings))
+
     # OpenSearch filters every search by the configured partition, so indexing and
     # retrieval must agree on the same ingestion name.
-    os.environ["OPENSEARCH__INGESTION_NAME"] = get_settings().experiment_ingestion_name
+    os.environ["OPENSEARCH__INGESTION_NAME"] = run_config.experiment.experiment_ingestion_name
 
-    asyncio.run(run_experiment(args))
+    asyncio.run(run_experiment(args, run_config))
 
 
 if __name__ == "__main__":
