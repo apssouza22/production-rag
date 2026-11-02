@@ -1,12 +1,11 @@
-import asyncio
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
-
+from .content_extractor import ContentExtractor
 from .docling import DoclingParser
-from .models import PdfContent
+from .models import ArxivMetadata
+from .pdf_to_markdown_pipeline import PdfToMarkdownPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -14,36 +13,45 @@ logger = logging.getLogger(__name__)
 class PDFParserService:
     """Main PDF parsing service using Docling only."""
 
-    def __init__(self, max_pages: int, max_file_size_mb: int, do_ocr: bool = False, do_table_structure: bool = True):
+    def __init__(
+        self,
+        max_pages: int,
+        max_file_size_mb: int,
+        do_ocr: bool = False,
+        do_table_structure: bool = False,
+        do_figure_extraction: bool = False,
+        heading_hierarchy_enabled: bool = True,
+    ):
         """Initialize PDF parser service with configurable limits."""
+        self.do_table_structure = do_table_structure
+        self.do_figure_extraction = do_figure_extraction
         self.docling_parser = DoclingParser(
-            max_pages=max_pages, max_file_size_mb=max_file_size_mb, do_ocr=do_ocr, do_table_structure=do_table_structure
+            max_pages=max_pages,
+            max_file_size_mb=max_file_size_mb,
+            do_ocr=do_ocr,
+            do_table_structure=do_table_structure,
+            do_figure_extraction=do_figure_extraction,
+            heading_hierarchy_enabled=heading_hierarchy_enabled,
+        )
+        self.content_extractor = ContentExtractor(
+            do_table_structure=do_table_structure,
+            do_figure_extraction=do_figure_extraction,
         )
 
-    async def parse_pdf(self, pdf_path: Path, artifacts_dir: Optional[Path] = None) -> Optional[PdfContent]:
-        """Parse PDF using Docling parser only.
-
-        :param pdf_path: Path to PDF file
-        :returns: PdfContent object or None if parsing failed
-        """
-        if not pdf_path.exists():
-            logger.error(f"PDF file not found: {pdf_path}")
-            raise PDFValidationError(f"PDF file not found: {pdf_path}")
-
-        try:
-            if artifacts_dir is None:
-                result = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path)
-            else:
-                result = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path, artifacts_dir)
-            if result:
-                logger.info(f"Parsed {pdf_path.name}")
-                return result
-
-            logger.warning(f"Docling parsing returned no result for {pdf_path.name} (skipped or empty)")
-            return None
-
-        except (PDFValidationError, PDFParsingException):
-            raise
-        except Exception as e:
-            logger.error(f"Docling parsing error for {pdf_path.name}: {e}")
-            raise PDFParsingException(f"Docling parsing error for {pdf_path.name}: {e}")
+    async def parse_pdfs_to_markdown(
+        self,
+        papers: list[ArxivMetadata],
+        pdf_paths_by_id: dict[str, str],
+        output_dir: Path,
+        max_concurrent_parsing: int = 1,
+        date: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Parse downloaded PDFs and write shared Markdown and JSON artifacts."""
+        pipeline = PdfToMarkdownPipeline(
+            docling_parser=self.docling_parser,
+            content_extractor=self.content_extractor,
+            output_dir=output_dir,
+            max_concurrent_parsing=max_concurrent_parsing,
+            extract_parsing_artifacts=self.do_figure_extraction or self.do_table_structure,
+        )
+        return await pipeline.run(papers, pdf_paths_by_id, date=date)

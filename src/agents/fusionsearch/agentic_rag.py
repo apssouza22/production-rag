@@ -134,9 +134,7 @@ class AgenticRAGService:
 
     async def _core_invoke(self, ctx: AgentContext) -> list:
         """Run the LangGraph workflow; graph result is stored on ctx.metadata."""
-        query = ctx.metadata["query"]
         model_to_use = ctx.config["model"]
-        user_id = ctx.metadata["user_id"]
         trace = ctx.metadata.get("trace")
 
         state_input = {

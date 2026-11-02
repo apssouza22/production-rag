@@ -7,7 +7,7 @@ from src.domain.db.factory import make_database
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
 
-from .service import make_metadata_fetcher
+from .service import make_arxiv_ingestion_service
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def get_cached_services() -> Tuple[Any, Any, Any, Any, Any]:
     """Get cached service instances using lru_cache for automatic memoization.
 
-    :returns: Tuple of (arxiv_client, pdf_parser, database, metadata_fetcher, opensearch_client)
+    :returns: Tuple of (arxiv_client, pdf_parser, database, ingestion_service, opensearch_client)
     """
     logger.info("Initializing services (cached with lru_cache)")
 
@@ -26,8 +26,7 @@ def get_cached_services() -> Tuple[Any, Any, Any, Any, Any]:
     database = make_database()
     opensearch_client = make_opensearch_client()
 
-    # Create metadata fetcher with dependencies
-    metadata_fetcher = make_metadata_fetcher(arxiv_client, pdf_parser)
+    ingestion_service = make_arxiv_ingestion_service(arxiv_client, pdf_parser, database)
 
     logger.info("All services initialized and cached with lru_cache")
-    return arxiv_client, pdf_parser, database, metadata_fetcher, opensearch_client
+    return arxiv_client, pdf_parser, database, ingestion_service, opensearch_client

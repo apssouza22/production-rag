@@ -3,11 +3,8 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from src.domain.arxiv_ingestion.artifacts import (
-    artifact_stem,
-    load_parsed_paper_artifact,
-    write_parsed_paper_artifacts,
-)
+from src.domain.pdf_parser.artifacts import artifact_stem, load_parsed_paper_artifact
+from src.domain.pdf_parser.markdown_writer import MarkdownWriter
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
 
 
@@ -32,7 +29,10 @@ def parsed_paper() -> ParsedPaper:
 
 
 def test_write_and_load_parsed_paper_artifacts(tmp_path, parsed_paper) -> None:
-    artifact = write_parsed_paper_artifacts(tmp_path, parsed_paper)
+    artifact = MarkdownWriter(tmp_path).write_paper(
+        parsed_paper.arxiv_metadata.arxiv_id,
+        parsed_paper,
+    )
 
     assert artifact_stem("hep-th/9901001v1") in artifact["markdown_path"]
     assert "/" not in artifact_stem("hep-th/9901001v1")

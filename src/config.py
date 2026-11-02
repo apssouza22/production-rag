@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -64,7 +64,9 @@ class PDFParserSettings(BaseConfigSettings):
     max_pages: int = 30
     max_file_size_mb: int = 20
     do_ocr: bool = False
-    do_table_structure: bool = True
+    do_table_structure: bool = False
+    do_figure_extraction: bool = False
+    heading_hierarchy_enabled: bool = True
 
 
 class ChunkingSettings(BaseConfigSettings):
@@ -100,6 +102,8 @@ class OpenSearchSettings(BaseConfigSettings):
     host: str = "http://localhost:9200"
     index_name: str = "arxiv-papers"
     chunk_index_suffix: str = "chunks"  # Creates single hybrid index: {index_name}-{suffix}
+    # Partition label stamped on indexed chunks; all searches filter by this value.
+    ingestion_name: str = "dev"
     max_text_size: int = 1000000
 
     # Vector search settings

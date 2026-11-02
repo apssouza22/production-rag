@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, List, Optional
+from typing import Any, List
 
 from langchain_core.messages import HumanMessage, ToolMessage
 

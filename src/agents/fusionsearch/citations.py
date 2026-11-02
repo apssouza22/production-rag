@@ -36,7 +36,6 @@ def validate_citations(answer: str, sources: list[SourceItem]) -> CitationValida
     """Verify that citations in the answer map to retrieved sources."""
     title_citations = extract_source_title_citations(answer)
     arxiv_citations = extract_arxiv_citations(answer)
-    cited_titles = {citation.lower() for citation in title_citations}
     source_titles = {source.title.lower().strip() for source in sources if source.title}
     source_arxiv_ids = {source.arxiv_id for source in sources if source.arxiv_id}
 

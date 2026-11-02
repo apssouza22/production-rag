@@ -1,148 +1,52 @@
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.document import ConversionResult
+from docling.datamodel.pipeline_options import HeadingHierarchyOptions, PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.types import DoclingDocument
-from docling_core.types.doc import DocItemLabel, PictureItem, TableItem
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
-from .artefact_extractor import ArtefactExtractor
-from .models import PaperFigure, PaperSection, PaperTable, ParserType, PdfContent
-
 logger = logging.getLogger(__name__)
-
-_HEADER_LABELS = {DocItemLabel.TITLE, DocItemLabel.SECTION_HEADER}
-_CONTENT_LABELS = {
-    DocItemLabel.TEXT,
-    DocItemLabel.PARAGRAPH,
-    DocItemLabel.LIST_ITEM,
-    DocItemLabel.CAPTION,
-    DocItemLabel.CODE,
-    DocItemLabel.FORMULA,
-}
-
-
-def assemble_markdown_from_sections(sections: list[PaperSection]) -> str:
-    """Build a Markdown document from extracted sections, preserving inline figures and tables."""
-    parts: list[str] = []
-    for section in sections:
-        if section.title == "Content" and section.breadcrumb is None:
-            if section.content.strip():
-                parts.append(section.content.strip())
-            continue
-
-        heading_level = min(max(section.level, 1), 6)
-        parts.append(f"{'#' * heading_level} {section.title}")
-        if section.content.strip():
-            parts.append(section.content.strip())
-
-    if not parts:
-        return ""
-    return "\n\n".join(parts).rstrip() + "\n"
-
-
-def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
-    """Extract hierarchical sections with breadcrumbs from a Docling document.
-
-    Walks the document tree via ``iterate_items`` and maintains a header stack so
-    nested sections retain their full path (e.g. ``Methods > Training``).
-    """
-    sections, _, _ = _extract_sections_and_artifacts(doc)
-    return sections
-
-
-def _extract_sections_and_artifacts(
-    doc: DoclingDocument,
-    artifacts_dir: Optional[Path] = None,
-) -> tuple[list[PaperSection], list[PaperFigure], list[PaperTable]]:
-    sections: list[PaperSection] = []
-    assets_link_prefix = artifacts_dir.name if artifacts_dir is not None else None
-    artefact_extractor = ArtefactExtractor(artifacts_dir, assets_link_prefix=assets_link_prefix)
-    header_stack: list[tuple[int, str]] = []
-    current: Optional[dict[str, Any]] = {
-        "title": "Content",
-        "content": "",
-        "level": 1,
-        "breadcrumb": None,
-        "figure_paths": [],
-        "table_paths": [],
-    }
-
-    items = list(doc.iterate_items())
-    items_by_ref = {getattr(item, "self_ref", ""): item for item, _ in items}
-
-    def flush_current() -> None:
-        nonlocal current
-        if current and (current["content"].strip() or current["figure_paths"] or current["table_paths"]):
-            sections.append(
-                PaperSection(
-                    title=current["title"],
-                    content=current["content"].strip(),
-                    level=current["level"],
-                    breadcrumb=current.get("breadcrumb"),
-                    figure_paths=current["figure_paths"],
-                    table_paths=current["table_paths"],
-                )
-            )
-
-    for item, depth in items:
-        label = getattr(item, "label", None)
-        text = getattr(item, "text", "").strip()
-
-        if label in _HEADER_LABELS:
-            flush_current()
-
-            if label == DocItemLabel.TITLE:
-                # Keep the document title as the breadcrumb root across same-level section headers.
-                level = 0
-            else:
-                level = getattr(item, "level", None) or max(depth, 1)
-
-            while header_stack and header_stack[-1][0] >= level:
-                header_stack.pop()
-            header_stack.append((level, text))
-
-            breadcrumb = " > ".join(title for _, title in header_stack)
-            current = {
-                "title": text,
-                "content": "",
-                "level": level,
-                "breadcrumb": breadcrumb,
-                "figure_paths": [],
-                "table_paths": [],
-            }
-        elif isinstance(item, PictureItem):
-            artefact_extractor.save_figure(item, doc, current, items_by_ref)
-        elif isinstance(item, TableItem):
-            artefact_extractor.save_table(item, doc, current, items_by_ref)
-        elif current is not None and label in _CONTENT_LABELS:
-            if text:
-                current["content"] += text + "\n"
-
-    flush_current()
-    return sections, artefact_extractor.figures, artefact_extractor.tables
 
 
 class DoclingParser:
     """Docling PDF parser for scientific document processing."""
 
-    def __init__(self, max_pages: int, max_file_size_mb: int, do_ocr: bool = False, do_table_structure: bool = True):
+    def __init__(
+        self,
+        max_pages: int,
+        max_file_size_mb: int,
+        do_ocr: bool = False,
+        do_table_structure: bool = False,
+        do_figure_extraction: bool = False,
+        heading_hierarchy_enabled: bool = True,
+    ):
         """Initialize DocumentConverter with optimized pipeline options.
 
         :param max_pages: Maximum number of pages to process
         :param max_file_size_mb: Maximum file size in MB
         :param do_ocr: Enable OCR for scanned PDFs (default: False, very slow)
-        :param do_table_structure: Extract table structures (default: True)
+        :param do_table_structure: Extract table structures (default: False)
+        :param do_figure_extraction: Extract figure images and embed in Markdown (default: False)
+        :param heading_hierarchy_enabled: Infer section-header levels from bookmarks, numbering, and style
         """
+        self.do_table_structure = do_table_structure
+        self.do_figure_extraction = do_figure_extraction
         # Configure pipeline options
         pipeline_options = PdfPipelineOptions(
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
-            generate_picture_images=True,
+            generate_picture_images=do_figure_extraction,
+        )
+        pipeline_options.heading_hierarchy_options = HeadingHierarchyOptions(
+            enabled=heading_hierarchy_enabled,
+            max_level=6,
+            use_bookmarks= heading_hierarchy_enabled,
+            use_numbering=heading_hierarchy_enabled,
+            use_style=heading_hierarchy_enabled,
         )
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
@@ -204,13 +108,11 @@ class DoclingParser:
             logger.error(f"Error validating PDF {pdf_path}: {e}")
             raise PDFValidationError(f"Error validating PDF {pdf_path}: {e}")
 
-    def parse_pdf(self, pdf_path: Path, artifacts_dir: Optional[Path] = None) -> Optional[PdfContent]:
-        """Parse PDF using Docling parser.
-        Limited to 20 pages to avoid memory issues with large papers.
+    def parse_pdf(self, pdf_path: Path) -> Optional[ConversionResult]:
+        """Convert PDF to a Docling document via DocumentConverter.
 
         :param pdf_path: Path to PDF file
-        :param artifacts_dir: Directory for extracted figure images and table Markdown; defaults beside the PDF
-        :returns: PdfContent object or None if parsing failed
+        :returns: ConversionResult or None when skipped due to size/page limits
         """
         try:
             # Validate PDF first (includes size and page limits)
@@ -220,26 +122,7 @@ class DoclingParser:
             self._warm_up_models()
 
             # Limit processing to avoid memory issues with large papers
-            result = self._converter.convert(str(pdf_path), max_num_pages=self.max_pages, max_file_size=self.max_file_size_bytes)
-
-            # Extract structured content
-            doc = result.document
-            if artifacts_dir is None:
-                artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
-            sections, figures, tables = _extract_sections_and_artifacts(doc, artifacts_dir)
-            markdown = assemble_markdown_from_sections(sections)
-
-            # Focus on what arXiv API doesn't provide: structured full text content only
-            return PdfContent(
-                sections=sections,
-                figures=figures,
-                tables=tables,
-                raw_text=doc.export_to_text(),
-                markdown=markdown or doc.export_to_markdown(),
-                references=[],
-                parser_used=ParserType.DOCLING,
-                metadata={"source": "docling", "note": "Content extracted from PDF, metadata comes from arXiv API"},
-            )
+            return self._converter.convert(str(pdf_path), max_num_pages=self.max_pages, max_file_size=self.max_file_size_bytes)
 
         except PDFValidationError as e:
             # Handle size/page limit validation errors gracefully by returning None

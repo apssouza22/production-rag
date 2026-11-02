@@ -10,8 +10,6 @@ from .schemas import RerankSearchResult, SearchDocument
 
 logger = logging.getLogger(__name__)
 
-RERANK_CANDIDATE_MULTIPLIER = 2
-
 
 def _hit_to_document(hit: dict, rank: int) -> SearchDocument:
     return SearchDocument(
@@ -61,7 +59,7 @@ class RerankSearchService:
 
         search_size = top_k
         if should_rerank:
-            search_size = top_k * RERANK_CANDIDATE_MULTIPLIER
+            search_size = top_k * self.config.rerank_candidate_multiplier
 
         logger.info("Searching OpenSearch for query: %s...", query[:100])
         logger.debug(

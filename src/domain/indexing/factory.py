@@ -4,6 +4,7 @@ from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
 from src.domain.opensearch.factory import make_opensearch_client_fresh
 from src.platform.llm.chat_model import make_chat_model
+
 from .chunk_contextualizer import ChunkContextualizer
 from .hybrid_indexer import HybridIndexingService
 from .text_chunker import TextChunker

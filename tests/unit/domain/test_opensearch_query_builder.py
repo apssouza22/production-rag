@@ -21,6 +21,15 @@ def test_query_builder_basic_query():
     assert "authors^1" in multi_match["fields"]
 
 
+def test_query_builder_with_ingestion_name():
+    builder = QueryBuilder(query="rag eval", ingestion_name="evals-local-pdfs")
+
+    query = builder.build()
+
+    filters = query["query"]["bool"]["filter"]
+    assert {"term": {"ingestion_name": "evals-local-pdfs"}} in filters
+
+
 def test_query_builder_with_categories():
     builder = QueryBuilder(query="deep learning", categories=["cs.AI", "cs.LG"])
 

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from src.domain.jinaai.jina import JinaRerankResult
 from src.domain.rerank.config import RerankSearchConfig
-from src.domain.rerank.service import RERANK_CANDIDATE_MULTIPLIER, RerankSearchService
+from src.domain.rerank.service import RerankSearchService
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ async def test_search_with_rerank_returns_reordered_after_list(
     result = await service.search(query="test query", top_k=2)
 
     mock_opensearch_client.search_unified.assert_called_once()
-    assert mock_opensearch_client.search_unified.call_args.kwargs["size"] == 2 * RERANK_CANDIDATE_MULTIPLIER
+    assert mock_opensearch_client.search_unified.call_args.kwargs["size"] == 2 * 2
     mock_jina_reranker_client.rerank.assert_called_once()
 
     assert result.rerank_applied is True

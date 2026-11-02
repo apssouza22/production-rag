@@ -169,7 +169,7 @@ simple_auth_manager_passwords.json.generated
 opensearch_data/
 
 # Data directories
-data/
+/data/
 
 # Test files and output
 test_output/

@@ -1,15 +1,10 @@
-import asyncio
 import time
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from src.domain.arxiv.client import ArxivClient
 from src.domain.arxiv.paper import ArxivPaper
-from src.domain.arxiv_ingestion import MetadataFetcher, make_metadata_fetcher
-from src.domain.arxiv_ingestion.artifacts import artifact_stem
-from src.domain.arxiv_ingestion.exceptions import MetadataFetchingException, PipelineException
-from src.domain.pdf_parser.models import ParserType, PdfContent
+from src.domain.arxiv_ingestion import PaperFetcher
 from src.domain.pdf_parser.parser import PDFParserService
 
 
@@ -31,7 +26,7 @@ class TestMetadataFetcher:
     @pytest.fixture
     def metadata_fetcher(self, mock_arxiv_client, mock_pdf_parser, tmp_path):
         """Create MetadataFetcher instance for testing."""
-        return MetadataFetcher(
+        return PaperFetcher(
             arxiv_client=mock_arxiv_client,
             pdf_parser=mock_pdf_parser,
             pdf_cache_dir=tmp_path,
@@ -63,13 +58,6 @@ class TestMetadataFetcher:
             ),
         ]
 
-    @pytest.fixture
-    def sample_pdf_content(self):
-        """Create sample PdfContent."""
-        return PdfContent(
-            raw_text="Sample PDF content", sections=[], tables=[], figures=[], parser_used=ParserType.DOCLING, metadata={}
-        )
-
     def test_metadata_fetcher_initialization(self, metadata_fetcher, tmp_path):
         """Test MetadataFetcher initialization."""
         assert metadata_fetcher.pdf_cache_dir == tmp_path
@@ -83,25 +71,22 @@ class TestMetadataFetcher:
     @pytest.mark.asyncio
     async def test_empty_papers_list(self, metadata_fetcher):
         """Test handling of empty papers list."""
-        result = await metadata_fetcher.fetch_and_process_papers(max_results=0, process_pdfs=False, store_to_db=False)
+        metadata_fetcher.arxiv_client.fetch_papers = AsyncMock(return_value=[])
+        result = await metadata_fetcher.fetch_and_download_papers(max_results=0)
 
-        assert result["papers_fetched"] == 0
-        assert result["pdfs_downloaded"] == 0
-        assert result["pdfs_parsed"] == 0
-        assert len(result["errors"]) == 0
+        assert result.papers_fetched == 0
+        assert result.pdfs_downloaded == 0
+        assert len(result.errors) == 0
 
     @pytest.mark.asyncio
     async def test_rate_limiting_respected(self, metadata_fetcher):
         """Test that rate limiting delays are respected."""
-        # This is a basic test to ensure the rate limiting logic exists
-        # More comprehensive testing would require timing analysis
         metadata_fetcher.arxiv_client.fetch_papers = AsyncMock(return_value=[])
 
         start_time = time.time()
-        await metadata_fetcher.fetch_and_process_papers(max_results=1)
+        await metadata_fetcher.fetch_and_download_papers(max_results=1)
         end_time = time.time()
 
-        # Should complete quickly for empty result
         assert end_time - start_time < 1.0
 
     @pytest.mark.asyncio
@@ -112,59 +97,8 @@ class TestMetadataFetcher:
 
         result = await metadata_fetcher.fetch_and_download_papers(max_results=2)
 
-        assert result["papers_fetched"] == 2
-        assert result["pdfs_downloaded"] == 1
-        assert len(result["papers"]) == 2
-        assert result["papers"][0]["arxiv_id"] == "2024.0001v1"
-        assert len(result["downloaded_paths"]) == 1
-
-    @pytest.mark.asyncio
-    async def test_parse_papers_writes_parser_assets_to_artifact_directory(
-        self,
-        metadata_fetcher,
-        sample_arxiv_papers,
-        sample_pdf_content,
-        tmp_path,
-    ):
-        """Test parse-only pipeline step and its shared artifact directory."""
-        paper = sample_arxiv_papers[0]
-        pdf_path = tmp_path / f"{paper.arxiv_id}.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-        artifacts_dir = tmp_path / "arxiv_md"
-        metadata_fetcher.pdf_parser.parse_pdf = AsyncMock(return_value=sample_pdf_content)
-
-        result = await metadata_fetcher.parse_papers(
-            papers=[paper],
-            downloaded_paths={paper.arxiv_id: str(pdf_path)},
-            artifacts_dir=artifacts_dir,
-        )
-
-        assert result["parsed"] == 1
-        assert result["parsed_papers"][paper.arxiv_id].pdf_content == sample_pdf_content
-        metadata_fetcher.pdf_parser.parse_pdf.assert_awaited_once_with(
-            pdf_path,
-            artifacts_dir=artifacts_dir / f"{artifact_stem(paper.arxiv_id)}_assets",
-        )
-
-    @pytest.mark.asyncio
-    async def test_parse_and_store_papers(self, metadata_fetcher, sample_arxiv_papers, sample_pdf_content, tmp_path):
-        """Test parse-and-store pipeline step."""
-        pdf_path = tmp_path / "2024.0001v1.pdf"
-        pdf_path.write_bytes(b"%PDF-1.4")
-
-        metadata_fetcher.pdf_parser.parse_pdf = AsyncMock(return_value=sample_pdf_content)
-        mock_session = MagicMock()
-        mock_repo = MagicMock()
-        mock_repo.upsert.return_value = MagicMock()
-
-        with patch("src.domain.arxiv_ingestion.service.PaperRepository", return_value=mock_repo):
-            result = await metadata_fetcher.parse_and_store_papers(
-                papers=sample_arxiv_papers[:1],
-                downloaded_paths={sample_arxiv_papers[0].arxiv_id: str(pdf_path)},
-                db_session=mock_session,
-            )
-
-        assert result["pdfs_parsed"] == 1
-        assert result["papers_stored"] == 1
-        mock_repo.upsert.assert_called_once()
-        mock_session.commit.assert_called_once()
+        assert result.papers_fetched == 2
+        assert result.pdfs_downloaded == 1
+        assert len(result.papers) == 2
+        assert result.papers[0].arxiv_id == "2024.0001v1"
+        assert len(result.downloaded_paths) == 1

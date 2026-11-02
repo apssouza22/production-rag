@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from opensearchpy import OpenSearch
 
 from src.config import Settings
+
 from .index_config_hybrid import ARXIV_PAPERS_CHUNKS_MAPPING, HYBRID_RRF_PIPELINE
 from .query_builder import QueryBuilder
 
@@ -19,6 +20,7 @@ class OpenSearchClient:
         self.host = host
         self.settings = settings
         self.index_name = f"{settings.opensearch.index_name}-{settings.opensearch.chunk_index_suffix}"
+        self.ingestion_name = settings.opensearch.ingestion_name
 
         self.client = OpenSearch(
             hosts=[host],
@@ -131,27 +133,65 @@ class OpenSearchClient:
             logger.error(f"Error creating RRF pipeline: {e}")
             raise
 
-    def search_papers(
-        self, query: str, size: int = 10, from_: int = 0, categories: Optional[List[str]] = None, latest: bool = True
+    def _resolve_ingestion_name(self, ingestion_name: Optional[str] = None) -> Optional[str]:
+        """Return the ingestion partition to filter on, if any."""
+        if ingestion_name is not None:
+            return ingestion_name or None
+        return self.ingestion_name or None
+
+    def _build_search_filters(
+        self,
+        categories: Optional[List[str]] = None,
+        ingestion_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        filters: List[Dict[str, Any]] = []
+        resolved_ingestion = self._resolve_ingestion_name(ingestion_name)
+        if resolved_ingestion:
+            filters.append({"term": {"ingestion_name": resolved_ingestion}})
+        if categories:
+            filters.append({"terms": {"categories": categories}})
+        return filters
+
+    def _wrap_query_with_filters(self, query: Dict[str, Any], filters: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not filters:
+            return query
+        return {"bool": {"must": [query], "filter": filters}}
+
+    def keyword_search(
+        self,
+        query: str,
+        size: int = 10,
+        from_: int = 0,
+        categories: Optional[List[str]] = None,
+        latest: bool = True
     ) -> Dict[str, Any]:
         """BM25 search for papers."""
-        return self._search_bm25_only(query=query, size=size, from_=from_, categories=categories, latest=latest)
+        return self._search_bm25_only(
+            query=query,
+            size=size,
+            from_=from_,
+            categories=categories,
+            ingestion_name=None,
+            latest=latest,
+        )
 
-    def search_chunks_vector(
-        self, query_embedding: List[float], size: int = 10, categories: Optional[List[str]] = None
+    def vector_search(
+        self,
+        query_embedding: List[float],
+        size: int = 10,
+        categories: Optional[List[str]] = None,
+        ingestion_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Pure vector search on chunks.
 
+        :param ingestion_name:
         :param query_embedding: Query embedding vector
         :param size: Number of results
         :param categories: Optional category filter
         :returns: Search results
         """
         try:
-            # Build filter
-            filter_clause = []
-            if categories:
-                filter_clause.append({"terms": {"categories": categories}})
+            filter_clause = self._build_search_filters(categories=categories, ingestion_name=ingestion_name)
 
             search_body = {
                 "size": size,
@@ -160,7 +200,7 @@ class OpenSearchClient:
             }
 
             if filter_clause:
-                search_body["query"] = {"bool": {"must": [search_body["query"]], "filter": filter_clause}}
+                search_body["query"] = self._wrap_query_with_filters(search_body["query"], filter_clause)
 
             response = self.client.search(index=self.index_name, body=search_body)
 
@@ -185,12 +225,14 @@ class OpenSearchClient:
         size: int = 10,
         from_: int = 0,
         categories: Optional[List[str]] = None,
+        ingestion_name: Optional[str] = None,
         latest: bool = False,
         use_hybrid: bool = True,
         min_score: float = 0.0,
     ) -> Dict[str, Any]:
         """Unified search method supporting BM25, vector, and hybrid modes.
 
+        :param ingestion_name:
         :param query: Text query for search
         :param query_embedding: Optional embedding for vector/hybrid search
         :param size: Number of results to return
@@ -204,11 +246,23 @@ class OpenSearchClient:
         try:
             # If no embedding provided or hybrid disabled, use BM25 only
             if not query_embedding or not use_hybrid:
-                return self._search_bm25_only(query=query, size=size, from_=from_, categories=categories, latest=latest)
+                return self._search_bm25_only(
+                    query=query,
+                    size=size,
+                    from_=from_,
+                    categories=categories,
+                    ingestion_name=ingestion_name,
+                    latest=latest,
+                )
 
             # Use native OpenSearch hybrid search with RRF pipeline (reciprocal rank fusion for hybrid search)
             return self._search_hybrid_native(
-                query=query, query_embedding=query_embedding, size=size, categories=categories, min_score=min_score
+                query=query,
+                query_embedding=query_embedding,
+                size=size,
+                categories=categories,
+                ingestion_name=ingestion_name,
+                min_score=min_score,
             )
 
         except Exception as e:
@@ -216,7 +270,13 @@ class OpenSearchClient:
             return {"total": 0, "hits": []}
 
     def _search_bm25_only(
-        self, query: str, size: int, from_: int, categories: Optional[List[str]], latest: bool
+        self,
+        query: str,
+        size: int,
+        from_: int,
+        categories: Optional[List[str]],
+        ingestion_name: Optional[str],
+        latest: bool,
     ) -> Dict[str, Any]:
         """Pure BM25 search implementation."""
         builder = QueryBuilder(
@@ -224,6 +284,7 @@ class OpenSearchClient:
             size=size,
             from_=from_,
             categories=categories,
+            ingestion_name=self._resolve_ingestion_name(ingestion_name),
             latest_papers=latest,
             search_chunks=True,  # Enable chunk search mode
         )
@@ -247,18 +308,36 @@ class OpenSearchClient:
         return results
 
     def _search_hybrid_native(
-        self, query: str, query_embedding: List[float], size: int, categories: Optional[List[str]], min_score: float
+        self,
+        query: str,
+        query_embedding: List[float],
+        size: int,
+        categories: Optional[List[str]],
+        ingestion_name: Optional[str],
+        min_score: float,
     ) -> Dict[str, Any]:
         """Native OpenSearch hybrid search with RRF pipeline (reciprocal rank fusion for hybrid search)."""
         builder = QueryBuilder(
-            query=query, size=size * 2, from_=0, categories=categories, latest_papers=False, search_chunks=True
+            query=query,
+            size=size * 2,
+            from_=0,
+            categories=categories,
+            ingestion_name=self._resolve_ingestion_name(ingestion_name),
+            latest_papers=False,
+            search_chunks=True,
         )
         bm25_search_body = builder.build()
 
         bm25_query = bm25_search_body["query"]
         embedding_query = {"knn": {"embedding": {"vector": query_embedding, "k": size * 2}}}
 
-        hybrid_query = {"hybrid": {"queries": [bm25_query, embedding_query]}}
+        # A hybrid query must stay at the top level, so filters are applied to each
+        # sub-query instead. The BM25 side is already filtered by the query builder.
+        filter_clauses = self._build_search_filters(categories=categories, ingestion_name=ingestion_name)
+        if filter_clauses:
+            embedding_query = self._wrap_query_with_filters(embedding_query, filter_clauses)
+
+        hybrid_query: Dict[str, Any] = {"hybrid": {"queries": [bm25_query, embedding_query]}}
 
         search_body = {
             "size": size,
@@ -293,19 +372,6 @@ class OpenSearchClient:
         results["total"] = len(results["hits"])
         logger.info(f"Native hybrid search for '{query[:50]}...' returned {results['total']} results")
         return results
-
-    def search_chunks_hybrid(
-        self,
-        query: str,
-        query_embedding: List[float],
-        size: int = 10,
-        categories: Optional[List[str]] = None,
-        min_score: float = 0.0,
-    ) -> Dict[str, Any]:
-        """Hybrid search combining BM25 and vector similarity using native RRF."""
-        return self._search_hybrid_native(
-            query=query, query_embedding=query_embedding, size=size, categories=categories, min_score=min_score
-        )
 
     def index_chunk(self, chunk_data: Dict[str, Any], embedding: List[float]) -> bool:
         """Index a single chunk with its embedding.
@@ -351,15 +417,23 @@ class OpenSearchClient:
             logger.error(f"Bulk chunk indexing error: {e}")
             raise
 
-    def delete_paper_chunks(self, arxiv_id: str) -> bool:
+    def delete_paper_chunks(self, arxiv_id: str, ingestion_name: Optional[str] = None) -> bool:
         """Delete all chunks for a specific paper.
 
         :param arxiv_id: ArXiv ID of the paper
+        :param ingestion_name: Limit deletion to this ingestion partition (defaults to configured name)
         :returns: True if deletion was successful
         """
         try:
+            must_clauses: List[Dict[str, Any]] = [{"term": {"arxiv_id": arxiv_id}}]
+            resolved_ingestion = self._resolve_ingestion_name(ingestion_name)
+            if resolved_ingestion:
+                must_clauses.append({"term": {"ingestion_name": resolved_ingestion}})
+
             response = self.client.delete_by_query(
-                index=self.index_name, body={"query": {"term": {"arxiv_id": arxiv_id}}}, refresh=True
+                index=self.index_name,
+                body={"query": {"bool": {"must": must_clauses}}},
+                refresh=True,
             )
 
             deleted = response.get("deleted", 0)
@@ -370,15 +444,21 @@ class OpenSearchClient:
             logger.error(f"Error deleting chunks: {e}")
             return False
 
-    def get_chunks_by_paper(self, arxiv_id: str) -> List[Dict[str, Any]]:
+    def get_chunks_by_paper(self, arxiv_id: str, ingestion_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all chunks for a specific paper.
 
         :param arxiv_id: ArXiv ID of the paper
+        :param ingestion_name: Limit results to this ingestion partition (defaults to configured name)
         :returns: List of chunks sorted by chunk_index
         """
         try:
+            must_clauses: List[Dict[str, Any]] = [{"term": {"arxiv_id": arxiv_id}}]
+            resolved_ingestion = self._resolve_ingestion_name(ingestion_name)
+            if resolved_ingestion:
+                must_clauses.append({"term": {"ingestion_name": resolved_ingestion}})
+
             search_body = {
-                "query": {"term": {"arxiv_id": arxiv_id}},
+                "query": {"bool": {"must": must_clauses}},
                 "size": 1000,
                 "sort": [{"chunk_index": "asc"}],
                 "_source": {"excludes": ["embedding"]},

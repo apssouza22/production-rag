@@ -73,6 +73,7 @@ ARXIV_PAPERS_CHUNKS_MAPPING = {
             "section_title": {"type": "keyword"},
             "section_breadcrumb": {"type": "keyword"},
             "embedding_model": {"type": "keyword"},
+            "ingestion_name": {"type": "keyword"},
             "created_at": {"type": "date"},
             "updated_at": {"type": "date"},
         },
