@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import TypedDict
 
-from .models import ParsedPaper
+from .models import ParsedPaper, PaperSection, PdfContent
 
 
 class ParsedPaperArtifact(TypedDict):
@@ -50,11 +50,53 @@ def _atomic_write_text(path: Path, content: str) -> None:
             os.unlink(temporary_path)
 
 
-def write_parsed_paper_artifacts(output_dir: Path, parsed_paper: ParsedPaper) -> ParsedPaperArtifact:
+def assemble_markdown_from_sections(sections: list[PaperSection]) -> str:
+    """Build a Markdown document from extracted sections, preserving inline figures and tables."""
+    parts: list[str] = []
+    for section in sections:
+        if section.title == "Content" and section.breadcrumb is None:
+            if section.content.strip():
+                parts.append(section.content.strip())
+            continue
+
+        heading_level = min(max(section.level, 1), 6)
+        parts.append(f"{'#' * heading_level} {section.title}")
+        if section.content.strip():
+            parts.append(section.content.strip())
+
+    if not parts:
+        return ""
+    return "\n\n".join(parts).rstrip() + "\n"
+
+
+def resolve_markdown_for_write(pdf_content: PdfContent) -> str:
+    """Choose the Markdown body to persist for one parsed paper."""
+    assembled = assemble_markdown_from_sections(pdf_content.sections)
+    if assembled.strip():
+        return assembled
+
+    docling_fallback = pdf_content.metadata.get("docling_markdown_fallback")
+    if isinstance(docling_fallback, str) and docling_fallback.strip():
+        return docling_fallback
+
+    if pdf_content.markdown and pdf_content.markdown.strip():
+        return pdf_content.markdown
+
+    raise ValueError("Parsed paper has no Markdown content")
+
+
+def write_parsed_paper_artifacts(
+    output_dir: Path,
+    parsed_paper: ParsedPaper,
+    *,
+    markdown: str | None = None,
+) -> ParsedPaperArtifact:
     """Write Markdown and a structured JSON sidecar for one parsed paper."""
     pdf_content = parsed_paper.pdf_content
-    if pdf_content is None or pdf_content.markdown is None:
-        raise ValueError(f"Parsed paper {parsed_paper.arxiv_metadata.arxiv_id} has no Markdown content")
+    if pdf_content is None:
+        raise ValueError(f"Parsed paper {parsed_paper.arxiv_metadata.arxiv_id} has no PDF content")
+
+    markdown_body = markdown if markdown is not None else resolve_markdown_for_write(pdf_content)
 
     stem = artifact_stem(parsed_paper.arxiv_metadata.arxiv_id)
     markdown_path = output_dir / f"{stem}.md"
@@ -64,8 +106,13 @@ def write_parsed_paper_artifacts(output_dir: Path, parsed_paper: ParsedPaper) ->
     serialized_pdf_content = payload.get("pdf_content")
     if isinstance(serialized_pdf_content, dict):
         serialized_pdf_content.pop("markdown", None)
+        metadata = serialized_pdf_content.get("metadata")
+        if isinstance(metadata, dict):
+            sidecar_metadata = dict(metadata)
+            sidecar_metadata.pop("docling_markdown_fallback", None)
+            serialized_pdf_content["metadata"] = sidecar_metadata
 
-    _atomic_write_text(markdown_path, pdf_content.markdown)
+    _atomic_write_text(markdown_path, markdown_body)
     _atomic_write_text(sidecar_path, json.dumps(payload, indent=2, sort_keys=True))
 
     return {

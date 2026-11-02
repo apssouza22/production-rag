@@ -1,15 +1,18 @@
 """Orchestration steps for PDF-to-Markdown batch export."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Self
 
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
-from .artifacts import ParsedPaperArtifact, artifact_stem, write_parsed_paper_artifacts
+from .artifacts import ParsedPaperArtifact, artifact_stem, resolve_markdown_for_write, write_parsed_paper_artifacts
 from .content_extractor import ContentExtractor
 from .docling import DoclingParser
 from .models import ArxivMetadata, ParsedPaper, PdfContent
@@ -18,6 +21,27 @@ logger = logging.getLogger(__name__)
 
 ConvertPdfStep = Callable[[Path], Awaitable[Any | None]]
 ExtractContentStep = Callable[[Any, Path, Optional[Path]], PdfContent]
+
+
+@dataclass
+class PdfParseResults:
+    """Outcome of parsing a batch of PDFs into in-memory ``ParsedPaper`` objects."""
+
+    parsed_papers: dict[str, ParsedPaper] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    parse_failures: list[str] = field(default_factory=list)
+
+    @property
+    def parsed_count(self) -> int:
+        return len(self.parsed_papers)
+
+
+@dataclass
+class ArtifactWriteResult:
+    """Outcome of persisting Markdown and JSON sidecars."""
+
+    artifacts: dict[str, ParsedPaperArtifact] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
 
 
 class PdfToMarkdownPipeline:
@@ -66,6 +90,28 @@ class PdfToMarkdownPipeline:
             "processing_time": 0,
         }
 
+    async def run(
+        self,
+        papers: list[ArxivMetadata],
+        pdf_paths_by_id: dict[str, str],
+        *,
+        date: Optional[str] = None,
+        convert_pdf: ConvertPdfStep | None = None,
+        extract_content: ExtractContentStep | None = None,
+    ) -> dict[str, Any]:
+        """Parse configured PDFs and write Markdown artifacts end-to-end."""
+        if not papers:
+            return self.empty_result(date)
+
+        self.set_pdfs(papers, pdf_paths_by_id)
+        start_time = self.begin()
+        pdf_parse_results = await self.run_pdf_parse(
+            convert_pdf or self.convert_pdf,
+            extract_content or self.extract_content,
+        )
+        write_result = self.write_markdown_artifacts(pdf_parse_results)
+        return self.finalize(write_result.artifacts, write_result.errors, date, start_time)
+
     async def convert_pdf(self, pdf_path: Path) -> Any | None:
         """Run Docling conversion for one PDF file."""
         if not pdf_path.exists():
@@ -73,6 +119,7 @@ class PdfToMarkdownPipeline:
             raise PDFValidationError(f"PDF file not found: {pdf_path}")
 
         try:
+            # To thread the CPU-bound Docling call out of the event loop.
             conversion = await asyncio.to_thread(self._docling_parser.parse_pdf, pdf_path)
             if conversion is None:
                 logger.warning(f"Docling parsing returned no result for {pdf_path.name} (skipped or empty)")
@@ -81,7 +128,7 @@ class PdfToMarkdownPipeline:
             raise
         except Exception as e:
             logger.error(f"Docling parsing error for {pdf_path.name}: {e}")
-            raise PDFParsingException(f"Docling parsing error for {pdf_path.name}: {e}")
+            raise PDFParsingException(f"Docling parsing error for {pdf_path.name}: {e}") from e
 
     def extract_content(
         self,
@@ -90,15 +137,9 @@ class PdfToMarkdownPipeline:
         artifacts_dir: Optional[Path] = None,
     ) -> PdfContent:
         """Build structured ``PdfContent`` from a Docling conversion result."""
-        effective_artifacts_dir = None
-        if self._extract_parsing_artifacts:
-            effective_artifacts_dir = artifacts_dir
-            if effective_artifacts_dir is None:
-                effective_artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
-
         result = self._content_extractor.build_content_session(
             conversion,
-            artifacts_dir=effective_artifacts_dir,
+            artifacts_dir=self._content_artifacts_dir(pdf_path, artifacts_dir),
         )
         logger.info(f"Parsed {pdf_path.name}")
         return result
@@ -114,7 +155,7 @@ class PdfToMarkdownPipeline:
         self,
         convert_pdf: ConvertPdfStep,
         extract_content: ExtractContentStep,
-    ) -> dict[str, Any]:
+    ) -> PdfParseResults:
         """Parse configured PDFs into in-memory ``ParsedPaper`` objects."""
         if self._papers is None or self._pdf_paths_by_id is None:
             raise RuntimeError("Call set_pdfs() before run_pdf_parse()")
@@ -135,22 +176,16 @@ class PdfToMarkdownPipeline:
         extract_content: ExtractContentStep,
     ) -> Optional[ParsedPaper]:
         """Parse a single downloaded PDF and attach arXiv metadata."""
-        pdf_path_dir = pdf_paths_by_id.get(paper.arxiv_id)
-        if not pdf_path_dir:
-            logger.warning("No PDF path available for parsing: %s", paper.arxiv_id)
-            return None
-
-        pdf_path = Path(pdf_path_dir)
-        if not pdf_path.exists():
-            logger.warning("No PDF available for parsing: %s", paper.arxiv_id)
+        pdf_path = self._local_pdf_path(paper, pdf_paths_by_id)
+        if pdf_path is None:
             return None
 
         async with self._parse_semaphore:
-            paper_artifacts_dir = self._output_dir / f"{artifact_stem(paper.arxiv_id)}_assets"
             conversion = await convert_pdf(pdf_path)
             if conversion is None:
                 return None
-            pdf_content = extract_content(conversion, pdf_path, paper_artifacts_dir)
+            assets_dir = self._paper_assets_dir(paper.arxiv_id)
+            pdf_content = extract_content(conversion, pdf_path, assets_dir)
             return ParsedPaper(arxiv_metadata=paper, pdf_content=pdf_content)
 
     async def parse_pdfs(
@@ -160,11 +195,11 @@ class PdfToMarkdownPipeline:
         *,
         convert_pdf: ConvertPdfStep,
         extract_content: ExtractContentStep,
-    ) -> dict[str, Any]:
+    ) -> PdfParseResults:
         """Parse PDFs into in-memory ``ParsedPaper`` objects."""
         logger.info("Starting parse batch for %d PDFs", len(papers))
 
-        parse_results = await asyncio.gather(
+        outcomes = await asyncio.gather(
             *(
                 self.parse_one(
                     paper,
@@ -176,47 +211,22 @@ class PdfToMarkdownPipeline:
             ),
             return_exceptions=True,
         )
-        parsed_papers: dict[str, ParsedPaper] = {}
-        errors: list[str] = []
-        parse_failures: list[str] = []
+        batch = self._collect_parse_batch(papers, outcomes)
+        logger.info("Parse batch complete: %d/%d parsed", batch.parsed_count, len(papers))
+        return batch
 
-        for paper, result in zip(papers, parse_results):
-            if isinstance(result, asyncio.CancelledError):
-                raise result
-            if isinstance(result, Exception):
-                error = f"Parse error for {paper.arxiv_id}: {result}"
-                logger.error(error)
-                errors.append(error)
-                parse_failures.append(paper.arxiv_id)
-            elif result is not None:
-                parsed_papers[paper.arxiv_id] = result
-            else:
-                parse_failures.append(paper.arxiv_id)
-
-        errors.extend(f"PDF parse failed: {arxiv_id}" for arxiv_id in parse_failures)
-        logger.info("Parse batch complete: %d/%d parsed", len(parsed_papers), len(papers))
-        return {
-            "parsed": len(parsed_papers),
-            "parsed_papers": parsed_papers,
-            "errors": errors,
-            "parse_failures": parse_failures,
-        }
-
-    def write_markdown_artifacts(
-        self,
-        parse_results: dict[str, Any],
-    ) -> tuple[dict[str, ParsedPaperArtifact], list[str]]:
+    def write_markdown_artifacts(self, pdf_parse_result: PdfParseResults) -> ArtifactWriteResult:
         """Persist Markdown and JSON sidecars for successfully parsed papers."""
         artifacts: dict[str, ParsedPaperArtifact] = {}
-        errors = list(parse_results["errors"])
-        for arxiv_id, parsed_paper in parse_results["parsed_papers"].items():
+        errors = list(pdf_parse_result.errors)
+        for arxiv_id, parsed_paper in pdf_parse_result.parsed_papers.items():
             try:
-                artifacts[arxiv_id] = write_parsed_paper_artifacts(self._output_dir, parsed_paper)
+                artifacts[arxiv_id] = self._write_parsed_paper_artifacts(arxiv_id, parsed_paper)
             except Exception as exc:
                 error = f"Failed to write parsed artifacts for {arxiv_id}: {exc}"
                 logger.exception(error)
                 errors.append(error)
-        return artifacts, errors
+        return ArtifactWriteResult(artifacts=artifacts, errors=errors)
 
     def finalize(
         self,
@@ -235,3 +245,63 @@ class PdfToMarkdownPipeline:
         }
         logger.info("PDF-to-Markdown complete: %d parsed for %s", results["pdfs_parsed"], date)
         return results
+
+    def _paper_assets_dir(self, arxiv_id: str) -> Path:
+        return self._output_dir / f"{artifact_stem(arxiv_id)}_assets"
+
+    def _content_artifacts_dir(self, pdf_path: Path, artifacts_dir: Optional[Path]) -> Optional[Path]:
+        if not self._extract_parsing_artifacts:
+            return None
+        return artifacts_dir or pdf_path.parent / f"{pdf_path.stem}_assets"
+
+    def _local_pdf_path(self, paper: ArxivMetadata, pdf_paths_by_id: dict[str, str]) -> Path | None:
+        pdf_path_value = pdf_paths_by_id.get(paper.arxiv_id)
+        if not pdf_path_value:
+            logger.warning("No PDF path available for parsing: %s", paper.arxiv_id)
+            return None
+
+        pdf_path = Path(pdf_path_value)
+        if not pdf_path.exists():
+            logger.warning("No PDF available for parsing: %s", paper.arxiv_id)
+            return None
+        return pdf_path
+
+    def _write_parsed_paper_artifacts(self, arxiv_id: str, parsed_paper: ParsedPaper) -> ParsedPaperArtifact:
+        pdf_content = parsed_paper.pdf_content
+        if pdf_content is None:
+            raise ValueError(f"Parsed paper {arxiv_id} has no PDF content")
+        markdown = resolve_markdown_for_write(pdf_content)
+        return write_parsed_paper_artifacts(
+            self._output_dir,
+            parsed_paper,
+            markdown=markdown,
+        )
+
+    def _collect_parse_batch(
+        self,
+        papers: list[ArxivMetadata],
+        outcomes: list[ParsedPaper | BaseException | None],
+    ) -> PdfParseResults:
+        parsed_papers: dict[str, ParsedPaper] = {}
+        errors: list[str] = []
+        parse_failures: list[str] = []
+
+        for paper, outcome in zip(papers, outcomes):
+            if isinstance(outcome, asyncio.CancelledError):
+                raise outcome
+            if isinstance(outcome, BaseException):
+                error = f"Parse error for {paper.arxiv_id}: {outcome}"
+                logger.error(error)
+                errors.append(error)
+                parse_failures.append(paper.arxiv_id)
+            elif outcome is not None:
+                parsed_papers[paper.arxiv_id] = outcome
+            else:
+                parse_failures.append(paper.arxiv_id)
+
+        errors.extend(f"PDF parse failed: {arxiv_id}" for arxiv_id in parse_failures)
+        return PdfParseResults(
+            parsed_papers=parsed_papers,
+            errors=errors,
+            parse_failures=parse_failures,
+        )

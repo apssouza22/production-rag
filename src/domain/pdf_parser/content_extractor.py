@@ -1,5 +1,8 @@
 """Build domain PdfContent from a Docling conversion result."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
@@ -21,103 +24,109 @@ _CONTENT_LABELS = {
 }
 
 
-def assemble_markdown_from_sections(sections: list[PaperSection]) -> str:
-    """Build a Markdown document from extracted sections, preserving inline figures and tables."""
-    parts: list[str] = []
-    for section in sections:
-        if section.title == "Content" and section.breadcrumb is None:
-            if section.content.strip():
-                parts.append(section.content.strip())
-            continue
+@dataclass
+class SectionDraft:
+    """Mutable section under construction while walking Docling document items."""
 
-        heading_level = min(max(section.level, 1), 6)
-        parts.append(f"{'#' * heading_level} {section.title}")
-        if section.content.strip():
-            parts.append(section.content.strip())
+    title: str = "Content"
+    content: str = ""
+    level: int = 1
+    breadcrumb: str | None = None
+    figure_paths: list[str] = field(default_factory=list)
+    table_paths: list[str] = field(default_factory=list)
 
-    if not parts:
-        return ""
-    return "\n\n".join(parts).rstrip() + "\n"
+    @classmethod
+    def preamble(cls) -> SectionDraft:
+        return cls()
+
+    @classmethod
+    def for_header(cls, *, title: str, level: int, breadcrumb: str) -> SectionDraft:
+        return cls(title=title, level=level, breadcrumb=breadcrumb)
+
+    def append_text(self, text: str) -> None:
+        self.content += text + "\n"
+
+    def has_extractable_body(self) -> bool:
+        return bool(self.content.strip() or self.figure_paths or self.table_paths)
+
+    def to_paper_section(self) -> PaperSection:
+        return PaperSection(
+            title=self.title,
+            content=self.content.strip(),
+            level=self.level,
+            breadcrumb=self.breadcrumb,
+            figure_paths=self.figure_paths,
+            table_paths=self.table_paths,
+        )
 
 
-def _extract_sections_and_artifacts(
-    doc: DoclingDocument,
-    artifacts_dir: Optional[Path] = None,
-    *,
-    extract_figures: bool = False,
-    extract_tables: bool = False,
-) -> tuple[list[PaperSection], list[PaperFigure], list[PaperTable]]:
-    sections: list[PaperSection] = []
-    assets_link_prefix = artifacts_dir.name if artifacts_dir is not None else None
-    artefact_extractor = ArtefactExtractor(artifacts_dir, assets_link_prefix=assets_link_prefix)
-    header_stack: list[tuple[int, str]] = []
-    current: Optional[dict[str, Any]] = {
-        "title": "Content",
-        "content": "",
-        "level": 1,
-        "breadcrumb": None,
-        "figure_paths": [],
-        "table_paths": [],
-    }
+class DoclingSectionParser:
+    """Single pass over Docling items to build sections and optional figure/table artifacts."""
 
-    items = list(doc.iterate_items())
-    items_by_ref = {getattr(item, "self_ref", ""): item for item, _ in items}
+    def __init__(
+        self,
+        doc: DoclingDocument,
+        artefact_extractor: ArtefactExtractor,
+        *,
+        extract_figures: bool,
+        extract_tables: bool,
+    ) -> None:
+        self._doc = doc
+        self._artefact_extractor = artefact_extractor
+        self._extract_figures = extract_figures
+        self._extract_tables = extract_tables
+        self._sections: list[PaperSection] = []
+        self._header_stack: list[tuple[int, str]] = []
+        self._current = SectionDraft.preamble()
+        items = list(doc.iterate_items())
+        self._items_by_ref = {getattr(item, "self_ref", ""): item for item, _ in items}
+        self._items = items
 
-    def flush_current() -> None:
-        nonlocal current
-        if current and (current["content"].strip() or current["figure_paths"] or current["table_paths"]):
-            sections.append(
-                PaperSection(
-                    title=current["title"],
-                    content=current["content"].strip(),
-                    level=current["level"],
-                    breadcrumb=current.get("breadcrumb"),
-                    figure_paths=current["figure_paths"],
-                    table_paths=current["table_paths"],
-                )
-            )
+    def parse(self) -> list[PaperSection]:
+        for item, depth in self._items:
+            self._handle_item(item, depth)
+        self._flush_current()
+        return self._sections
 
-    for item, depth in items:
+    def _flush_current(self) -> None:
+        if self._current.has_extractable_body():
+            self._sections.append(self._current.to_paper_section())
+
+    def _handle_item(self, item: Any, depth: int) -> None:
         label = getattr(item, "label", None)
-        text = getattr(item, "text", "").strip()
-
         if label in _HEADER_LABELS:
-            flush_current()
-
-            if label == DocItemLabel.TITLE:
-                # Keep the document title as the breadcrumb root across same-level section headers.
-                level = 0
-            else:
-                level = getattr(item, "level", None) or max(depth, 1)
-
-            while header_stack and header_stack[-1][0] >= level:
-                header_stack.pop()
-            header_stack.append((level, text))
-
-            breadcrumb = " > ".join(title for _, title in header_stack)
-            current = {
-                "title": text,
-                "content": "",
-                "level": level,
-                "breadcrumb": breadcrumb,
-                "figure_paths": [],
-                "table_paths": [],
-            }
-        elif isinstance(item, PictureItem) and extract_figures:
-            artefact_extractor.save_figure(item, doc, current, items_by_ref)
-        elif isinstance(item, TableItem) and extract_tables:
-            artefact_extractor.save_table(item, doc, current, items_by_ref)
-        elif current is not None and label in _CONTENT_LABELS:
+            self._handle_header(item, depth, label, getattr(item, "text", "").strip())
+        elif isinstance(item, PictureItem) and self._extract_figures:
+            self._artefact_extractor.save_figure(item, self._doc, self._current, self._items_by_ref)
+        elif isinstance(item, TableItem) and self._extract_tables:
+            self._artefact_extractor.save_table(item, self._doc, self._current, self._items_by_ref)
+        elif label in _CONTENT_LABELS:
+            text = getattr(item, "text", "").strip()
             if text:
-                current["content"] += text + "\n"
+                self._current.append_text(text)
 
-    flush_current()
-    return sections, artefact_extractor.figures, artefact_extractor.tables
+    def _handle_header(self, item: Any, depth: int, label: DocItemLabel, text: str) -> None:
+        self._flush_current()
+        level = self._header_level(item, depth, label)
+        self._push_header(level, text)
+        breadcrumb = " > ".join(title for _, title in self._header_stack)
+        self._current = SectionDraft.for_header(title=text, level=level, breadcrumb=breadcrumb)
+
+    def _header_level(self, item: Any, depth: int, label: DocItemLabel) -> int:
+        if label == DocItemLabel.TITLE:
+            # Keep the document title as the breadcrumb root across same-level section headers.
+            return 0
+        return getattr(item, "level", None) or max(depth, 1)
+
+    def _push_header(self, level: int, text: str) -> None:
+        while self._header_stack and self._header_stack[-1][0] >= level:
+            self._header_stack.pop()
+        self._header_stack.append((level, text))
 
 
 def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
     """Extract paper sections from a Docling document without figures or tables."""
-    sections, _, _ = _extract_sections_and_artifacts(doc, extract_figures=False, extract_tables=False)
+    sections, _, _ = ContentExtractor().extract_sections_and_artifacts(doc)
     return sections
 
 
@@ -132,6 +141,22 @@ class ContentExtractor:
         self.do_table_structure = do_table_structure
         self.do_figure_extraction = do_figure_extraction
 
+    def extract_sections_and_artifacts(
+        self,
+        doc: DoclingDocument,
+        artifacts_dir: Optional[Path] = None,
+    ) -> tuple[list[PaperSection], list[PaperFigure], list[PaperTable]]:
+        assets_link_prefix = artifacts_dir.name if artifacts_dir is not None else None
+        artefact_extractor = ArtefactExtractor(artifacts_dir, assets_link_prefix=assets_link_prefix)
+        parser = DoclingSectionParser(
+            doc,
+            artefact_extractor,
+            extract_figures=self.do_figure_extraction,
+            extract_tables=self.do_table_structure,
+        )
+        sections = parser.parse()
+        return sections, artefact_extractor.figures, artefact_extractor.tables
+
     def build_content_session(
         self,
         conversion_result: ConversionResult,
@@ -140,21 +165,17 @@ class ContentExtractor:
     ) -> PdfContent:
         """Build PdfContent from a completed Docling conversion."""
         doc = conversion_result.document
-        sections, figures, tables = _extract_sections_and_artifacts(
-            doc,
-            artifacts_dir,
-            extract_figures=self.do_figure_extraction,
-            extract_tables=self.do_table_structure,
-        )
-        markdown = assemble_markdown_from_sections(sections)
+        sections, figures, tables = self.extract_sections_and_artifacts(doc, artifacts_dir)
 
         return PdfContent(
             sections=sections,
             figures=figures,
             tables=tables,
             raw_text=doc.export_to_text(),
-            markdown=markdown or doc.export_to_markdown(),
+            markdown=None,
             references=[],
             parser_used=ParserType.DOCLING,
-            metadata={"source": "docling", "note": "Content extracted from PDF, metadata comes from arXiv API"},
+            metadata={
+                "docling_markdown_fallback": doc.export_to_markdown(),
+            },
         )

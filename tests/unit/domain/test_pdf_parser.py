@@ -304,8 +304,8 @@ class TestPDFParserService:
         markdown_pipeline.set_pdfs([metadata], {metadata.arxiv_id: str(valid_pdf_path)})
         parse_results = await markdown_pipeline.run_pdf_parse(convert_pdf, extract_content)
 
-        assert parse_results["parsed"] == 1
-        assert metadata.arxiv_id in parse_results["parsed_papers"]
+        assert parse_results.parsed_count == 1
+        assert metadata.arxiv_id in parse_results.parsed_papers
         convert_pdf.assert_awaited_once_with(valid_pdf_path)
         extract_content.assert_called_once()
         assert extract_content.call_args.args[0] is mock_conversion

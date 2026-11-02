@@ -2,9 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from docling_core.types.doc import DocItemLabel, PictureItem
+from src.domain.pdf_parser.artifacts import assemble_markdown_from_sections
 from src.domain.pdf_parser.content_extractor import (
-    _extract_sections_and_artifacts,
-    assemble_markdown_from_sections,
+    ContentExtractor,
     extract_sections_from_document,
 )
 
@@ -73,9 +73,8 @@ class TestExtractSectionsFromDocument:
         picture.get_image.return_value = saved_image
 
         artifacts_dir = tmp_path / "paper_assets"
-        sections, figures, _ = _extract_sections_and_artifacts(
-            doc, artifacts_dir, extract_figures=True, extract_tables=False
-        )
+        extractor = ContentExtractor(do_figure_extraction=True)
+        sections, figures, _ = extractor.extract_sections_and_artifacts(doc, artifacts_dir)
 
         assert len(figures) == 1
         assert len(sections) == 1

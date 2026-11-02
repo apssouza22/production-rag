@@ -52,14 +52,4 @@ class PDFParserService:
             max_concurrent_parsing=max_concurrent_parsing,
             extract_parsing_artifacts=self.do_figure_extraction or self.do_table_structure,
         )
-        if not papers:
-            return pipeline.empty_result(date)
-
-        pipeline.set_pdfs(papers, pdf_paths_by_id)
-        start_time = pipeline.begin()
-        parse_results = await pipeline.run_pdf_parse(
-            pipeline.convert_pdf,
-            pipeline.extract_content,
-        )
-        artifacts, errors = pipeline.write_markdown_artifacts(parse_results)
-        return pipeline.finalize(artifacts, errors, date, start_time)
+        return await pipeline.run(papers, pdf_paths_by_id, date=date)
