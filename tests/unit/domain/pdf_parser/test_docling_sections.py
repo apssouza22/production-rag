@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from docling_core.types.doc import DocItemLabel, PictureItem
-from src.domain.pdf_parser.docling import (
+from src.domain.pdf_parser.content_extractor import (
     _extract_sections_and_artifacts,
     assemble_markdown_from_sections,
     extract_sections_from_document,

@@ -119,23 +119,28 @@ class TestPDFParserService:
 
         assert "PDF file not found" in str(exc_info.value)
 
+    @patch("src.domain.pdf_parser.parser.ContentExtractor.build_content_session")
     @patch("src.domain.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio
-    async def test_parse_pdf_success(self, mock_parse, pdf_parser_service, valid_pdf_path):
+    async def test_parse_pdf_success(self, mock_parse, mock_build_session, pdf_parser_service, valid_pdf_path):
         """Test successful PDF parsing."""
+        mock_conversion = object()
+        mock_parse.return_value = mock_conversion
         mock_content = PdfContent(
             raw_text="Test content", sections=[], tables=[], figures=[], parser_used=ParserType.DOCLING, metadata={}
         )
-        mock_parse.return_value = mock_content
+        mock_build_session.return_value = mock_content
 
         result = await pdf_parser_service.parse_pdf(valid_pdf_path)
 
         assert result == mock_content
         mock_parse.assert_called_once_with(valid_pdf_path)
+        mock_build_session.assert_called_once_with(mock_conversion, artifacts_dir=None)
 
+    @patch("src.domain.pdf_parser.parser.ContentExtractor.build_content_session")
     @patch("src.domain.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio
-    async def test_parse_pdf_no_result(self, mock_parse, pdf_parser_service, valid_pdf_path):
+    async def test_parse_pdf_no_result(self, mock_parse, mock_build_session, pdf_parser_service, valid_pdf_path):
         """Test PDF parsing when no result is returned (e.g. page/size limits)."""
         mock_parse.return_value = None
 
@@ -143,6 +148,7 @@ class TestPDFParserService:
 
         assert result is None
         mock_parse.assert_called_once_with(valid_pdf_path)
+        mock_build_session.assert_not_called()
 
     @patch("src.domain.pdf_parser.parser.DoclingParser.parse_pdf")
     @pytest.mark.asyncio

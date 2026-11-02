@@ -12,8 +12,8 @@ from src.domain.rerank.config import RerankSearchConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE_PATH = REPO_ROOT / ".env"
-DEFAULT_PDFS_DIR = Path(__file__).parent / "arxiv_pdfs"
-DEFAULT_QUERIES_PATH = Path(__file__).parent / "generated_queries.json"
+DEFAULT_PDFS_DIR = Path(__file__).parent / "data/arxiv_pdfs"
+DEFAULT_QUERIES_PATH = Path(__file__).parent / "data/generated_queries.json"
 DEFAULT_EXPERIMENT_CONFIG_PATH = Path(__file__).parent / "data/settings/experiment-config.json"
 
 _SECRET_EXPERIMENT_FIELDS = frozenset({"openai_api_key", "evaluation_api_key"})

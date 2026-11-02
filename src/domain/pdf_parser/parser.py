@@ -7,6 +7,7 @@ from typing import Any, Optional
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
 from .artifacts import ParsedPaperArtifact, artifact_stem, write_parsed_paper_artifacts
+from .content_extractor import ContentExtractor
 from .docling import DoclingParser
 from .models import ArxivMetadata, ParsedPaper, PdfContent
 
@@ -25,10 +26,16 @@ class PDFParserService:
         do_figure_extraction: bool = False,
     ):
         """Initialize PDF parser service with configurable limits."""
+        self.do_table_structure = do_table_structure
+        self.do_figure_extraction = do_figure_extraction
         self.docling_parser = DoclingParser(
             max_pages=max_pages,
             max_file_size_mb=max_file_size_mb,
             do_ocr=do_ocr,
+            do_table_structure=do_table_structure,
+            do_figure_extraction=do_figure_extraction,
+        )
+        self.content_extractor = ContentExtractor(
             do_table_structure=do_table_structure,
             do_figure_extraction=do_figure_extraction,
         )
@@ -44,16 +51,25 @@ class PDFParserService:
             raise PDFValidationError(f"PDF file not found: {pdf_path}")
 
         try:
-            if artifacts_dir is None:
-                result = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path)
-            else:
-                result = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path, artifacts_dir)
-            if result:
-                logger.info(f"Parsed {pdf_path.name}")
-                return result
+            conversion = await asyncio.to_thread(self.docling_parser.parse_pdf, pdf_path)
+            if conversion is None:
+                logger.warning(f"Docling parsing returned no result for {pdf_path.name} (skipped or empty)")
+                return None
 
-            logger.warning(f"Docling parsing returned no result for {pdf_path.name} (skipped or empty)")
-            return None
+            extract_artifacts = self.do_figure_extraction or self.do_table_structure
+            if extract_artifacts:
+                effective_artifacts_dir = artifacts_dir
+                if effective_artifacts_dir is None:
+                    effective_artifacts_dir = pdf_path.parent / f"{pdf_path.stem}_assets"
+            else:
+                effective_artifacts_dir = None
+
+            result = self.content_extractor.build_content_session(
+                conversion,
+                artifacts_dir=effective_artifacts_dir,
+            )
+            logger.info(f"Parsed {pdf_path.name}")
+            return result
 
         except (PDFValidationError, PDFParsingException):
             raise
