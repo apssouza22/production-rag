@@ -77,7 +77,7 @@ class DoclingSectionParser:
         self._extract_tables = extract_tables
         self._sections: list[PaperSection] = []
         self._header_stack: list[tuple[int, str]] = []
-        self._current = SectionDraft.preamble()
+        self._current_section = SectionDraft.preamble()
         items = list(doc.iterate_items())
         self._items_by_ref = {getattr(item, "self_ref", ""): item for item, _ in items}
         self._items = items
@@ -89,28 +89,28 @@ class DoclingSectionParser:
         return self._sections
 
     def _flush_current(self) -> None:
-        if self._current.has_extractable_body():
-            self._sections.append(self._current.to_paper_section())
+        if self._current_section.has_extractable_body():
+            self._sections.append(self._current_section.to_paper_section())
 
     def _handle_item(self, item: Any, depth: int) -> None:
         label = getattr(item, "label", None)
         if label in _HEADER_LABELS:
             self._handle_header(item, depth, label, getattr(item, "text", "").strip())
         elif isinstance(item, PictureItem) and self._extract_figures:
-            self._artefact_extractor.save_figure(item, self._doc, self._current, self._items_by_ref)
+            self._artefact_extractor.save_figure(item, self._doc, self._current_section, self._items_by_ref)
         elif isinstance(item, TableItem) and self._extract_tables:
-            self._artefact_extractor.save_table(item, self._doc, self._current, self._items_by_ref)
+            self._artefact_extractor.save_table(item, self._doc, self._current_section, self._items_by_ref)
         elif label in _CONTENT_LABELS:
             text = getattr(item, "text", "").strip()
             if text:
-                self._current.append_text(text)
+                self._current_section.append_text(text)
 
     def _handle_header(self, item: Any, depth: int, label: DocItemLabel, text: str) -> None:
         self._flush_current()
         level = self._header_level(item, depth, label)
         self._push_header(level, text)
         breadcrumb = " > ".join(title for _, title in self._header_stack)
-        self._current = SectionDraft.for_header(title=text, level=level, breadcrumb=breadcrumb)
+        self._current_section = SectionDraft.for_header(title=text, level=level, breadcrumb=breadcrumb)
 
     def _header_level(self, item: Any, depth: int, label: DocItemLabel) -> int:
         if label == DocItemLabel.TITLE:

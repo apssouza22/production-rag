@@ -250,7 +250,7 @@ class TestPDFParserService:
         assert result["errors"][1] == f"PDF parse failed: {metadata.arxiv_id}"
 
     @patch(
-        "src.domain.pdf_parser.pdf_to_markdown_pipeline.write_parsed_paper_artifacts",
+        "src.domain.pdf_parser.markdown_writer._atomic_write_text",
         side_effect=OSError("disk full"),
     )
     @patch("src.domain.pdf_parser.pdf_to_markdown_pipeline.PdfToMarkdownPipeline.extract_content")
@@ -260,7 +260,7 @@ class TestPDFParserService:
         self,
         mock_convert_pdf,
         mock_extract_content,
-        mock_write_artifacts,
+        mock_atomic_write,
         pdf_parser_service,
         valid_pdf_path,
         metadata,
@@ -282,7 +282,7 @@ class TestPDFParserService:
         assert result["pdfs_parsed"] == 0
         assert result["artifacts"] == {}
         assert result["errors"] == [f"Failed to write parsed artifacts for {metadata.arxiv_id}: disk full"]
-        mock_write_artifacts.assert_called_once()
+        mock_atomic_write.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_pipeline_run_uses_injected_steps(

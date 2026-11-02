@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from docling_core.types.doc import DocItemLabel, PictureItem
-from src.domain.pdf_parser.artifacts import assemble_markdown_from_sections
+from src.domain.pdf_parser.markdown_writer import MarkdownWriter
 from src.domain.pdf_parser.content_extractor import (
     ContentExtractor,
     extract_sections_from_document,
@@ -83,7 +83,7 @@ class TestExtractSectionsFromDocument:
         assert "See the chart above." in sections[0].content
         saved_image.save.assert_called_once()
 
-        markdown = assemble_markdown_from_sections(sections)
+        markdown = MarkdownWriter.create_markdown_from_sections(sections)
         assert "# Results" in markdown
         assert "![Figure 1](paper_assets/figure_001.png)" in markdown
         assert "See the chart above." in markdown

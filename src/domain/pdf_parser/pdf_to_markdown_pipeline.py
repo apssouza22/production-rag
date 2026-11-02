@@ -12,9 +12,10 @@ from typing import Any, Optional, Self
 
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
-from .artifacts import ParsedPaperArtifact, artifact_stem, resolve_markdown_for_write, write_parsed_paper_artifacts
+from .artifacts import ParsedPaperArtifact, artifact_stem
 from .content_extractor import ContentExtractor
 from .docling import DoclingParser
+from .markdown_writer import ArtifactWriteResult, MarkdownWriter
 from .models import ArxivMetadata, ParsedPaper, PdfContent
 
 logger = logging.getLogger(__name__)
@@ -36,14 +37,6 @@ class PdfParseResults:
         return len(self.parsed_papers)
 
 
-@dataclass
-class ArtifactWriteResult:
-    """Outcome of persisting Markdown and JSON sidecars."""
-
-    artifacts: dict[str, ParsedPaperArtifact] = field(default_factory=dict)
-    errors: list[str] = field(default_factory=list)
-
-
 class PdfToMarkdownPipeline:
     """Run parse-then-write steps for turning downloaded PDFs into Markdown artifacts."""
 
@@ -62,6 +55,7 @@ class PdfToMarkdownPipeline:
         self._content_extractor = content_extractor
         self._extract_parsing_artifacts = extract_parsing_artifacts
         self._output_dir = output_dir
+        self._markdown_writer = MarkdownWriter(output_dir)
         self._parse_semaphore = asyncio.Semaphore(max_concurrent_parsing)
         self._papers: list[ArxivMetadata] | None = None
         self._pdf_paths_by_id: dict[str, str] | None = None
@@ -217,16 +211,10 @@ class PdfToMarkdownPipeline:
 
     def write_markdown_artifacts(self, pdf_parse_result: PdfParseResults) -> ArtifactWriteResult:
         """Persist Markdown and JSON sidecars for successfully parsed papers."""
-        artifacts: dict[str, ParsedPaperArtifact] = {}
-        errors = list(pdf_parse_result.errors)
-        for arxiv_id, parsed_paper in pdf_parse_result.parsed_papers.items():
-            try:
-                artifacts[arxiv_id] = self._write_parsed_paper_artifacts(arxiv_id, parsed_paper)
-            except Exception as exc:
-                error = f"Failed to write parsed artifacts for {arxiv_id}: {exc}"
-                logger.exception(error)
-                errors.append(error)
-        return ArtifactWriteResult(artifacts=artifacts, errors=errors)
+        return self._markdown_writer.write_all(
+            pdf_parse_result.parsed_papers,
+            errors=pdf_parse_result.errors,
+        )
 
     def finalize(
         self,
@@ -265,17 +253,6 @@ class PdfToMarkdownPipeline:
             logger.warning("No PDF available for parsing: %s", paper.arxiv_id)
             return None
         return pdf_path
-
-    def _write_parsed_paper_artifacts(self, arxiv_id: str, parsed_paper: ParsedPaper) -> ParsedPaperArtifact:
-        pdf_content = parsed_paper.pdf_content
-        if pdf_content is None:
-            raise ValueError(f"Parsed paper {arxiv_id} has no PDF content")
-        markdown = resolve_markdown_for_write(pdf_content)
-        return write_parsed_paper_artifacts(
-            self._output_dir,
-            parsed_paper,
-            markdown=markdown,
-        )
 
     def _collect_parse_batch(
         self,

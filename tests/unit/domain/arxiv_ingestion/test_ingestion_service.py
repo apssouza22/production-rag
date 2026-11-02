@@ -5,7 +5,7 @@ from src.domain.arxiv_ingestion.paper_indexer import PaperIndexer
 from src.domain.arxiv_ingestion.paper_persist import PaperPersist
 from src.domain.arxiv_ingestion.schemas import DownloadResults
 from src.domain.arxiv_ingestion.service import ArxivIngestionService
-from src.domain.pdf_parser.artifacts import write_parsed_paper_artifacts
+from src.domain.pdf_parser.markdown_writer import MarkdownWriter
 from src.domain.pdf_parser.models import ArxivMetadata, ParsedPaper, ParserType, PdfContent
 
 
@@ -46,7 +46,8 @@ def _ingestion_service(metadata_fetcher: MagicMock, database: MagicMock) -> Arxi
 @patch("src.domain.arxiv_ingestion.paper_persist.PaperRepository")
 def test_persist_papers_loads_sidecars_and_stores_papers(mock_repo_cls, tmp_path) -> None:
     paper = _paper()
-    artifact = write_parsed_paper_artifacts(tmp_path / "arxiv_md", _parsed_paper(paper))
+    parsed = _parsed_paper(paper)
+    artifact = MarkdownWriter(tmp_path / "arxiv_md").write_paper(paper.arxiv_id, parsed)
     database = MagicMock()
     session = MagicMock()
     database.get_session.return_value.__enter__.return_value = session
