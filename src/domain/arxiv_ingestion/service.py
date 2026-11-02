@@ -84,7 +84,7 @@ class ArxivIngestionService:
         return asyncio.run(
             self.pdf_parser.parse_pdfs_to_markdown(
                 papers=papers,
-                downloaded_paths=download_results.downloaded_paths,
+                pdf_paths_by_id=download_results.downloaded_paths,
                 output_dir=output_dir,
                 max_concurrent_parsing=self.paper_fetcher.max_concurrent_parsing,
                 date=download_results.date,
