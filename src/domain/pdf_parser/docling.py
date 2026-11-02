@@ -5,7 +5,7 @@ from typing import Optional
 import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.pipeline_options import HeadingHierarchyOptions, PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 
@@ -22,6 +22,7 @@ class DoclingParser:
         do_ocr: bool = False,
         do_table_structure: bool = False,
         do_figure_extraction: bool = False,
+        heading_hierarchy_enabled: bool = True,
     ):
         """Initialize DocumentConverter with optimized pipeline options.
 
@@ -30,6 +31,7 @@ class DoclingParser:
         :param do_ocr: Enable OCR for scanned PDFs (default: False, very slow)
         :param do_table_structure: Extract table structures (default: False)
         :param do_figure_extraction: Extract figure images and embed in Markdown (default: False)
+        :param heading_hierarchy_enabled: Infer section-header levels from bookmarks, numbering, and style
         """
         self.do_table_structure = do_table_structure
         self.do_figure_extraction = do_figure_extraction
@@ -38,6 +40,13 @@ class DoclingParser:
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
             generate_picture_images=do_figure_extraction,
+        )
+        pipeline_options.heading_hierarchy_options = HeadingHierarchyOptions(
+            enabled=heading_hierarchy_enabled,
+            max_level=6,
+            use_bookmarks= heading_hierarchy_enabled,
+            use_numbering=heading_hierarchy_enabled,
+            use_style=heading_hierarchy_enabled,
         )
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})

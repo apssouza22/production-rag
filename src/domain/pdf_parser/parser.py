@@ -20,6 +20,7 @@ class PDFParserService:
         do_ocr: bool = False,
         do_table_structure: bool = False,
         do_figure_extraction: bool = False,
+        heading_hierarchy_enabled: bool = True,
     ):
         """Initialize PDF parser service with configurable limits."""
         self.do_table_structure = do_table_structure
@@ -30,6 +31,7 @@ class PDFParserService:
             do_ocr=do_ocr,
             do_table_structure=do_table_structure,
             do_figure_extraction=do_figure_extraction,
+            heading_hierarchy_enabled=heading_hierarchy_enabled,
         )
         self.content_extractor = ContentExtractor(
             do_table_structure=do_table_structure,

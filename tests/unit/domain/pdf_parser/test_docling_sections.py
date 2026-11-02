@@ -38,6 +38,7 @@ class TestExtractSectionsFromDocument:
         assert sections[1].title == "Training"
         assert sections[1].breadcrumb == "Paper Title > Methods > Training"
         assert sections[1].level == 2
+        assert sections[0].level == 1
         assert sections[2].title == "Results"
         assert sections[2].breadcrumb == "Paper Title > Results"
 
@@ -74,7 +75,7 @@ class TestExtractSectionsFromDocument:
 
         artifacts_dir = tmp_path / "paper_assets"
         extractor = ContentExtractor(do_figure_extraction=True)
-        sections, figures, _ = extractor.extract_sections_and_artifacts(doc, artifacts_dir)
+        sections, figures, _ = extractor._extract_sections_and_artifacts(doc, artifacts_dir)
 
         assert len(figures) == 1
         assert len(sections) == 1

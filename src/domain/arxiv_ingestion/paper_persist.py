@@ -19,7 +19,8 @@ class PaperPersist:
         """Persist parsed papers and metadata to PostgreSQL."""
         return self._store_papers_to_db(papers, parsed_papers, db_session)
 
-    def _serialize_parsed_content(self, parsed_paper: ParsedPaper) -> dict[str, Any]:
+    @staticmethod
+    def _serialize_parsed_content(parsed_paper: ParsedPaper) -> dict[str, Any]:
         """Serialize ParsedPaper content for database storage."""
         try:
             pdf_content = parsed_paper.pdf_content
@@ -86,7 +87,10 @@ class PaperPersist:
                     )
                 else:
                     paper_data.update(
-                        {"pdf_processed": False, "parser_metadata": {"note": "PDF processing not available or failed"}}
+                        {
+                            "pdf_processed": False,
+                            "parser_metadata": {"note": "PDF processing not available or failed"}
+                        }
                     )
                     logger.debug(f"Storing paper {paper.arxiv_id} with metadata only")
 

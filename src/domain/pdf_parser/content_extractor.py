@@ -9,6 +9,7 @@ from typing import Any, Optional
 from docling.datamodel.document import ConversionResult
 from docling_core.types import DoclingDocument
 from docling_core.types.doc import DocItemLabel, PictureItem, TableItem
+from docling_core.types.doc.document import SectionHeaderItem
 
 from .artefact_extractor import ArtefactExtractor
 from .models import PaperFigure, PaperSection, PaperTable, ParserType, PdfContent
@@ -95,7 +96,7 @@ class DoclingSectionParser:
     def _handle_item(self, item: Any, depth: int) -> None:
         label = getattr(item, "label", None)
         if label in _HEADER_LABELS:
-            self._handle_header(item, depth, label, getattr(item, "text", "").strip())
+            self._handle_header(item, label, getattr(item, "text", "").strip())
         elif isinstance(item, PictureItem) and self._extract_figures:
             self._artefact_extractor.save_figure(item, self._doc, self._current_section, self._items_by_ref)
         elif isinstance(item, TableItem) and self._extract_tables:
@@ -105,18 +106,21 @@ class DoclingSectionParser:
             if text:
                 self._current_section.append_text(text)
 
-    def _handle_header(self, item: Any, depth: int, label: DocItemLabel, text: str) -> None:
+    def _handle_header(self, item: Any, label: DocItemLabel, text: str) -> None:
         self._flush_current()
-        level = self._header_level(item, depth, label)
+        level = self._header_level(item, label)
         self._push_header(level, text)
         breadcrumb = " > ".join(title for _, title in self._header_stack)
         self._current_section = SectionDraft.for_header(title=text, level=level, breadcrumb=breadcrumb)
 
-    def _header_level(self, item: Any, depth: int, label: DocItemLabel) -> int:
+    def _header_level(self, item: Any, label: DocItemLabel) -> int:
         if label == DocItemLabel.TITLE:
             # Keep the document title as the breadcrumb root across same-level section headers.
             return 0
-        return getattr(item, "level", None) or max(depth, 1)
+        if isinstance(item, SectionHeaderItem):
+            return max(item.level, 1)
+        level = getattr(item, "level", 1)
+        return max(level, 1)
 
     def _push_header(self, level: int, text: str) -> None:
         while self._header_stack and self._header_stack[-1][0] >= level:
@@ -126,7 +130,7 @@ class DoclingSectionParser:
 
 def extract_sections_from_document(doc: DoclingDocument) -> list[PaperSection]:
     """Extract paper sections from a Docling document without figures or tables."""
-    sections, _, _ = ContentExtractor().extract_sections_and_artifacts(doc)
+    sections, _, _ = ContentExtractor()._extract_sections_and_artifacts(doc)
     return sections
 
 
@@ -141,7 +145,7 @@ class ContentExtractor:
         self.do_table_structure = do_table_structure
         self.do_figure_extraction = do_figure_extraction
 
-    def extract_sections_and_artifacts(
+    def _extract_sections_and_artifacts(
         self,
         doc: DoclingDocument,
         artifacts_dir: Optional[Path] = None,
@@ -165,7 +169,7 @@ class ContentExtractor:
     ) -> PdfContent:
         """Build PdfContent from a completed Docling conversion."""
         doc = conversion_result.document
-        sections, figures, tables = self.extract_sections_and_artifacts(doc, artifacts_dir)
+        sections, figures, tables = self._extract_sections_and_artifacts(doc, artifacts_dir)
 
         return PdfContent(
             sections=sections,

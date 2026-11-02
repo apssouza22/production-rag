@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from docling.datamodel.base_models import InputFormat
 from src.domain.pdf_parser.docling import DoclingParser
 from src.domain.pdf_parser.exceptions import PDFParsingException, PDFValidationError
 from src.domain.pdf_parser.factory import make_pdf_parser_service
@@ -58,6 +59,10 @@ class TestDoclingParser:
         assert docling_parser.max_pages == 20
         assert docling_parser.max_file_size_bytes == 10 * 1024 * 1024
         assert docling_parser._warmed_up is False
+
+    def test_docling_parser_enables_heading_hierarchy_by_default(self, docling_parser):
+        pdf_options = docling_parser._converter.format_to_options[InputFormat.PDF].pipeline_options
+        assert pdf_options.heading_hierarchy_options.enabled is True
 
     def test_validate_pdf_valid_file(self, docling_parser, valid_pdf_path):
         """Test PDF validation with valid file."""

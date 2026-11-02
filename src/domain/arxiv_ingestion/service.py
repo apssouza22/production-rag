@@ -107,21 +107,7 @@ class ArxivIngestionService:
             )
 
         papers = download_results.papers
-        parsed_papers: dict[str, ParsedPaper] = {}
-        errors = list(markdown_results.get("errors", []))
-
-        for arxiv_id, artifact in markdown_results.get("artifacts", {}).items():
-            try:
-                parsed_paper = load_parsed_paper_artifact(artifact["sidecar_path"])
-                if parsed_paper.arxiv_metadata.arxiv_id != arxiv_id:
-                    raise ValueError(
-                        f"Sidecar arXiv ID {parsed_paper.arxiv_metadata.arxiv_id} does not match artifact key {arxiv_id}"
-                    )
-                parsed_papers[arxiv_id] = parsed_paper
-            except Exception as exc:
-                error = f"Failed to load parsed artifact for {arxiv_id}: {exc}"
-                logger.exception(error)
-                errors.append(error)
+        parsed_papers, errors = self._get_parsed_papers( markdown_results)
 
         with self.database.get_session() as session:
             papers_stored = self.paper_persist.store_papers(papers, parsed_papers, session)
@@ -139,6 +125,24 @@ class ArxivIngestionService:
             results.date,
         )
         return results
+
+    @staticmethod
+    def _get_parsed_papers(markdown_results: dict[str, Any]) -> tuple[dict[str, ParsedPaper], list[str]]:
+        errors = list(markdown_results.get("errors", []))
+        parsed_papers: dict[str, ParsedPaper] = {}
+        for arxiv_id, artifact in markdown_results.get("artifacts", {}).items():
+            try:
+                parsed_paper = load_parsed_paper_artifact(artifact["sidecar_path"])
+                if parsed_paper.arxiv_metadata.arxiv_id != arxiv_id:
+                    raise ValueError(
+                        f"Sidecar arXiv ID {parsed_paper.arxiv_metadata.arxiv_id} does not match artifact key {arxiv_id}"
+                    )
+                parsed_papers[arxiv_id] = parsed_paper
+            except Exception as exc:
+                error = f"Failed to load parsed artifact for {arxiv_id}: {exc}"
+                logger.exception(error)
+                errors.append(error)
+        return parsed_papers, errors
 
     def index_papers_hybrid(
         self,
