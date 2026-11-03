@@ -1,6 +1,7 @@
 """Tests for the minimal evaluation example."""
 
 import pytest
+from evals.core.report_publisher import make_null_report_publisher
 from evals.example_eval.main import ExampleEvaluationRunner
 
 
@@ -79,7 +80,8 @@ async def test_example_eval_uses_shared_report_schema() -> None:
         },
     ]
 
-    report = await runner.run_eval(generate_report_file=False)
+    runner = ExampleEvaluationRunner(report_publisher=make_null_report_publisher())
+    report = await runner.run_eval()
 
     assert report["run_type"] == "example_evaluation"
     assert report["dataset_source"] == "inline_example"

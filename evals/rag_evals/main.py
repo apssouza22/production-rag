@@ -9,9 +9,10 @@ import sys
 import colorama
 from colorama import Fore, Style
 
+from evals.core.report_publisher import make_report_publisher
 from evals.rag_evals.config import get_settings
 from evals.rag_evals.langfuse_experiment import RagLangfuseExperiment
-from evals.rag_evals.runner import RagEvaluationRunner
+from evals.rag_evals.runner import REPORTS_DIR, RagEvaluationRunner
 
 settings = get_settings()
 
@@ -58,7 +59,7 @@ def display_summary(report: dict) -> None:
 
 
 def run_langfuse_experiment(
-    generate_report: bool = True,
+    write_report: bool = True,
     experiment_name: str | None = None,
     run_name: str | None = None,
     dataset_name: str | None = None,
@@ -69,12 +70,14 @@ def run_langfuse_experiment(
     print_info(f"Judge model: {settings.evaluation_llm}")
 
     try:
-        runner = RagLangfuseExperiment(settings=settings)
+        runner = RagLangfuseExperiment(
+            settings=settings,
+            report_publisher=make_report_publisher(enabled=write_report, reports_dir=REPORTS_DIR),
+        )
         runner.run(
             experiment_name=experiment_name,
             run_name=run_name,
             dataset_name=dataset_name,
-            generate_report_file=generate_report,
         )
         print_success("Langfuse experiment completed successfully!")
         if runner.report is not None:
@@ -85,15 +88,18 @@ def run_langfuse_experiment(
         sys.exit(1)
 
 
-async def run_evaluation(generate_report: bool = True) -> None:
+async def run_evaluation(write_report: bool = True) -> None:
     print_title("Starting Ragas Evaluation")
     print_info(f"RAG API: {settings.rag_api_base_url}")
     print_info(f"Dataset: {settings.rag_eval_dataset_path}")
     print_info(f"Judge model: {settings.evaluation_llm}")
 
     try:
-        runner = RagEvaluationRunner(settings=settings)
-        report = await runner.run_eval(generate_report_file=generate_report)
+        runner = RagEvaluationRunner(
+            settings=settings,
+            report_publisher=make_report_publisher(enabled=write_report, reports_dir=REPORTS_DIR),
+        )
+        report = await runner.run_eval()
         print_success("Ragas evaluation completed successfully!")
         display_summary(report)
     except Exception as exc:
@@ -124,14 +130,14 @@ def main() -> None:
 
     if args.langfuse_experiment:
         run_langfuse_experiment(
-            generate_report=not args.no_report,
+            write_report=not args.no_report,
             experiment_name=args.experiment_name,
             run_name=args.run_name,
             dataset_name=args.dataset_name,
         )
         return
 
-    asyncio.run(run_evaluation(generate_report=not args.no_report))
+    asyncio.run(run_evaluation(write_report=not args.no_report))
 
 
 if __name__ == "__main__":

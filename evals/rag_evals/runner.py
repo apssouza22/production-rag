@@ -7,12 +7,12 @@ from evals.core.datasets import Dataset
 from evals.core.evaluator import Evaluator
 from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
+from evals.core.report_publisher import ReportPublisher, make_file_report_publisher
 from evals.core.reporting import (
     EvaluationReport,
     build_report,
     get_dataset_location,
     get_dataset_source_name,
-    write_report,
 )
 from evals.core.runner import EvalRunner
 from evals.rag_evals.config import RagEvalSettings, get_settings
@@ -33,6 +33,7 @@ class RagEvaluationRunner(EvalRunner):
         settings: RagEvalSettings | None = None,
         dataset: Dataset | None = None,
         metrics: list[Metric] | None = None,
+        report_publisher: ReportPublisher | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.chat_model = make_eval_chat_model(
@@ -49,9 +50,10 @@ class RagEvaluationRunner(EvalRunner):
         self.dataset: Dataset = dataset or RagDataset(self.settings.rag_eval_dataset_path, self.dataset_builder)
         self.metrics = metrics if metrics is not None else build_metrics(self.chat_model)
         self.evaluator = Evaluator(self.metrics, progress_description="Evaluating RAG samples")
+        self.report_publisher = report_publisher or make_file_report_publisher(reports_dir=REPORTS_DIR)
         self.report: EvaluationReport | None = None
 
-    async def run_eval(self, generate_report_file: bool = True) -> dict:
+    async def run_eval(self) -> dict:
         """Build the dataset from rerank search and score each sample."""
         response = await self.evaluator.evaluate(self.dataset)
         if not response.items:
@@ -73,8 +75,7 @@ class RagEvaluationRunner(EvalRunner):
             },
         )
 
-        if generate_report_file:
-            write_report(self.report, reports_dir=REPORTS_DIR)
+        self.report_publisher.publish(self.report)
 
         logger.info(
             "Ragas evaluation completed: samples=%s duration_seconds=%s",

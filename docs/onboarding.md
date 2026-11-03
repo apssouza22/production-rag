@@ -30,7 +30,7 @@ You're building a production-grade RAG system for arXiv CS.AI papers with agenti
 | **PostgreSQL** | 5412 | Paper metadata + parsed content |
 | **OpenSearch** | 9200 | BM25 + vector search |
 | **OpenSearch Dashboards** | 5601 | Search UI / debugging |
-| **Apache Airflow** | 8080 | Scheduled ingestion DAG |
+| **Apache Airflow** | 7771 | Scheduled ingestion DAG |
 
 **Langfuse Cloud** — hosted tracing dashboard at [cloud.langfuse.com](https://cloud.langfuse.com); no local Docker services required.
 
@@ -92,7 +92,7 @@ Set `OPENAI_API_KEY` in `.env` before running generation (see [OpenAI](#openai-l
 | URL | What |
 |-----|------|
 | http://localhost:8000/docs | Swagger API |
-| http://localhost:8080 | Airflow web UI |
+| http://localhost:7771 | Airflow web UI |
 | http://localhost:5601 | OpenSearch Dashboards |
 | https://cloud.langfuse.com | Langfuse Cloud tracing dashboard |
 
@@ -199,7 +199,7 @@ Orchestrates the ingestion DAG (`arxiv_paper_ingestion`) that fetches papers, pa
 
 | Setting | Value |
 |---------|-------|
-| URL | http://localhost:8080 |
+| URL | http://localhost:7771 |
 | Username | `admin` |
 | Password | `admin` |
 
@@ -224,7 +224,7 @@ docker exec rag-airflow ls /opt/airflow/data/arxiv_pdfs/
 **Health check:**
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:7771/health
 ```
 
 #### Langfuse
@@ -476,7 +476,7 @@ uv run pytest
 | OpenAI connection / timeout errors | Check network; increase `LLM_REQUEST_TIMEOUT` if needed |
 | Empty search results | Run Airflow DAG to ingest + index; check `curl localhost:9200/arxiv-papers-chunks/_count` |
 | Langfuse empty | Verify `LANGFUSE__*` keys from [Langfuse Cloud](https://cloud.langfuse.com); confirm `LANGFUSE__HOST` matches your region; restart API; send a new query; enable `LANGFUSE__DEBUG=true` |
-| Port conflicts | Stop services on 8000, 8080, 5412, 9200 |
+| Port conflicts | Stop services on 8000, 7771, 5412, 9200 |
 
 Full reset:
 

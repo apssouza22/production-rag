@@ -6,6 +6,7 @@ import pytest
 from evals.core.evaluator import Evaluator
 from evals.core.metrics import MetricDefinition, SampleField
 from evals.core.reporting import build_report
+from evals.core.report_publisher import make_null_report_publisher
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
 from evals.live_req_evals.config import Settings
@@ -100,8 +101,12 @@ async def test_trace_runner_consumes_shared_dataset_and_metric() -> None:
         patch("evals.live_req_evals.runner.make_eval_chat_model"),
         patch("evals.live_req_evals.runner.Langfuse") as langfuse_cls,
     ):
-        runner = TraceEvaluationRunner(dataset=dataset, metrics=[metric])
-        report = await runner.run_eval(generate_report_file=False)
+        runner = TraceEvaluationRunner(
+            dataset=dataset,
+            metrics=[metric],
+            report_publisher=make_null_report_publisher(),
+        )
+        report = await runner.run_eval()
 
     assert report["schema_version"] == "1.0"
     assert report["run_type"] == "trace_evaluation"

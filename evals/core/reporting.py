@@ -1,6 +1,5 @@
 """Unified report models and aggregation for every evaluation runner."""
 
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -149,20 +148,3 @@ def build_report(
         items=items,
         metadata=metadata or {},
     )
-
-
-def write_report(
-    report: EvaluationReport,
-    *,
-    reports_dir: Path = DEFAULT_REPORTS_DIR,
-    filename_prefix: str | None = None,
-) -> str:
-    """Write a unified report and include its path in the serialized payload."""
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    resolved_prefix = filename_prefix or f"evaluation_report_{report.run_type}"
-    report_path = reports_dir / f"{resolved_prefix}_{timestamp}.json"
-    report.report_path = str(report_path)
-    with report_path.open("w", encoding="utf-8") as handle:
-        json.dump(report.model_dump(mode="json"), handle, indent=2)
-    return str(report_path)

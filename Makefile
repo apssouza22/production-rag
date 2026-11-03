@@ -27,7 +27,7 @@ health: ## Check all services health
 	@echo "Checking service health..."
 	@curl -s http://localhost:8000/health | jq . || echo "API not responding"
 	@curl -s http://localhost:9200/_cluster/health | jq . || echo "OpenSearch not responding"
-	@curl -s http://localhost:8080/health || echo "Airflow not responding"
+	@curl -s http://localhost:7771/health || echo "Airflow not responding"
 
 # Development
 setup: ## Install Python dependencies

@@ -12,12 +12,12 @@ from src.domain.rerank.factory import make_rerank_search_service
 from evals.core.evaluator import Evaluator
 from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
+from evals.core.report_publisher import ReportPublisher, make_file_report_publisher
 from evals.core.reporting import (
     EvaluationReport,
     build_report,
     get_dataset_location,
     get_dataset_source_name,
-    write_report,
 )
 from evals.core.runner import EvalRunner
 from evals.experiments.config import ExperimentRunConfig, get_settings
@@ -41,6 +41,7 @@ class ExperimentRunner(EvalRunner):
         *,
         force_ingest: bool = False,
         regenerate_queries: bool = False,
+        report_publisher: ReportPublisher | None = None,
     ) -> None:
         self.run_config = run_config or get_settings()
         self.settings = self.run_config.experiment
@@ -66,9 +67,10 @@ class ExperimentRunner(EvalRunner):
         )
         self.metrics = metrics if metrics is not None else build_metrics(self.chat_model)
         self.evaluator = Evaluator(self.metrics, progress_description="Evaluating experiment samples")
+        self.report_publisher = report_publisher or make_file_report_publisher(reports_dir=REPORTS_DIR)
         self.report: EvaluationReport | None = None
 
-    async def run_eval(self, generate_report_file: bool = True) -> dict[str, Any]:
+    async def run_eval(self) -> dict[str, Any]:
         """Ingest if needed, build the dataset from retrieval, and score every sample."""
         # The ingestion pipeline is synchronous and calls asyncio.run() internally.
         ingestion = await asyncio.to_thread(
@@ -107,8 +109,7 @@ class ExperimentRunner(EvalRunner):
             },
         )
 
-        if generate_report_file:
-            write_report(self.report, reports_dir=REPORTS_DIR)
+        self.report_publisher.publish(self.report)
 
         logger.info(
             "Experiment evaluation completed: samples=%s duration_seconds=%s",

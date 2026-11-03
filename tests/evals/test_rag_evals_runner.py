@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from evals.core.metrics import MetricDefinition
+from evals.core.report_publisher import make_file_report_publisher, make_null_report_publisher
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.runner import RagEvaluationRunner
 from evals.rag_evals.schemas import EvalSample, MetricScore
@@ -51,8 +52,13 @@ async def test_evaluator_aggregates_metric_scores(tmp_path):
     ):
         dataset = Mock(total_queries=1)
         dataset.load = AsyncMock(return_value=[sample])
-        runner = RagEvaluationRunner(settings=settings, dataset=dataset, metrics=[metric_definition])
-        report = await runner.run_eval(generate_report_file=False)
+        runner = RagEvaluationRunner(
+            settings=settings,
+            dataset=dataset,
+            metrics=[metric_definition],
+            report_publisher=make_null_report_publisher(),
+        )
+        report = await runner.run_eval()
 
     assert report["schema_version"] == "1.0"
     assert report["run_type"] == "rag_evaluation"
@@ -102,12 +108,16 @@ async def test_evaluator_writes_json_report(tmp_path):
         patch("evals.rag_evals.runner.make_eval_chat_model", return_value=Mock()),
         patch("evals.rag_evals.runner.RerankSearchClient"),
         patch("evals.rag_evals.runner.DatasetBuilder"),
-        patch("evals.rag_evals.runner.REPORTS_DIR", reports_dir),
     ):
         dataset = Mock(total_queries=1)
         dataset.load = AsyncMock(return_value=[sample])
-        runner = RagEvaluationRunner(settings=settings, dataset=dataset, metrics=[metric_definition])
-        report = await runner.run_eval(generate_report_file=True)
+        runner = RagEvaluationRunner(
+            settings=settings,
+            dataset=dataset,
+            metrics=[metric_definition],
+            report_publisher=make_file_report_publisher(reports_dir=reports_dir),
+        )
+        report = await runner.run_eval()
 
     report_path = report["report_path"]
     with open(report_path, encoding="utf-8") as handle:
@@ -160,8 +170,13 @@ async def test_evaluator_skips_reference_metrics_without_reference(tmp_path):
     ):
         dataset = Mock(total_queries=1)
         dataset.load = AsyncMock(return_value=[sample])
-        runner = RagEvaluationRunner(settings=settings, dataset=dataset, metrics=[metric_definition])
-        report = await runner.run_eval(generate_report_file=False)
+        runner = RagEvaluationRunner(
+            settings=settings,
+            dataset=dataset,
+            metrics=[metric_definition],
+            report_publisher=make_null_report_publisher(),
+        )
+        report = await runner.run_eval()
 
     assert report["metrics_summary"]["context_precision"]["failure_count"] == 1
     assert report["items"][0]["metrics"][0]["error"] == "reference is required"

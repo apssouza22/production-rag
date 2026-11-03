@@ -12,10 +12,12 @@ from evals.core import (
     Evaluator,
     MetricDefinition,
     MetricResult,
+    ReportPublisher,
     SampleField,
     build_report,
     get_dataset_source_name,
-    write_report,
+    make_file_report_publisher,
+    make_null_report_publisher,
 )
 
 
@@ -67,7 +69,7 @@ async def score_exact_match(sample: EvalSample) -> MetricResult:
 class ExampleEvaluationRunner(EvalRunner):
     """Wire an example dataset and metric into the shared evaluator."""
 
-    def __init__(self, dataset: Dataset | None = None) -> None:
+    def __init__(self, dataset: Dataset | None = None, report_publisher: ReportPublisher | None = None) -> None:
         self.dataset = dataset or ExampleDataset()
         self.metric = MetricDefinition(
             name="exact_match",
@@ -76,9 +78,10 @@ class ExampleEvaluationRunner(EvalRunner):
             required_fields=frozenset({SampleField.OUTPUT, SampleField.REFERENCE}),
         )
         self.evaluator = Evaluator([self.metric], progress_description="Running example evaluation")
+        self.report_publisher = report_publisher or make_file_report_publisher()
         self.report: EvaluationReport | None = None
 
-    async def run_eval(self, generate_report_file: bool = True) -> dict[str, Any]:
+    async def run_eval(self) -> dict[str, Any]:
         response = await self.evaluator.evaluate(self.dataset)
         self.report = build_report(
             response=response,
@@ -86,14 +89,13 @@ class ExampleEvaluationRunner(EvalRunner):
             evaluation_model="deterministic",
             dataset_source=get_dataset_source_name(self.dataset),
         )
-        if generate_report_file:
-            write_report(self.report)
+        self.report_publisher.publish(self.report)
         return self.report.model_dump(mode="json")
 
 
 async def run() -> None:
     """Run the example and print its unified report."""
-    report = await ExampleEvaluationRunner().run_eval(generate_report_file=False)
+    report = await ExampleEvaluationRunner(report_publisher=make_null_report_publisher()).run_eval()
     print(json.dumps(report, indent=2))
 
 

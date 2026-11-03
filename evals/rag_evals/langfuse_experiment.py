@@ -10,7 +10,8 @@ from langfuse.experiment import EvaluatorFunction, ExperimentResult, LocalExperi
 from evals.core.evaluator import EvaluationItemResult, EvaluationResponse, MetricMetadata
 from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
-from evals.core.reporting import EvaluationReport, build_report, write_report
+from evals.core.report_publisher import ReportPublisher, make_file_report_publisher
+from evals.core.reporting import EvaluationReport, build_report
 from evals.core.schemas import EvalSample, MetricResult
 from evals.rag_evals.config import RagEvalSettings, get_settings
 from evals.rag_evals.dataset import DatasetBuilder, load_queries
@@ -253,7 +254,11 @@ def experiment_result_to_evaluation_response(
 class RagLangfuseExperiment:
     """Run retrieval + Ragas scoring through Langfuse's experiment runner."""
 
-    def __init__(self, settings: RagEvalSettings | None = None) -> None:
+    def __init__(
+        self,
+        settings: RagEvalSettings | None = None,
+        report_publisher: ReportPublisher | None = None,
+    ) -> None:
         self.settings = settings or get_settings()
         if not self.settings.langfuse_public_key or not self.settings.langfuse_secret_key:
             raise ValueError("Langfuse credentials are required. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env")
@@ -276,6 +281,7 @@ class RagLangfuseExperiment:
             chat_model=self.chat_model,
         )
         self.metrics = build_metrics(self.chat_model)
+        self.report_publisher = report_publisher or make_file_report_publisher(reports_dir=REPORTS_DIR)
         self.report: EvaluationReport | None = None
 
     def run(
@@ -285,7 +291,6 @@ class RagLangfuseExperiment:
         run_name: str | None = None,
         description: str | None = None,
         dataset_name: str | None = None,
-        generate_report_file: bool = True,
     ) -> ExperimentResult:
         """Execute the experiment on a local JSON dataset or a hosted Langfuse dataset."""
         resolved_name = experiment_name or self.settings.rag_eval_experiment_name
@@ -340,8 +345,7 @@ class RagLangfuseExperiment:
             dataset_path=dataset_path,
             metrics=self.metrics,
         )
-        if generate_report_file:
-            write_report(self.report, reports_dir=REPORTS_DIR)
+        self.report_publisher.publish(self.report)
 
         logger.info(
             "Langfuse experiment completed: name=%s items=%s dataset_run_url=%s",

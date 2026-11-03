@@ -17,7 +17,8 @@ from evals.experiments.config import (
     build_run_config,
     resolve_settings_path,
 )
-from evals.experiments.runner import ExperimentRunner
+from evals.core.report_publisher import make_report_publisher
+from evals.experiments.runner import REPORTS_DIR, ExperimentRunner
 
 
 def print_title(title: str) -> None:
@@ -75,8 +76,9 @@ async def run_experiment(args: argparse.Namespace, run_config: ExperimentRunConf
             run_config=run_config,
             force_ingest=args.force_ingest,
             regenerate_queries=args.regenerate_queries,
+            report_publisher=make_report_publisher(enabled=not args.no_report, reports_dir=REPORTS_DIR),
         )
-        report = await runner.run_eval(generate_report_file=not args.no_report)
+        report = await runner.run_eval()
         print_success("Experiment evaluation completed successfully!")
         display_summary(report)
     except Exception as exc:

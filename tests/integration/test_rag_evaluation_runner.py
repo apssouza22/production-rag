@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+from evals.core.report_publisher import make_report_publisher
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.runner import RagEvaluationRunner
 from pydantic import BaseModel
@@ -36,8 +37,8 @@ def _structured_response(response_model: type[BaseModel]) -> BaseModel:
     return response_model.model_validate(payloads[response_model.__name__])
 
 
-@pytest.mark.parametrize("generate_report", [False, True])
-async def test_rag_evaluation_runner_with_mocked_external_services(tmp_path: Path, generate_report: bool) -> None:
+@pytest.mark.parametrize("write_report", [False, True])
+async def test_rag_evaluation_runner_with_mocked_external_services(tmp_path: Path, write_report: bool) -> None:
     dataset_path = tmp_path / "queries.json"
     dataset_path.write_text(
         json.dumps(
@@ -95,10 +96,12 @@ async def test_rag_evaluation_runner_with_mocked_external_services(tmp_path: Pat
     with (
         patch("evals.core.llm.ChatOpenAI", return_value=chat_model) as openai_cls,
         patch("evals.rag_evals.retrieval.httpx.AsyncClient", return_value=http_client_context) as http_client_cls,
-        patch("evals.rag_evals.runner.REPORTS_DIR", reports_dir),
     ):
-        runner = RagEvaluationRunner(settings=settings)
-        report = await runner.run_eval(generate_report_file=generate_report)
+        runner = RagEvaluationRunner(
+            settings=settings,
+            report_publisher=make_report_publisher(enabled=write_report, reports_dir=reports_dir),
+        )
+        report = await runner.run_eval()
 
     openai_cls.assert_called_once_with(
         model="mock-judge",
@@ -131,7 +134,7 @@ async def test_rag_evaluation_runner_with_mocked_external_services(tmp_path: Pat
     assert set(report["metrics_summary"]) == expected_metrics
     assert all(summary["average_score"] == 1.0 for summary in report["metrics_summary"].values())
 
-    if generate_report:
+    if write_report:
         report_path = Path(report["report_path"])
         assert report_path.parent == reports_dir
         assert json.loads(report_path.read_text(encoding="utf-8"))["run_type"] == "rag_evaluation"

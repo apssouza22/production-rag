@@ -9,6 +9,14 @@ from evals.core.evaluator import (
     MetricResultHandler,
 )
 from evals.core.metrics import Metric, MetricDefinition, MetricScorer, PromptMetric, SampleField
+from evals.core.report_publisher import (
+    FileReportPublisher,
+    NullReportPublisher,
+    ReportPublisher,
+    make_file_report_publisher,
+    make_null_report_publisher,
+    make_report_publisher,
+)
 from evals.core.reporting import (
     EvaluationReport,
     MetricSummary,
@@ -17,7 +25,6 @@ from evals.core.reporting import (
     get_dataset_location,
     get_dataset_source_name,
     make_report_item,
-    write_report,
 )
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
@@ -39,10 +46,15 @@ __all__ = [
     "MetricResultHandler",
     "PromptMetric",
     "ReportItem",
+    "ReportPublisher",
+    "FileReportPublisher",
+    "NullReportPublisher",
     "SampleField",
     "build_report",
     "get_dataset_location",
     "get_dataset_source_name",
+    "make_file_report_publisher",
+    "make_null_report_publisher",
+    "make_report_publisher",
     "make_report_item",
-    "write_report",
 ]

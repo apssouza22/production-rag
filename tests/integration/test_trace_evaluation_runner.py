@@ -1,16 +1,15 @@
 import json
-from functools import partial
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from evals.core.reporting import write_report
+from evals.core.report_publisher import make_report_publisher
 from evals.live_req_evals.config import Settings
 from evals.live_req_evals.metrics import load_metric_prompts
 from evals.live_req_evals.runner import TraceEvaluationRunner
 
 
-@pytest.mark.parametrize("generate_report", [False, True])
-async def test_trace_evaluation_runner_with_mocked_external_services(tmp_path, monkeypatch, generate_report: bool) -> None:
+@pytest.mark.parametrize("write_report", [False, True])
+async def test_trace_evaluation_runner_with_mocked_external_services(tmp_path, write_report: bool) -> None:
     settings = Settings(
         evaluation_llm="mock-judge",
         evaluation_api_key="openai-test-key",
@@ -34,18 +33,15 @@ async def test_trace_evaluation_runner_with_mocked_external_services(tmp_path, m
     chat_model = Mock()
     chat_model.with_structured_output.return_value = judge
 
-    monkeypatch.setattr(
-        "evals.live_req_evals.runner.write_report",
-        partial(write_report, reports_dir=tmp_path),
-    )
-
     with (
         patch("evals.live_req_evals.runner.get_settings", return_value=settings),
         patch("evals.live_req_evals.runner.Langfuse", return_value=langfuse) as langfuse_cls,
         patch("evals.core.llm.ChatOpenAI", return_value=chat_model) as openai_cls,
     ):
-        runner = TraceEvaluationRunner()
-        report = await runner.run_eval(generate_report_file=generate_report)
+        runner = TraceEvaluationRunner(
+            report_publisher=make_report_publisher(enabled=write_report, reports_dir=tmp_path),
+        )
+        report = await runner.run_eval()
 
     metric_names = set(load_metric_prompts())
 
@@ -74,7 +70,7 @@ async def test_trace_evaluation_runner_with_mocked_external_services(tmp_path, m
     assert set(report["metrics_summary"]) == metric_names
     assert all(summary["average_score"] == 0.9 for summary in report["metrics_summary"].values())
 
-    if generate_report:
+    if write_report:
         report_path = tmp_path / str(report["report_path"]).split("/")[-1]
         assert report_path.exists()
         assert json.loads(report_path.read_text(encoding="utf-8"))["run_type"] == "trace_evaluation"

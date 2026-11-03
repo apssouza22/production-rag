@@ -8,12 +8,12 @@ from evals.core.datasets import Dataset
 from evals.core.evaluator import Evaluator, MetricResultHandler
 from evals.core.llm import make_eval_chat_model
 from evals.core.metrics import Metric
+from evals.core.report_publisher import ReportPublisher, make_file_report_publisher
 from evals.core.reporting import (
     EvaluationReport,
     build_report,
     get_dataset_location,
     get_dataset_source_name,
-    write_report,
 )
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
@@ -49,6 +49,7 @@ class TraceEvaluationRunner(EvalRunner):
         self,
         dataset: Dataset | None = None,
         metrics: list[Metric] | None = None,
+        report_publisher: ReportPublisher | None = None,
     ) -> None:
         """Initialize trace dataset, metrics, and integrations."""
         self.settings = get_settings()
@@ -75,9 +76,10 @@ class TraceEvaluationRunner(EvalRunner):
             item_delay_seconds=self.settings.evaluation_sleep_time,
             progress_description="Evaluating traces",
         )
+        self.report_publisher = report_publisher or make_file_report_publisher()
         self.report: EvaluationReport | None = None
 
-    async def run_eval(self, generate_report_file: bool = True) -> dict:
+    async def run_eval(self) -> dict:
         """Fetch traces from Langfuse, evaluate them, and push scores back."""
         response = await self.evaluator.evaluate(self.dataset)
         self.report = build_report(
@@ -88,8 +90,7 @@ class TraceEvaluationRunner(EvalRunner):
             dataset_location=get_dataset_location(self.dataset),
         )
 
-        if generate_report_file:
-            write_report(self.report)
+        self.report_publisher.publish(self.report)
 
         logger.info(
             "Evaluation completed: total_items=%s successful_items=%s failed_items=%s duration_seconds=%s",

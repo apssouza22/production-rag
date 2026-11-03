@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 import colorama
 from colorama import Fore, Style
 
+from evals.core.report_publisher import ReportPublisher, make_report_publisher
 from evals.live_req_evals.config import get_settings
 from evals.live_req_evals.runner import TraceEvaluationRunner
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DEFAULT_CONFIG = {
-    "generate_report": True,
+    "write_report": True,
     "model": settings.evaluation_llm,
     "api_base": settings.evaluation_base_url,
 }
@@ -117,15 +118,16 @@ def display_summary(report: Dict[str, Any]) -> None:
         print(f"\n{Fore.CYAN}Report generated at:{Style.RESET_ALL} {report['report_path']}")
 
 
-async def run_evaluation(generate_report: bool = True) -> None:
+async def run_evaluation(report_publisher: ReportPublisher | None = None) -> None:
     """Run the evaluation process."""
+    publisher = report_publisher or make_report_publisher(enabled=True)
     print_title("Starting Evaluation")
     print_info(f"Using model: {settings.evaluation_llm}")
-    print_info(f"Report generation: {'Enabled' if generate_report else 'Disabled'}")
+    print_info(f"Report publisher: {type(publisher).__name__}")
 
     try:
-        runner = TraceEvaluationRunner()
-        report = await runner.run_eval(generate_report_file=generate_report)
+        runner = TraceEvaluationRunner(report_publisher=publisher)
+        report = await runner.run_eval()
 
         print_success("Evaluation completed successfully!")
         display_summary(report)
@@ -141,7 +143,7 @@ def display_configuration(config: Dict[str, Any]) -> None:
     print_title("Configuration")
     print_info(f"Model: {config['model']}")
     print_info(f"API Base: {config['api_base']}")
-    print_info(f"Generate Report: {'Yes' if config['generate_report'] else 'No'}")
+    print_info(f"Write report: {'Yes' if config['write_report'] else 'No'}")
 
 
 def interactive_mode() -> None:
@@ -161,13 +163,15 @@ def interactive_mode() -> None:
     change_config = get_yes_no("Would you like to change the default configuration?", default=False)
 
     if change_config:
-        config["generate_report"] = get_yes_no("Generate JSON report?", default=config["generate_report"])
+        config["write_report"] = get_yes_no("Generate JSON report?", default=config["write_report"])
 
     print("\n")
     confirm = get_yes_no("Ready to start evaluation with these settings?", default=True)
 
     if confirm:
-        asyncio.run(run_evaluation(generate_report=config["generate_report"]))
+        asyncio.run(
+            run_evaluation(report_publisher=make_report_publisher(enabled=config["write_report"]))
+        )
     else:
         print_warning("Evaluation canceled.")
 
@@ -182,7 +186,9 @@ def quick_mode() -> None:
     display_configuration(DEFAULT_CONFIG)
 
     try:
-        asyncio.run(run_evaluation(generate_report=DEFAULT_CONFIG["generate_report"]))
+        asyncio.run(
+            run_evaluation(report_publisher=make_report_publisher(enabled=DEFAULT_CONFIG["write_report"]))
+        )
     except KeyboardInterrupt:
         print_warning("\nEvaluation canceled by user.")
         sys.exit(0)
@@ -204,7 +210,7 @@ def main() -> None:
     elif args.interactive:
         interactive_mode()
     else:
-        asyncio.run(run_evaluation(generate_report=not args.no_report))
+        asyncio.run(run_evaluation(report_publisher=make_report_publisher(enabled=not args.no_report)))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+from evals.core.report_publisher import make_null_report_publisher
 from evals.core.metrics import MetricDefinition
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.langfuse_experiment import (
@@ -189,8 +190,11 @@ def test_rag_langfuse_experiment_runs_local_dataset(tmp_path):
     ):
         langfuse_client = langfuse_cls.return_value
         langfuse_client.run_experiment.return_value = experiment_result
-        runner = RagLangfuseExperiment(settings=settings)
-        result = runner.run(generate_report_file=False)
+        runner = RagLangfuseExperiment(
+            settings=settings,
+            report_publisher=make_null_report_publisher(),
+        )
+        result = runner.run()
 
     langfuse_client.run_experiment.assert_called_once()
     call_kwargs = langfuse_client.run_experiment.call_args.kwargs
@@ -230,8 +234,11 @@ def test_rag_langfuse_experiment_uses_hosted_dataset(tmp_path):
     ):
         langfuse_client = langfuse_cls.return_value
         langfuse_client.get_dataset.return_value = dataset_client
-        runner = RagLangfuseExperiment(settings=settings)
-        result = runner.run(generate_report_file=False)
+        runner = RagLangfuseExperiment(
+            settings=settings,
+            report_publisher=make_null_report_publisher(),
+        )
+        result = runner.run()
 
     langfuse_client.get_dataset.assert_called_once_with("hosted-rag-eval")
     dataset_client.run_experiment.assert_called_once()

@@ -189,7 +189,7 @@ uv run pytest                 # Run tests
 
 **Common Issues:**
 - **Services not starting?** Wait 2-3 minutes, check `docker compose logs`
-- **Port conflicts?** Stop other services using ports 8000, 8080, 5412, 9200
+- **Port conflicts?** Stop other services using ports 8000, 7771, 5412, 9200
 - **Memory issues?** Increase Docker Desktop memory allocation
 
 **Get Help:**
