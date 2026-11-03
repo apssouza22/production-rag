@@ -1,6 +1,6 @@
 # Evals
 
-Evaluation frameworks for the API, integrated with the main project:
+Evaluation frameworks for the API, integrated with the main project. For architecture and design rationale, see [docs/evals.md](../docs/evals.md). For commands and env vars, continue below.
 
 - **example_eval** — minimal, dependency-free example using the shared eval infrastructure
 - **live_req_evals** — scores Langfuse traces with LLM-as-judge metrics

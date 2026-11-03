@@ -492,6 +492,7 @@ docker compose down -v && docker compose up --build -d
 
 - [Anatomy of a Production-Grade Agentic RAG System](ARTICLE.md) — architecture, trade-offs, and failure design
 - [How OpenSearch Powers Retrieval](opensearch-search.md) — index mapping, query construction, RRF fusion
+- [Evaluation in the Production RAG Platform](evals.md) — shared eval core, runners, reports, and extension points
 
 ### Blog series
 

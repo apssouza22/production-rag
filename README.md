@@ -27,6 +27,7 @@ Learn to build modern AI systems production grade from the ground up through han
 | **[Anatomy of a Production-Grade Agentic RAG System](docs/ARTICLE.md)** | Long-form article on what production readiness actually costs: ingestion, chunking, hybrid retrieval + reranking, agent orchestration, fault tolerance, semantic caching, and the evaluation loop. Diagrams throughout, plus an honest list of what isn't production-ready yet. |
 | [Senior Engineer Onboarding Guide](docs/onboarding.md) | Setup, service access, project layout, and troubleshooting. |
 | [How OpenSearch Powers Retrieval](docs/opensearch-search.md) | Deep dive on the search layer: index mapping, BM25 query construction, kNN, and RRF fusion. |
+| [Evaluation in the Production RAG Platform](docs/evals.md) | How `evals/` measures live traces and golden retrieval, unified reports, and experiment runners. |
 
 **Start here** if you want to understand *why* the system is built this way before reading the code.
 

@@ -170,4 +170,5 @@ Key env vars: `JINA_API_KEY` (required for hybrid search), `OPENAI_API_KEY`, `LA
 | Onboarding & service access | [docs/onboarding.md](docs/onboarding.md) |
 | OpenSearch retrieval layer | [docs/opensearch-search.md](docs/opensearch-search.md) |
 | Evals framework | [evals/README.md](evals/README.md) |
+| Evals architecture | [docs/evals.md](docs/evals.md) |
 | Interactive API docs | http://localhost:8000/docs (when stack is running) |

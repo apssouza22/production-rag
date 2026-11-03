@@ -693,6 +693,8 @@ The gap worth naming: entries expire on a 6-hour TTL, and nothing invalidates th
 
 ## 11. Observability and the evaluation loop
 
+> **Deep dive:** [Evaluation in the Production RAG Platform](evals.md) — shared `Evaluator` core, normalized `EvalSample`s, unified JSON reports, and all four runners (`live_req_evals`, `rag_evals`, Langfuse experiments, local-PDF `experiments`), plus how to extend metrics and wire CI gates.
+
 Every request produces a trace with a span per stage: query embedding, search retrieval, prompt construction, generation. Agent requests add a span per node with inputs, outputs, timings and the routing decision. When something goes wrong, you can see which stage was slow and what the grader actually decided, instead of inferring it from log grep archaeology.
 
 Agentic requests also return a **trajectory** in the HTTP response (see §7.2). That gives you the same execution path in the payload you are already logging or storing for evals — no separate fetch from Langfuse required to answer "did `grade_documents` run?"
@@ -722,7 +724,7 @@ flowchart TB
         RS --> CTX["retrieved_contexts<br/>chunk_text from after_rerank"]
         CTX --> GEN["Optional response generation<br/>from contexts only"]
         GEN --> RAG["Ragas metrics<br/>6 scorers, gpt-4o-mini judge"]
-        RAG --> H2["JSON report in reports/<br/>ragas_evaluation_report_*.json"]
+        RAG --> H2["JSON report in reports/<br/>evaluation_report_rag_evaluation_*.json"]
     end
 ```
 
@@ -782,7 +784,7 @@ The seed dataset in `rag_evals/queries.json` has three CS.AI questions — RAG a
 
 Those numbers are not good, and that is the point. Two of three queries produced "I do not know" despite retrieving five chunks each — retrieval ran, but the small local model refused to synthesise from the excerpts. The third query retrieved on-topic chunks about a user-simulator paper and scored well on faithfulness (1.0) while `factual_correctness` stayed at zero, because the answer discussed the wrong paper relative to the reference. Ragas separated a retrieval miss from a generation miss without anyone reading the traces by hand. That is exactly the decomposition the quality ladder in §14 is built around.
 
-Re-run after any change to chunking, field boosts, contextual retrieval, or reranking. The report lands in `evals/reports/ragas_evaluation_report_<timestamp>.json` with per-query breakdowns.
+Re-run after any change to chunking, field boosts, contextual retrieval, or reranking. The report lands in `evals/reports/evaluation_report_rag_evaluation_<timestamp>.json` (unified schema v1.0) with per-query breakdowns.
 
 ### 11.3 Trajectory assertions and human feedback
 
