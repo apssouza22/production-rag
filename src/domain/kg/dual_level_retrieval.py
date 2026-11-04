@@ -187,10 +187,7 @@ class DualLevelKGRetrievalService:
         return hits
 
     def _load_chunk_hits(self, chunk_keys: list[str]) -> list[KgChunkHit]:
-        os_chunks = self._paper_rrf_search.get_chunks_by_chunk_keys(
-            chunk_keys,
-            ingestion_name=self._ingestion_name,
-        )
+        os_chunks = self._paper_rrf_search.get_chunks_by_chunk_keys(chunk_keys)
         return [self._chunk_hit_from_opensearch_doc(chunk) for chunk in os_chunks]
 
     @contextmanager

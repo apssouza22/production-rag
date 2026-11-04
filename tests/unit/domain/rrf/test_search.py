@@ -9,15 +9,14 @@ from src.domain.rrf import HybridRrfSearch
 @pytest.fixture
 def hybrid_rrf_search() -> HybridRrfSearch:
     opensearch = OpenSearchClient(host="http://localhost:9200")
-    search = HybridRrfSearch(opensearch, get_settings())
-    search.ingestion_name = "test-partition"
+    search = HybridRrfSearch(opensearch, get_settings(), ingestion_name="test-partition")
     search._opensearch.client = MagicMock()
     search._opensearch.client.search.return_value = {"hits": {"total": {"value": 0}, "hits": []}}
     return search
 
 
 def test_get_chunks_by_chunk_keys_sorts_by_request_order(hybrid_rrf_search: HybridRrfSearch) -> None:
-    hybrid_rrf_search._opensearch.client.search_rrf.return_value = {
+    hybrid_rrf_search._opensearch.client.search.return_value = {
         "hits": {
             "hits": [
                 {
@@ -41,6 +40,5 @@ def test_get_chunks_by_chunk_keys_sorts_by_request_order(hybrid_rrf_search: Hybr
     }
     chunks = hybrid_rrf_search.get_chunks_by_chunk_keys(
         ["1234.5678:0", "1234.5678:1"],
-        ingestion_name="test-partition",
     )
     assert [c["chunk_index"] for c in chunks] == [0, 1]

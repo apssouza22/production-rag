@@ -66,8 +66,8 @@ def make_kg_indexing_service(
     settings = settings or get_settings()
     database = database or make_database()
     opensearch_client = make_opensearch_client()
-    paper_rrf_search = make_paper_rrf_search(settings)
     ingestion_name = resolve_kg_ingestion_name(settings)
+    paper_rrf_search = make_paper_rrf_search(settings, ingestion_name=ingestion_name)
     return KgIndexingService(
         database=database,
         paper_rrf_search=paper_rrf_search,
@@ -85,8 +85,8 @@ def make_dual_level_kg_retrieval_service(
     settings = settings or get_settings()
     database = database or make_database()
     opensearch_client = make_opensearch_client()
-    paper_rrf_search = make_paper_rrf_search(settings)
     ingestion_name = resolve_kg_ingestion_name(settings)
+    paper_rrf_search = make_paper_rrf_search(settings, ingestion_name=ingestion_name)
     return DualLevelKGRetrievalService(
         database=database,
         paper_rrf_search=paper_rrf_search,

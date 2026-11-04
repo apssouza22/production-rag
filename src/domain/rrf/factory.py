@@ -32,36 +32,44 @@ def _setup_hybrid_rrf_search(hybrid_rrf_search: HybridRrfSearch, opensearch_clie
     return hybrid_rrf_search
 
 
-@lru_cache(maxsize=1)
-def make_hybrid_rrf_search(settings: Optional[Settings] = None) -> HybridRrfSearch:
+@lru_cache(maxsize=16)
+def make_hybrid_rrf_search(
+    settings: Optional[Settings] = None,
+    ingestion_name: str | None = None,
+) -> HybridRrfSearch:
     """Cached HybridRrfSearch wired to OpenSearch; ensures hybrid index and RRF pipeline."""
     settings = settings or get_settings()
 
     opensearch_client = make_opensearch_client()
-    hybrid_rrf_search = HybridRrfSearch(opensearch_client, settings)
+    hybrid_rrf_search = HybridRrfSearch(opensearch_client, settings, ingestion_name=ingestion_name)
     return _setup_hybrid_rrf_search(hybrid_rrf_search, opensearch_client)
 
 
 def make_hybrid_rrf_search_fresh(
     settings: Optional[Settings] = None,
     host: Optional[str] = None,
+    ingestion_name: str | None = None,
 ) -> HybridRrfSearch:
     """Fresh HybridRrfSearch instance (e.g. indexing with host override)."""
     if settings is None:
         settings = get_settings()
 
     opensearch_client = make_opensearch_client_fresh(settings, host=host)
-    return HybridRrfSearch(opensearch_client, settings)
+    return HybridRrfSearch(opensearch_client, settings, ingestion_name=ingestion_name)
 
 
-def make_paper_rrf_search(settings: Optional[Settings] = None) -> PaperRrfSearch:
+def make_paper_rrf_search(
+    settings: Optional[Settings] = None,
+    ingestion_name: str | None = None,
+) -> PaperRrfSearch:
     """Backward-compatible alias for make_hybrid_rrf_search."""
-    return make_hybrid_rrf_search(settings)
+    return make_hybrid_rrf_search(settings, ingestion_name=ingestion_name)
 
 
 def make_paper_rrf_search_fresh(
     settings: Optional[Settings] = None,
     host: Optional[str] = None,
+    ingestion_name: str | None = None,
 ) -> PaperRrfSearch:
     """Backward-compatible alias for make_hybrid_rrf_search_fresh."""
-    return make_hybrid_rrf_search_fresh(settings, host=host)
+    return make_hybrid_rrf_search_fresh(settings, host=host, ingestion_name=ingestion_name)

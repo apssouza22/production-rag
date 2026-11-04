@@ -164,7 +164,7 @@ class KgIndexingService:
 
     async def _index_paper(self, arxiv_id: str, *, replace: bool) -> KgPaperIndexingStats:
         stats = KgPaperIndexingStats()
-        chunks = self.paper_rrf_search.get_chunks_by_paper(arxiv_id, ingestion_name=self.ingestion_name)
+        chunks = self.paper_rrf_search.get_chunks_by_paper(arxiv_id)
         if not chunks:
             logger.warning("No chunks in OpenSearch for %s", arxiv_id)
             return stats
