@@ -46,11 +46,6 @@ async def lifespan(app: FastAPI):
     app.state.pdf_parser = make_pdf_parser_service()
     app.state.embeddings_service = make_embeddings_service()
     app.state.reranker_service = make_reranker_client()
-    app.state.rerank_search_service = make_rerank_search_service(
-        paper_rrf_search=app.state.paper_rrf_search,
-        embeddings_client=app.state.embeddings_service,
-        reranker_client=app.state.reranker_service,
-    )
     app.state.langfuse_tracer = make_langfuse_tracer()
 
     app.state.agentic_rag_service = make_agentic_rag_service(
@@ -70,6 +65,7 @@ async def lifespan(app: FastAPI):
         model=settings.agent_model,
     )
 
+    kg_retrieval_service = None
     app.state.kg_indexing_service = None
     app.state.kg_retrieval_service = None
     if settings.kg.enabled:
@@ -77,13 +73,21 @@ async def lifespan(app: FastAPI):
             database=app.state.database,
             settings=settings,
         )
-        app.state.kg_retrieval_service = make_dual_level_kg_retrieval_service(
+        kg_retrieval_service = make_dual_level_kg_retrieval_service(
             database=app.state.database,
             settings=settings,
         )
+        app.state.kg_retrieval_service = kg_retrieval_service
         logger.info(
             "KG services enabled (ingestion partition: %s)", settings.kg.ingestion_name or settings.opensearch.ingestion_name
         )
+
+    app.state.rerank_search_service = make_rerank_search_service(
+        paper_rrf_search=app.state.paper_rrf_search,
+        embeddings_client=app.state.embeddings_service,
+        reranker_client=app.state.reranker_service,
+        kg_retrieval_service=kg_retrieval_service,
+    )
 
     logger.info("API ready")
     yield

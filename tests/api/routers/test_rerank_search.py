@@ -104,7 +104,7 @@ def test_rerank_search_endpoint_success(client, mock_rerank_search_service):
     assert data["after_rerank"][0]["arxiv_id"] == "2222.22222"
     assert data["after_rerank"][0]["rerank_score"] == 0.98
 
-    mock_rerank_search_service.search_rrf_with_rerank.assert_awaited_once_with(query="machine learning", top_k=2)
+    mock_rerank_search_service.search_rrf.assert_awaited_once_with(query="machine learning", top_k=2)
 
 
 def test_rerank_search_endpoint_minimal_request(client, mock_rerank_search_service):
@@ -113,7 +113,7 @@ def test_rerank_search_endpoint_minimal_request(client, mock_rerank_search_servi
     assert response.status_code == 200
     data = response.json()
     assert data["query"] == "machine learning neural networks"
-    mock_rerank_search_service.search_rrf_with_rerank.assert_awaited_once_with(
+    mock_rerank_search_service.search_rrf.assert_awaited_once_with(
         query="machine learning neural networks",
         top_k=10,
     )

@@ -39,7 +39,7 @@ def create_retriever_tool(rerank_search_service: SearchService, graph_config: Gr
 
         logger.info(f"Retrieving papers for query: {query[:100]}...")
 
-        search_result = await rerank_search_service.search_rrf_with_rerank(query=query, top_k=top_k)
+        search_result = await rerank_search_service.search_rrf(query=query, top_k=top_k)
         rerank_applied = search_result.rerank_applied
 
         confident_documents = filter_confident_documents(

@@ -35,7 +35,7 @@ async def rerank_search(
             request.top_k,
         )
 
-        result = await rerank_search_service.search_rrf_with_rerank(query=request.query, top_k=request.top_k)
+        result = await rerank_search_service.search_rrf(query=request.query, top_k=request.top_k)
         logger.info(
             "Rerank search completed: before=%d, after=%d, rerank_applied=%s",
             len(result.before_rerank),

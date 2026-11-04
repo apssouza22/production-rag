@@ -46,7 +46,7 @@ class ExperimentDataset:
         return samples
 
     async def _build_sample(self, query: ExperimentQuery) -> EvalSample | None:
-        result = await self.rerank_search_service.search_rrf_with_rerank(query.user_input, top_k=self.settings.experiment_top_k)
+        result = await self.rerank_search_service.search_rrf(query.user_input, top_k=self.settings.experiment_top_k)
         contexts = [document.chunk_text for document in result.after_rerank if document.chunk_text.strip()]
         if not contexts:
             logger.warning("Skipping query with no retrieved contexts: %s", query.user_input)
