@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
-from src.domain.opensearch.hybrid_rrf_search import HybridRrfSearch
+from src.domain.rrf import HybridRrfSearch
 
 from .chunk_contextualizer import ChunkContextualizer
 from .text_chunker import TextChunker

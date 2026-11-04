@@ -6,6 +6,7 @@ from typing import Any
 from opensearchpy import OpenSearch
 
 from src.config import Settings
+from src.domain.opensearch.client import OpenSearchClient
 
 from .chunk_index_schema import (
     PAPER_CHUNK_PROFILE,
@@ -14,8 +15,7 @@ from .chunk_index_schema import (
     build_hybrid_chunk_mapping,
     flatten_hit_metadata,
 )
-from .client import OpenSearchClient
-from .index_config_hybrid import hybrid_rrf_pipeline_body
+from .pipeline import hybrid_rrf_pipeline_body
 from .query_builder import QueryBuilder
 
 logger = logging.getLogger(__name__)

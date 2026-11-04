@@ -6,7 +6,7 @@ from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from src.domain.opensearch.hybrid_rrf_search import PaperRrfSearch
+from src.domain.rrf import PaperRrfSearch
 
 from evals.experiments.config import ExperimentSettings
 from evals.experiments.schemas import ExperimentQuery, GeneratedQuestions

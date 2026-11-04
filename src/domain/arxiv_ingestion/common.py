@@ -4,8 +4,8 @@ from typing import Any, Tuple
 
 from src.domain.arxiv.factory import make_arxiv_client
 from src.domain.db.factory import make_database
-from src.domain.opensearch.factory import make_paper_rrf_search
 from src.domain.pdf_parser.factory import make_pdf_parser_service
+from src.domain.rrf.factory import make_paper_rrf_search
 
 from .service import make_arxiv_ingestion_service
 

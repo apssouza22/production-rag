@@ -9,7 +9,8 @@ from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.indexing_service import KgIndexingService
 from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.opensearch.client import OpenSearchClient
-from src.domain.opensearch.factory import make_opensearch_client, make_paper_rrf_search
+from src.domain.opensearch.factory import make_opensearch_client
+from src.domain.rrf.factory import make_paper_rrf_search
 from src.platform.llm.chat_model import make_chat_model
 
 

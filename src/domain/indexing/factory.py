@@ -2,7 +2,7 @@ from typing import Optional
 
 from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
-from src.domain.opensearch.factory import make_paper_rrf_search_fresh
+from src.domain.rrf.factory import make_paper_rrf_search_fresh
 from src.platform.llm.chat_model import make_chat_model
 
 from .chunk_contextualizer import ChunkContextualizer

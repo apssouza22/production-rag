@@ -18,7 +18,7 @@ from src.domain.kg.schemas import (
     KgEntityHit,
     KgRelationHit,
 )
-from src.domain.opensearch.hybrid_rrf_search import PaperRrfSearch
+from src.domain.rrf import PaperRrfSearch
 
 logger = logging.getLogger(__name__)
 

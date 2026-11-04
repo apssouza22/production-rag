@@ -1,8 +1,7 @@
 import pytest
 from pydantic import ValidationError
-
 from src.config import get_settings
-from src.domain.opensearch.chunk_index_schema import (
+from src.domain.rrf.chunk_index_schema import (
     ChunkIndexDocument,
     build_hybrid_chunk_mapping,
     flatten_hit_metadata,

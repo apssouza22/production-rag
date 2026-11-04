@@ -1,4 +1,4 @@
-"""OpenSearch index configuration for hybrid search (BM25 + Vector)."""
+"""RRF search pipeline definition for hybrid BM25 + vector retrieval."""
 
 from src.config import OpenSearchSettings
 

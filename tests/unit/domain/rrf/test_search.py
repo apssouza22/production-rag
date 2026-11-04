@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from src.config import get_settings
 from src.domain.opensearch.client import OpenSearchClient
-from src.domain.opensearch.hybrid_rrf_search import HybridRrfSearch
+from src.domain.rrf import HybridRrfSearch
 
 
 @pytest.fixture

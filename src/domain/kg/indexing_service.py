@@ -9,7 +9,7 @@ from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.kg.merge import make_chunk_key, normalize_entity_id, relation_vector_id
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import ChunkExtractionResult, ExtractedRelation
-from src.domain.opensearch.hybrid_rrf_search import PaperRrfSearch
+from src.domain.rrf import PaperRrfSearch
 
 logger = logging.getLogger(__name__)
 

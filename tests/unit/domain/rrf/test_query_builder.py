@@ -1,5 +1,5 @@
 import pytest
-from src.domain.opensearch.query_builder import QueryBuilder
+from src.domain.rrf import QueryBuilder
 
 
 def test_query_builder_basic_query():

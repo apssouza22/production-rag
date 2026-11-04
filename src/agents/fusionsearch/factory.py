@@ -3,10 +3,10 @@ from typing import Optional
 from src.config import get_settings
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.opensearch.hybrid_rrf_search import PaperRrfSearch
 from src.domain.rerank.config import RerankSearchConfig
 from src.domain.rerank.factory import make_rerank_search_service
 from src.domain.rerank.service import RerankSearchService
+from src.domain.rrf import PaperRrfSearch
 from src.platform.langfuse.client import LangfuseTracer
 
 from .agentic_rag import AgenticRAGService
