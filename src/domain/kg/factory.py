@@ -9,7 +9,7 @@ from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.indexing_service import KgIndexingService
 from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.opensearch.client import OpenSearchClient
-from src.domain.opensearch.factory import make_opensearch_client
+from src.domain.opensearch.factory import make_opensearch_client, make_paper_rrf_search
 from src.platform.llm.chat_model import make_chat_model
 
 
@@ -65,10 +65,11 @@ def make_kg_indexing_service(
     settings = settings or get_settings()
     database = database or make_database()
     opensearch_client = make_opensearch_client()
+    paper_rrf_search = make_paper_rrf_search(settings)
     ingestion_name = resolve_kg_ingestion_name(settings)
     return KgIndexingService(
         database=database,
-        opensearch_client=opensearch_client,
+        paper_rrf_search=paper_rrf_search,
         kg_vector_client=make_kg_vector_client(opensearch_client, settings, ingestion_name),
         extraction_service=make_kg_extraction_service(settings),
         embeddings_client=make_embeddings_service(),
@@ -83,10 +84,11 @@ def make_dual_level_kg_retrieval_service(
     settings = settings or get_settings()
     database = database or make_database()
     opensearch_client = make_opensearch_client()
+    paper_rrf_search = make_paper_rrf_search(settings)
     ingestion_name = resolve_kg_ingestion_name(settings)
     return DualLevelKGRetrievalService(
         database=database,
-        opensearch_client=opensearch_client,
+        paper_rrf_search=paper_rrf_search,
         kg_vector_client=make_kg_vector_client(opensearch_client, settings, ingestion_name),
         extraction_service=make_keyword_extraction_service(settings),
         embeddings_client=make_embeddings_service(),

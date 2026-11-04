@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
-from src.domain.opensearch.factory import make_opensearch_client
+from src.domain.opensearch.factory import make_paper_rrf_search
 from src.domain.rerank.factory import make_rerank_search_service
 
 from evals.core.evaluator import Evaluator
@@ -53,15 +53,15 @@ class ExperimentRunner(EvalRunner):
             api_key=self.settings.judge_api_key,
             base_url=self.settings.evaluation_base_url,
         )
-        self.opensearch_client = make_opensearch_client()
+        self.paper_rrf_search = make_paper_rrf_search()
         self.rerank_search_service = make_rerank_search_service(
-            opensearch_client=self.opensearch_client,
+            paper_rrf_search=self.paper_rrf_search,
             embeddings_client=make_embeddings_service(),
             reranker_client=make_reranker_client(),
             config=self.run_config.query.to_rerank_config(),
         )
         self.question_generator = QuestionGenerator(
-            opensearch_client=self.opensearch_client,
+            paper_rrf_search=self.paper_rrf_search,
             chat_model=self.chat_model,
             settings=self.settings,
         )
@@ -75,7 +75,7 @@ class ExperimentRunner(EvalRunner):
         # The ingestion pipeline is synchronous and calls asyncio.run() internally.
         ingestion = await asyncio.to_thread(
             ensure_ingested,
-            self.opensearch_client,
+            self.paper_rrf_search,
             self.settings,
             force=self.force_ingest,
         )

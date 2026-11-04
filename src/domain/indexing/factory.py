@@ -2,7 +2,7 @@ from typing import Optional
 
 from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
-from src.domain.opensearch.factory import make_opensearch_client_fresh
+from src.domain.opensearch.factory import make_paper_rrf_search_fresh
 from src.platform.llm.chat_model import make_chat_model
 
 from .chunk_contextualizer import ChunkContextualizer
@@ -37,7 +37,7 @@ def make_hybrid_indexing_service(
         min_chunk_size=settings.chunking.min_chunk_size,
     )
     embeddings_client = make_embeddings_client(settings)
-    opensearch_client = make_opensearch_client_fresh(settings, host=opensearch_host)
+    paper_rrf_search = make_paper_rrf_search_fresh(settings, host=opensearch_host)
 
     contextualizer = None
     if settings.chunking.contextualization_enabled:
@@ -55,6 +55,6 @@ def make_hybrid_indexing_service(
     return HybridIndexingService(
         chunker=chunker,
         embeddings_client=embeddings_client,
-        opensearch_client=opensearch_client,
+        paper_rrf_search=paper_rrf_search,
         contextualizer=contextualizer,
     )

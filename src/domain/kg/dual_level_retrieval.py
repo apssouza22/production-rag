@@ -18,7 +18,7 @@ from src.domain.kg.schemas import (
     KgEntityHit,
     KgRelationHit,
 )
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class DualLevelKGRetrievalService:
     def __init__(
         self,
         database: BaseDatabase,
-        opensearch_client: OpenSearchClient,
+        paper_rrf_search: PaperRrfSearch,
         kg_vector_client: KgVectorClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,
@@ -65,7 +65,7 @@ class DualLevelKGRetrievalService:
         ingestion_name: str,
     ) -> None:
         self._database = database
-        self._opensearch_client = opensearch_client
+        self._paper_rrf_search = paper_rrf_search
         self._kg_vector_client = kg_vector_client
         self._extraction_service = extraction_service
         self._embeddings_client = embeddings_client
@@ -187,7 +187,7 @@ class DualLevelKGRetrievalService:
         return hits
 
     def _load_chunk_hits(self, chunk_keys: list[str]) -> list[KgChunkHit]:
-        os_chunks = self._opensearch_client.get_chunks_by_chunk_keys(
+        os_chunks = self._paper_rrf_search.get_chunks_by_chunk_keys(
             chunk_keys,
             ingestion_name=self._ingestion_name,
         )

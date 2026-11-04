@@ -1,5 +1,4 @@
 import pytest
-
 from src.domain.kg.merge import merge_descriptions, merge_unique_strings, normalize_entity_id, parse_chunk_key
 
 

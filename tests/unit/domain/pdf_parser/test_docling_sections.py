@@ -2,11 +2,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from docling_core.types.doc import DocItemLabel, PictureItem
-from src.domain.pdf_parser.markdown_writer import MarkdownWriter
 from src.domain.pdf_parser.content_extractor import (
     ContentExtractor,
     extract_sections_from_document,
 )
+from src.domain.pdf_parser.markdown_writer import MarkdownWriter
 
 
 def _item(label: DocItemLabel, text: str, level: int = 1) -> SimpleNamespace:

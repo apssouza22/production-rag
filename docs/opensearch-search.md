@@ -16,7 +16,7 @@ The project retrieves relevant excerpts ("chunks") of arXiv papers to feed a RAG
 
 The philosophy is deliberate and mirrors production retrieval systems: **keyword search first, vectors second, fusion on top**. Hybrid is the default because it combines exact term matching (great for names, acronyms, equations) with semantic recall (great for paraphrases and concepts).
 
-The main entry point is `OpenSearchClient.search_unified()`, which picks a strategy based on the arguments it receives:
+The main entry point is `PaperRrfSearch.search_unified()`, which picks a strategy based on the arguments it receives:
 
 ```134:216:src/domain/opensearch/client.py
     def search_papers(
@@ -415,7 +415,7 @@ The FastAPI router ties everything together: health-check the cluster, generate 
 
         logger.info(f"Hybrid search: '{request.query}' (hybrid: {request.use_hybrid and query_embedding is not None})")
 
-        results = opensearch_client.search_unified(
+        results = paper_rrf_search.search_unified(
             query=request.query,
             query_embedding=query_embedding,
             size=request.size,
@@ -434,7 +434,7 @@ The request/response contracts are defined in `schemas.py` (`HybridSearchRequest
 The LangGraph agent wraps the same `search_unified()` call in a LangChain tool. It embeds the query, retrieves the top-k chunks, and converts each hit into a `Document` with metadata (arxiv_id, title, score, source URL, section):
 
 ```52:57:src/domain/agents/tools.py
-        search_results = opensearch_client.search_unified(
+        search_results = paper_rrf_search.search_unified(
             query=query,
             query_embedding=query_embedding,
             size=top_k,

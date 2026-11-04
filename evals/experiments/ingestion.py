@@ -6,34 +6,34 @@ from typing import Any
 
 from src.domain.arxiv_ingestion import setup_environment
 from src.domain.arxiv_ingestion.service import get_ingestion_service
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 
 from evals.experiments.config import ExperimentSettings
 
 logger = logging.getLogger(__name__)
 
 
-def count_indexed_chunks(opensearch_client: OpenSearchClient, ingestion_name: str) -> int:
+def count_indexed_chunks(paper_rrf_search: PaperRrfSearch, ingestion_name: str) -> int:
     """Return how many chunks are indexed for an ingestion partition."""
-    if not opensearch_client.client.indices.exists(index=opensearch_client.index_name):
+    if not paper_rrf_search.client.indices.exists(index=paper_rrf_search.index_name):
         return 0
 
-    response = opensearch_client.client.count(
-        index=opensearch_client.index_name,
+    response = paper_rrf_search.client.count(
+        index=paper_rrf_search.index_name,
         body={"query": {"term": {"ingestion_name": ingestion_name}}},
     )
     return int(response["count"])
 
 
 def ensure_ingested(
-    opensearch_client: OpenSearchClient,
+    paper_rrf_search: PaperRrfSearch,
     settings: ExperimentSettings,
     *,
     force: bool = False,
 ) -> dict[str, Any]:
     """Run the ingestion pipeline over the local PDFs unless the partition already has chunks."""
     ingestion_name = settings.experiment_ingestion_name
-    chunk_count = count_indexed_chunks(opensearch_client, ingestion_name)
+    chunk_count = count_indexed_chunks(paper_rrf_search, ingestion_name)
 
     if chunk_count and not force:
         logger.info(
@@ -69,7 +69,7 @@ def ensure_ingested(
         arxiv_ids=arxiv_ids,
     )
 
-    chunk_count = count_indexed_chunks(opensearch_client, ingestion_name)
+    chunk_count = count_indexed_chunks(paper_rrf_search, ingestion_name)
     if not chunk_count:
         raise RuntimeError(f"Ingestion produced no chunks for ingestion_name={ingestion_name}")
 

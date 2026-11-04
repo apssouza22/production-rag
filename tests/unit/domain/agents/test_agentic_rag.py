@@ -23,7 +23,7 @@ def test_service(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_
         guardrail_threshold=60,
     )
     rerank_search_service = make_rerank_search_service(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=_build_rerank_search_config(config),

@@ -3,7 +3,7 @@ from typing import Literal
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 
 from .config import RerankSearchConfig
 from .schemas import RerankSearchResult, SearchDocument
@@ -29,12 +29,12 @@ class RerankSearchService:
 
     def __init__(
         self,
-        opensearch_client: OpenSearchClient,
+        paper_rrf_search: PaperRrfSearch,
         embeddings_client: JinaEmbeddingsClient,
         config: RerankSearchConfig,
         reranker_client: JinaRerankerClient | None = None,
     ) -> None:
-        self.opensearch_client = opensearch_client
+        self.paper_rrf_search = paper_rrf_search
         self.embeddings_client = embeddings_client
         self.config = config
         self.reranker_client = reranker_client
@@ -71,7 +71,7 @@ class RerankSearchService:
         )
 
         query_embedding = await self.embeddings_client.embed_query(query)
-        search_results = self.opensearch_client.search_unified(
+        search_results = self.paper_rrf_search.search_unified(
             query=query,
             query_embedding=query_embedding,
             size=search_size,

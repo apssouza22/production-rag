@@ -9,8 +9,8 @@ from src.domain.rerank.factory import make_rerank_search_service
 
 
 @pytest.fixture
-def mock_opensearch_client():
-    """Mock OpenSearch client with sample search results."""
+def mock_paper_rrf_search():
+    """Mock paper RRF search with sample search results."""
     client = Mock()
     client.search_unified = Mock(
         return_value={
@@ -39,6 +39,12 @@ def mock_opensearch_client():
 
 
 @pytest.fixture
+def mock_opensearch_client(mock_paper_rrf_search):
+    """Backward-compatible alias for paper RRF search mock."""
+    return mock_paper_rrf_search
+
+
+@pytest.fixture
 def mock_jina_embeddings_client():
     """Mock Jina embeddings client."""
     client = AsyncMock()
@@ -62,13 +68,13 @@ def mock_jina_reranker_client():
 
 @pytest.fixture
 def mock_rerank_search_service(
-    mock_opensearch_client,
+    mock_paper_rrf_search,
     mock_jina_embeddings_client,
     mock_jina_reranker_client,
 ):
     """Mock rerank search service wired from retrieval dependencies."""
     return make_rerank_search_service(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_paper_rrf_search,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=RerankSearchConfig(use_hybrid=True, rerank_enabled=False),

@@ -60,22 +60,22 @@ def mock_rerank_search_service():
 
 
 @pytest.fixture
-def mock_opensearch_client():
+def mock_paper_rrf_search():
     client = Mock()
     client.health_check.return_value = True
     return client
 
 
 @pytest.fixture
-def client(mock_rerank_search_service, mock_opensearch_client):
+def client(mock_rerank_search_service, mock_paper_rrf_search):
     def override_rerank_search_service():
         return mock_rerank_search_service
 
-    def override_opensearch_client():
-        return mock_opensearch_client
+    def override_paper_rrf_search():
+        return mock_paper_rrf_search
 
     app.dependency_overrides[dependencies.get_rerank_search_service] = override_rerank_search_service
-    app.dependency_overrides[dependencies.get_opensearch_client] = override_opensearch_client
+    app.dependency_overrides[dependencies.get_paper_rrf_search] = override_paper_rrf_search
 
     yield TestClient(app)
 
@@ -127,8 +127,8 @@ def test_rerank_search_endpoint_validation_errors(client):
     assert response.status_code == 422
 
 
-def test_rerank_search_endpoint_unavailable(client, mock_opensearch_client):
-    mock_opensearch_client.health_check.return_value = False
+def test_rerank_search_endpoint_unavailable(client, mock_paper_rrf_search):
+    mock_paper_rrf_search.health_check.return_value = False
 
     response = client.post("/api/v1/rerank-search", json={"query": "machine learning"})
 

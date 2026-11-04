@@ -9,7 +9,7 @@ from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.kg.merge import make_chunk_key, normalize_entity_id, relation_vector_id
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import ChunkExtractionResult, ExtractedRelation
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -135,14 +135,14 @@ class KgIndexingService:
     def __init__(
         self,
         database: BaseDatabase,
-        opensearch_client: OpenSearchClient,
+        paper_rrf_search: PaperRrfSearch,
         kg_vector_client: KgVectorClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,
         ingestion_name: str,
     ):
         self.database = database
-        self.opensearch_client = opensearch_client
+        self.paper_rrf_search = paper_rrf_search
         self.kg_vector_client = kg_vector_client
         self.extraction_service = extraction_service
         self.embeddings_client = embeddings_client
@@ -164,7 +164,7 @@ class KgIndexingService:
 
     async def _index_paper(self, arxiv_id: str, *, replace: bool) -> KgPaperIndexingStats:
         stats = KgPaperIndexingStats()
-        chunks = self.opensearch_client.get_chunks_by_paper(arxiv_id, ingestion_name=self.ingestion_name)
+        chunks = self.paper_rrf_search.get_chunks_by_paper(arxiv_id, ingestion_name=self.ingestion_name)
         if not chunks:
             logger.warning("No chunks in OpenSearch for %s", arxiv_id)
             return stats

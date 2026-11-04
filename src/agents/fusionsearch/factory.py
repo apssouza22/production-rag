@@ -3,7 +3,7 @@ from typing import Optional
 from src.config import get_settings
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 from src.domain.rerank.config import RerankSearchConfig
 from src.domain.rerank.factory import make_rerank_search_service
 from src.domain.rerank.service import RerankSearchService
@@ -36,7 +36,7 @@ def make_agentic_rag_graph(
 
 
 def make_agentic_rag_service(
-    opensearch_client: OpenSearchClient,
+    paper_rrf_search: PaperRrfSearch,
     embeddings_client: JinaEmbeddingsClient,
     reranker_client: JinaRerankerClient | None = None,
     langfuse_tracer: Optional[LangfuseTracer] = None,
@@ -51,7 +51,7 @@ def make_agentic_rag_service(
         model=settings.agent_model,
     )
     rerank_search_service = make_rerank_search_service(
-        opensearch_client=opensearch_client,
+        paper_rrf_search=paper_rrf_search,
         embeddings_client=embeddings_client,
         reranker_client=reranker_client,
         config=_build_rerank_search_config(graph_config),

@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 
 from .chunk_contextualizer import ChunkContextualizer
 from .text_chunker import TextChunker
@@ -24,19 +24,19 @@ class HybridIndexingService:
         self,
         chunker: TextChunker,
         embeddings_client: JinaEmbeddingsClient,
-        opensearch_client: OpenSearchClient,
+        paper_rrf_search: PaperRrfSearch,
         contextualizer: Optional[ChunkContextualizer] = None,
     ):
         """Initialize hybrid indexing service.
 
         :param chunker: Text chunking service
         :param embeddings_client: Embeddings generation client
-        :param opensearch_client: OpenSearch client
+        :param paper_rrf_search: Paper chunk hybrid RRF search client
         :param contextualizer: Optional LLM-based chunk contextualizer
         """
         self.chunker = chunker
         self.embeddings_client = embeddings_client
-        self.opensearch_client = opensearch_client
+        self.paper_rrf_search = paper_rrf_search
         self.contextualizer = contextualizer
 
         logger.info(
@@ -129,7 +129,7 @@ class HybridIndexingService:
                 chunks_with_embeddings.append({"chunk_data": chunk_data, "embedding": embedding})
 
             # Step 5: Index chunks into OpenSearch
-            results = self.opensearch_client.bulk_index_chunks(chunks_with_embeddings)
+            results = self.paper_rrf_search.bulk_index_chunks(chunks_with_embeddings)
 
             logger.info(f"Indexed paper {arxiv_id}: {results['success']} chunks successful, {results['failed']} failed")
 
@@ -170,7 +170,7 @@ class HybridIndexingService:
 
             # Optionally delete existing chunks
             if replace_existing and arxiv_id:
-                self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
+                self.paper_rrf_search.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
 
             # Index the paper
             stats = await self._index_paper(paper, ingestion_name=ingestion_name)
@@ -198,7 +198,7 @@ class HybridIndexingService:
         :returns: Indexing statistics
         """
         # Delete existing chunks
-        deleted = self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
+        deleted = self.paper_rrf_search.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
         if deleted:
             logger.info(f"Deleted existing chunks for paper {arxiv_id}")
 

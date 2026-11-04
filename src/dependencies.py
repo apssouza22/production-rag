@@ -18,7 +18,7 @@ from src.domain.arxiv.client import ArxivClient
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
 from src.domain.pdf_parser.parser import PDFParserService
 from src.domain.rerank.service import RerankSearchService
 from src.platform.langfuse.client import LangfuseTracer
@@ -40,9 +40,9 @@ def get_db_session(database: Annotated[BaseDatabase, Depends(get_database)]) -> 
         yield session
 
 
-def get_opensearch_client(request: Request) -> OpenSearchClient:
-    """Get OpenSearch client from the request state."""
-    return request.app.state.opensearch_client
+def get_paper_rrf_search(request: Request) -> PaperRrfSearch:
+    """Get paper hybrid RRF search service from the request state."""
+    return request.app.state.paper_rrf_search
 
 
 def get_arxiv_client(request: Request) -> ArxivClient:
@@ -93,7 +93,7 @@ def get_knowledge_router_service(request: Request) -> KnowledgeRouterService:
 SettingsDep = Annotated[Settings, Depends(get_request_settings)]
 DatabaseDep = Annotated[BaseDatabase, Depends(get_database)]
 SessionDep = Annotated[Session, Depends(get_db_session)]
-OpenSearchDep = Annotated[OpenSearchClient, Depends(get_opensearch_client)]
+PaperRrfSearchDep = Annotated[PaperRrfSearch, Depends(get_paper_rrf_search)]
 ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]

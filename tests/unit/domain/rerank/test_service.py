@@ -33,7 +33,7 @@ def sample_hits():
 @pytest.fixture
 def rerank_search_service(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_reranker_client):
     return RerankSearchService(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=RerankSearchConfig(use_hybrid=True, rerank_enabled=False),
@@ -63,7 +63,7 @@ async def test_search_with_rerank_returns_reordered_after_list(
 ):
     """Test reranking preserves before list and returns reranked after list."""
     service = RerankSearchService(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=RerankSearchConfig(rerank_enabled=True),
@@ -123,7 +123,7 @@ async def test_search_rerank_failure_falls_back_to_search_order(
 ):
     """Test rerank failure keeps original order in after list."""
     service = RerankSearchService(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=RerankSearchConfig(rerank_enabled=True),
@@ -142,7 +142,7 @@ async def test_search_rerank_failure_falls_back_to_search_order(
 async def test_search_bm25_mode(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_reranker_client):
     """Test BM25 search mode is reflected in the result."""
     service = RerankSearchService(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=RerankSearchConfig(use_hybrid=False, rerank_enabled=False),

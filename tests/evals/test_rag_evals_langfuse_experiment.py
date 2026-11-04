@@ -4,8 +4,8 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
-from evals.core.report_publisher import make_null_report_publisher
 from evals.core.metrics import MetricDefinition
+from evals.core.report_publisher import make_null_report_publisher
 from evals.rag_evals.config import RagEvalSettings
 from evals.rag_evals.langfuse_experiment import (
     RagLangfuseExperiment,
