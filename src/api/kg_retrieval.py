@@ -25,7 +25,7 @@ async def kg_retrieval_debug(
             detail="Knowledge graph retrieval is disabled. Set KG__ENABLED=true and index a corpus slice first.",
         )
 
-    service = getattr(request.app.state, "kg_retrieval_service", None)
+    service = request.app.state.kg_retrieval_service
     if service is None:
         raise HTTPException(status_code=503, detail="KG retrieval service is not initialized")
 

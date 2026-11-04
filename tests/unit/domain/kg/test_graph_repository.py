@@ -34,5 +34,5 @@ def test_node_degrees_aggregates_source_and_target(session: MagicMock) -> None:
         [("entity_a", 2)],
         [("entity_a", 1)],
     ]
-    degrees = repo.node_degrees(["entity_a"])
+    degrees = repo.node_counts(["entity_a"])
     assert degrees["entity_a"] == 3

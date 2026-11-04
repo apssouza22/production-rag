@@ -114,7 +114,7 @@ class KgGraphRepository:
                 results.append(edge)
         return results
 
-    def node_degrees(self, entity_ids: Iterable[str]) -> dict[str, int]:
+    def node_counts(self, entity_ids: Iterable[str]) -> dict[str, int]:
         ids = list(entity_ids)
         if not ids:
             return {}
