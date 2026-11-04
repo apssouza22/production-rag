@@ -6,7 +6,7 @@ from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.rrf import PaperRrfSearch
 
 from .config import RerankSearchConfig
-from .schemas import RerankSearchResult, SearchDocument
+from .schemas import DocumentSearchResult, SearchDocument
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def _hit_to_document(hit: dict, rank: int) -> SearchDocument:
     )
 
 
-class RerankSearchService:
+class SearchService:
     """Search OpenSearch and optionally rerank candidates with Jina."""
 
     def __init__(
@@ -46,7 +46,7 @@ class RerankSearchService:
             and self.reranker_client.is_configured
         )
 
-    async def search(self, query: str, *, top_k: int) -> RerankSearchResult:
+    async def search_rrf_with_rerank(self, query: str, *, top_k: int) -> DocumentSearchResult:
         """Retrieve documents from OpenSearch and optionally rerank them with Jina.
 
         :param query: Search query
@@ -92,7 +92,7 @@ class RerankSearchService:
                     model=self.config.rerank_model,
                 )
                 logger.info("Reranking complete, returning top %d documents", len(after_rerank))
-                return RerankSearchResult(
+                return DocumentSearchResult(
                     query=query,
                     search_mode=search_mode,
                     rerank_applied=True,
@@ -111,13 +111,12 @@ class RerankSearchService:
                     e,
                 )
 
-        after_rerank = before_rerank[:top_k]
-        return RerankSearchResult(
+        return DocumentSearchResult(
             query=query,
             search_mode=search_mode,
             rerank_applied=False,
             before_rerank=before_rerank,
-            after_rerank=after_rerank,
+            after_rerank=[],
         )
 
     async def _rerank_hits(

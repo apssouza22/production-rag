@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from src.domain.jinaai.jina import JinaRerankResult
-from src.domain.rerank.config import RerankSearchConfig
-from src.domain.rerank.factory import make_rerank_search_service
+from src.domain.search.config import RerankSearchConfig
+from src.domain.search.factory import make_rerank_search_service
 
 
 @pytest.fixture

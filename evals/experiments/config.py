@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.config import ChunkingSettings, PDFParserSettings
 from src.domain.arxiv_ingestion.common import get_cached_services
 from src.domain.pdf_parser.factory import make_pdf_parser_service
-from src.domain.rerank.config import RerankSearchConfig
+from src.domain.search.config import RerankSearchConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE_PATH = REPO_ROOT / ".env"

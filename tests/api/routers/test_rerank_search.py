@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi.testclient import TestClient
 from src import dependencies
-from src.domain.rerank.schemas import RerankSearchResult, SearchDocument
+from src.domain.search.schemas import DocumentSearchResult, SearchDocument
 from src.main import app
 
 
@@ -12,8 +12,8 @@ def mock_rerank_search_service():
     service = Mock()
     service.config = Mock(use_hybrid=True, rerank_enabled=True)
 
-    async def _search(*, query: str, top_k: int) -> RerankSearchResult:
-        return RerankSearchResult(
+    async def _search(*, query: str, top_k: int) -> DocumentSearchResult:
+        return DocumentSearchResult(
             query=query,
             search_mode="hybrid",
             rerank_applied=True,
@@ -104,7 +104,7 @@ def test_rerank_search_endpoint_success(client, mock_rerank_search_service):
     assert data["after_rerank"][0]["arxiv_id"] == "2222.22222"
     assert data["after_rerank"][0]["rerank_score"] == 0.98
 
-    mock_rerank_search_service.search.assert_awaited_once_with(query="machine learning", top_k=2)
+    mock_rerank_search_service.search_rrf_with_rerank.assert_awaited_once_with(query="machine learning", top_k=2)
 
 
 def test_rerank_search_endpoint_minimal_request(client, mock_rerank_search_service):
@@ -113,7 +113,7 @@ def test_rerank_search_endpoint_minimal_request(client, mock_rerank_search_servi
     assert response.status_code == 200
     data = response.json()
     assert data["query"] == "machine learning neural networks"
-    mock_rerank_search_service.search.assert_awaited_once_with(
+    mock_rerank_search_service.search_rrf_with_rerank.assert_awaited_once_with(
         query="machine learning neural networks",
         top_k=10,
     )

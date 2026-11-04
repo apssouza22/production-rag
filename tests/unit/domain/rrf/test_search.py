@@ -17,7 +17,7 @@ def hybrid_rrf_search() -> HybridRrfSearch:
 
 
 def test_get_chunks_by_chunk_keys_sorts_by_request_order(hybrid_rrf_search: HybridRrfSearch) -> None:
-    hybrid_rrf_search._opensearch.client.search.return_value = {
+    hybrid_rrf_search._opensearch.client.search_rrf_with_rerank.return_value = {
         "hits": {
             "hits": [
                 {

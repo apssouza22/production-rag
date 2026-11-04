@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.domain.rerank.schemas import SearchDocument
+from src.domain.search.schemas import SearchDocument
 
 RERANK_SCORE_WEIGHT = 0.7
 MEAN_TOP_K_WEIGHT = 0.3

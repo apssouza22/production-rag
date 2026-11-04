@@ -15,8 +15,8 @@ from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
 from src.domain.kg.factory import make_dual_level_kg_retrieval_service, make_kg_indexing_service
 from src.domain.pdf_parser.factory import make_pdf_parser_service
-from src.domain.rerank.factory import make_rerank_search_service
 from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.search.factory import make_rerank_search_service
 from src.platform.langfuse.factory import make_langfuse_tracer
 
 # Setup logging

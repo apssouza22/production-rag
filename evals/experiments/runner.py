@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
-from src.domain.rerank.factory import make_rerank_search_service
 from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.search.factory import make_rerank_search_service
 
 from evals.core.evaluator import Evaluator
 from evals.core.llm import make_eval_chat_model

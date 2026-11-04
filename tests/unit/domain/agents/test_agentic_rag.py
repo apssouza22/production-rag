@@ -8,7 +8,7 @@ from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.factory import _build_rerank_search_config, make_agentic_rag_graph
 from src.agents.fusionsearch.models import GuardrailScoring
-from src.domain.rerank.factory import make_rerank_search_service
+from src.domain.search.factory import make_rerank_search_service
 
 
 @pytest.fixture

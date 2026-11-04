@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from src.domain.jinaai.jina import JinaRerankResult
-from src.domain.rerank.config import RerankSearchConfig
-from src.domain.rerank.service import RerankSearchService
+from src.domain.search.config import RerankSearchConfig
+from src.domain.search.service import SearchService
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def sample_hits():
 
 @pytest.fixture
 def rerank_search_service(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_reranker_client):
-    return RerankSearchService(
+    return SearchService(
         paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
@@ -43,7 +43,7 @@ def rerank_search_service(mock_opensearch_client, mock_jina_embeddings_client, m
 @pytest.mark.asyncio
 async def test_search_without_rerank_returns_before_and_after(rerank_search_service, sample_hits):
     """Test search returns identical before/after lists when reranking is disabled."""
-    result = await rerank_search_service.search(query="machine learning", top_k=2)
+    result = await rerank_search_service.search_rrf_with_rerank(query="machine learning", top_k=2)
 
     assert result.query == "machine learning"
     assert result.search_mode == "hybrid"
@@ -62,7 +62,7 @@ async def test_search_with_rerank_returns_reordered_after_list(
     mock_jina_reranker_client,
 ):
     """Test reranking preserves before list and returns reranked after list."""
-    service = RerankSearchService(
+    service = SearchService(
         paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
@@ -100,7 +100,7 @@ async def test_search_with_rerank_returns_reordered_after_list(
         ]
     )
 
-    result = await service.search(query="test query", top_k=2)
+    result = await service.search_rrf_with_rerank(query="test query", top_k=2)
 
     mock_opensearch_client.search_unified.assert_called_once()
     assert mock_opensearch_client.search_unified.call_args.kwargs["size"] == 2 * 2
@@ -122,7 +122,7 @@ async def test_search_rerank_failure_falls_back_to_search_order(
     mock_jina_reranker_client,
 ):
     """Test rerank failure keeps original order in after list."""
-    service = RerankSearchService(
+    service = SearchService(
         paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
@@ -130,7 +130,7 @@ async def test_search_rerank_failure_falls_back_to_search_order(
     )
     mock_jina_reranker_client.rerank = AsyncMock(side_effect=Exception("rerank failed"))
 
-    result = await service.search(query="machine learning", top_k=2)
+    result = await service.search_rrf_with_rerank(query="machine learning", top_k=2)
 
     assert result.rerank_applied is False
     assert len(result.before_rerank) == 2
@@ -141,17 +141,17 @@ async def test_search_rerank_failure_falls_back_to_search_order(
 @pytest.mark.asyncio
 async def test_search_bm25_mode(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_reranker_client):
     """Test BM25 search mode is reflected in the result."""
-    service = RerankSearchService(
+    service = SearchService(
         paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=RerankSearchConfig(use_hybrid=False, rerank_enabled=False),
     )
 
-    await service.search(query="test", top_k=2)
+    await service.search_rrf_with_rerank(query="test", top_k=2)
 
     call_args = mock_opensearch_client.search_unified.call_args
     assert call_args.kwargs["use_hybrid"] is False
 
-    result = await service.search(query="test", top_k=2)
+    result = await service.search_rrf_with_rerank(query="test", top_k=2)
     assert result.search_mode == "bm25"

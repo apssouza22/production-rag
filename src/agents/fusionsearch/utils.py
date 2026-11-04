@@ -5,7 +5,7 @@ from typing import Any, List
 from langchain_core.messages import HumanMessage, ToolMessage
 
 from src.agents.fusionsearch.models import SourceItem
-from src.domain.rerank.schemas import SearchDocument
+from src.domain.search.schemas import SearchDocument
 
 logger = logging.getLogger(__name__)
 
