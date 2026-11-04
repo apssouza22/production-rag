@@ -9,9 +9,9 @@ from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.kg.context_format import format_kg_context
 from src.domain.kg.extraction import KgExtractionService
-from src.domain.kg.graph.repository import KgGraphRepository
+from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.kg.models import KgEdge, KgNode
-from src.domain.kg.opensearch.kg_vector_client import KgVectorClient
+from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import (
     DualLevelKGResult,
     KgChunkHit,

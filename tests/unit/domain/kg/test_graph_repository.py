@@ -1,9 +1,8 @@
 from unittest.mock import MagicMock
 
 import pytest
-
-from src.domain.kg.graph.repository import KgGraphRepository
 from src.domain.kg.models import KgNode
+from src.domain.kg.repository import KgGraphRepository
 
 
 @pytest.fixture

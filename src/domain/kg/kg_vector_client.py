@@ -2,8 +2,9 @@ import logging
 from typing import Any
 
 from opensearchpy import OpenSearch, helpers
+
 from src.config import Settings
-from src.domain.kg.opensearch.index_config import KG_ENTITY_MAPPING, KG_RELATION_MAPPING
+from src.domain.kg.index_config import KG_ENTITY_MAPPING, KG_RELATION_MAPPING
 
 logger = logging.getLogger(__name__)
 

@@ -5,9 +5,9 @@ from typing import Any
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.kg.extraction import KgExtractionService
-from src.domain.kg.graph.repository import KgGraphRepository
+from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.kg.merge import make_chunk_key, normalize_entity_id, relation_vector_id
-from src.domain.kg.opensearch.kg_vector_client import KgVectorClient
+from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import ChunkExtractionResult, ExtractedRelation
 from src.domain.opensearch.client import OpenSearchClient
 
