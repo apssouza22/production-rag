@@ -7,6 +7,11 @@ def make_chunk_key(arxiv_id: str, chunk_index: int) -> str:
     return f"{arxiv_id}:{chunk_index}"
 
 
+def relation_vector_id(source_entity_id: str, target_entity_id: str) -> str:
+    """Stable OpenSearch document id for a directed relation embedding."""
+    return f"{source_entity_id}->{target_entity_id}"
+
+
 def parse_chunk_key(chunk_key: str) -> tuple[str, int]:
     arxiv_id, index_str = chunk_key.rsplit(":", 1)
     return arxiv_id, int(index_str)
