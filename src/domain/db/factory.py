@@ -1,3 +1,6 @@
+# Register SQLAlchemy models with Base.metadata before create_all
+import src.domain.kg.models  # noqa: F401
+import src.domain.paper.model  # noqa: F401
 from src.config import get_settings
 from src.domain.db.config import PostgreSQLSettings
 from src.domain.db.interfaces.base import BaseDatabase

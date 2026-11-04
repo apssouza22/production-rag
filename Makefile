@@ -1,5 +1,6 @@
 .PHONY: help start stop restart status logs health setup format lint test test-cov clean \
-	eval eval-quick eval-no-report rag-eval rag-eval-no-report experiment-eval experiment-eval-fresh
+	eval eval-quick eval-no-report rag-eval rag-eval-no-report experiment-eval experiment-eval-fresh \
+	kg-index
 
 # Default target
 help: ## Show this help message
@@ -73,6 +74,10 @@ experiment-eval: ## Ingest evals/experiments/arxiv_pdfs (if needed) and run the 
 
 experiment-eval-fresh: ## Same, but force re-ingestion and regenerate the question dataset
 	uv run python -m evals.experiments.main --force-ingest --regenerate-queries $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
+
+kg-index: ## Build KG for comma-separated ARXIV_IDS (requires KG__ENABLED=true)
+	@test -n "$(ARXIV_IDS)" || (echo "Usage: make kg-index ARXIV_IDS=2611.02200,2611.02208 [REPLACE=1]" && exit 1)
+	uv run python -m src.domain.kg.cli index --arxiv-ids "$(ARXIV_IDS)" $(if $(REPLACE),--replace,)
 
 # Cleanup
 clean: ## Clean up everything

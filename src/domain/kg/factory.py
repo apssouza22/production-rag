@@ -1,0 +1,95 @@
+"""``make_*`` factories wiring KG services to Postgres, OpenSearch, Jina, and LLM settings."""
+
+from src.config import Settings, get_settings
+from src.domain.db.factory import make_database
+from src.domain.db.interfaces.base import BaseDatabase
+from src.domain.jinaai.factory import make_embeddings_service
+from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
+from src.domain.kg.extraction import KgExtractionService
+from src.domain.kg.indexing_service import KgIndexingService
+from src.domain.kg.opensearch.kg_vector_client import KgVectorClient
+from src.domain.opensearch.client import OpenSearchClient
+from src.domain.opensearch.factory import make_opensearch_client
+from src.platform.llm.chat_model import make_chat_model
+
+
+def resolve_kg_ingestion_name(settings: Settings) -> str:
+    if settings.kg.ingestion_name.strip():
+        return settings.kg.ingestion_name.strip()
+    return settings.opensearch.ingestion_name
+
+
+def make_kg_vector_client(
+    opensearch_client: OpenSearchClient | None = None,
+    settings: Settings | None = None,
+    ingestion_name: str | None = None,
+) -> KgVectorClient:
+    settings = settings or get_settings()
+    client = opensearch_client or make_opensearch_client()
+    resolved_ingestion = ingestion_name or resolve_kg_ingestion_name(settings)
+    return KgVectorClient(
+        client=client.client,
+        settings=settings,
+        ingestion_name=resolved_ingestion,
+    )
+
+
+def make_kg_extraction_service(settings: Settings | None = None) -> KgExtractionService:
+    settings = settings or get_settings()
+    extract_model = settings.kg.extract_model.strip() or settings.agent_model
+    chat_model = make_chat_model(settings, extract_model, temperature=0.0)
+    return KgExtractionService(
+        chat_model,
+        max_entities_per_chunk=settings.kg.max_entities_per_chunk,
+        max_relations_per_chunk=settings.kg.max_relations_per_chunk,
+        max_concurrent=settings.kg.max_concurrent_extractions,
+    )
+
+
+def make_keyword_extraction_service(settings: Settings | None = None) -> KgExtractionService:
+    settings = settings or get_settings()
+    keyword_model = settings.kg.keyword_model.strip() or settings.agent_model
+    chat_model = make_chat_model(settings, keyword_model, temperature=0.0)
+    return KgExtractionService(
+        chat_model,
+        max_entities_per_chunk=settings.kg.max_entities_per_chunk,
+        max_relations_per_chunk=settings.kg.max_relations_per_chunk,
+        max_concurrent=settings.kg.max_concurrent_extractions,
+    )
+
+
+def make_kg_indexing_service(
+    database: BaseDatabase | None = None,
+    settings: Settings | None = None,
+) -> KgIndexingService:
+    settings = settings or get_settings()
+    database = database or make_database()
+    opensearch_client = make_opensearch_client()
+    ingestion_name = resolve_kg_ingestion_name(settings)
+    return KgIndexingService(
+        database=database,
+        opensearch_client=opensearch_client,
+        kg_vector_client=make_kg_vector_client(opensearch_client, settings, ingestion_name),
+        extraction_service=make_kg_extraction_service(settings),
+        embeddings_client=make_embeddings_service(),
+        ingestion_name=ingestion_name,
+    )
+
+
+def make_dual_level_kg_retrieval_service(
+    database: BaseDatabase | None = None,
+    settings: Settings | None = None,
+) -> DualLevelKGRetrievalService:
+    settings = settings or get_settings()
+    database = database or make_database()
+    opensearch_client = make_opensearch_client()
+    ingestion_name = resolve_kg_ingestion_name(settings)
+    return DualLevelKGRetrievalService(
+        database=database,
+        opensearch_client=opensearch_client,
+        kg_vector_client=make_kg_vector_client(opensearch_client, settings, ingestion_name),
+        extraction_service=make_keyword_extraction_service(settings),
+        embeddings_client=make_embeddings_service(),
+        kg_settings=settings.kg,
+        ingestion_name=ingestion_name,
+    )
