@@ -8,11 +8,12 @@ from fastapi import FastAPI
 from src.agents.fusionsearch.factory import make_agentic_rag_service
 from src.agents.knowledgerouter import make_knowledge_router_service
 from src.agents.texttosql import make_text_to_sql_service
-from src.api import agentic_ask, hybrid_search, knowledge_router, ping, rerank_search, text_to_sql
+from src.api import agentic_ask, hybrid_search, kg_retrieval, knowledge_router, ping, rerank_search, text_to_sql
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
 from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
+from src.domain.kg.factory import make_dual_level_kg_retrieval_service, make_kg_indexing_service
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.pdf_parser.factory import make_pdf_parser_service
 from src.domain.rerank.factory import make_rerank_search_service
@@ -69,6 +70,21 @@ async def lifespan(app: FastAPI):
         model=settings.agent_model,
     )
 
+    app.state.kg_indexing_service = None
+    app.state.kg_retrieval_service = None
+    if settings.kg.enabled:
+        app.state.kg_indexing_service = make_kg_indexing_service(
+            database=app.state.database,
+            settings=settings,
+        )
+        app.state.kg_retrieval_service = make_dual_level_kg_retrieval_service(
+            database=app.state.database,
+            settings=settings,
+        )
+        logger.info(
+            "KG services enabled (ingestion partition: %s)", settings.kg.ingestion_name or settings.opensearch.ingestion_name
+        )
+
     logger.info("API ready")
     yield
 
@@ -90,6 +106,7 @@ app.include_router(rerank_search.router, prefix="/api/v1")  # Search with option
 app.include_router(agentic_ask.router)  # Agentic RAG with intelligent retrieval
 app.include_router(text_to_sql.router)  # Text-to-SQL agent over PostgreSQL
 app.include_router(knowledge_router.router)  # Knowledge router across retrieval agents
+app.include_router(kg_retrieval.router, prefix="/api/v1")  # Dual-level KG debug retrieval
 
 
 if __name__ == "__main__":

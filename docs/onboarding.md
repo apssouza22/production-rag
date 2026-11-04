@@ -389,9 +389,21 @@ flowchart LR
 | `/api/v1/ask-agentic` | POST | Agentic RAG |
 | `/api/v1/ask-sql` | POST | Text-to-SQL agent over PostgreSQL |
 | `/api/v1/ask-router` | POST | Knowledge router across retrieval agents |
+| `/api/v1/kg-retrieval/debug` | POST | Dual-level KG retrieval debug (requires `KG__ENABLED=true`) |
 | `/api/v1/feedback` | POST | User feedback on answers |
 
 Full interactive docs: http://localhost:8000/docs
+
+### Dual-level knowledge graph (optional)
+
+LightRAG-style entity/relation graph stored in PostgreSQL (`kg_nodes`, `kg_edges`) with entity/relation vectors in OpenSearch. Disabled by default.
+
+1. Set `KG__ENABLED=true` in `.env` (uses the same `OPENSEARCH__INGESTION_NAME` partition unless `KG__INGESTION_NAME` is set).
+2. Ensure papers are already hybrid-indexed in OpenSearch.
+3. Build the graph for a slice: `make kg-index ARXIV_IDS=2611.02200,2611.02208` (add `REPLACE=1` to re-extract).
+4. Debug retrieval: `POST /api/v1/kg-retrieval/debug` with `{"query": "..."}` — returns keywords, graph rows, chunks, and `formatted_context`.
+
+The agentic RAG path does not use KG retrieval yet (Phase 3).
 
 ---
 
@@ -408,6 +420,7 @@ Full interactive docs: http://localhost:8000/docs
 | `AGENT_MODEL` | Optional | Model used by agent graphs (default `gpt-5.6-luna`) |
 | `REASONING_EFFORT` | Optional | Reasoning effort for GPT-5.x models (default `low`) |
 | `CHUNKING__*` | Optional | Chunk size, overlap, and contextualization tuning |
+| `KG__ENABLED` | Optional | Dual-level KG indexing/retrieval (default `false`) |
 | `REDIS__TTL_HOURS` | Optional | Cache expiration (default `6`) |
 
 All defaults work for local dev except external API keys. See [.env.example](../.env.example) for the full list.

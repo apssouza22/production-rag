@@ -115,6 +115,39 @@ class OpenSearchSettings(BaseConfigSettings):
     hybrid_search_size_multiplier: int = 2  # Get k*multiplier for better recall
 
 
+class KGSettings(BaseConfigSettings):
+    """Feature flag and tuning for LightRAG-style dual-level KG (Postgres graph + OS vectors).
+
+    When ``enabled`` is false, indexing CLI and ``/kg-retrieval/debug`` are inactive.
+    ``ingestion_name`` scopes all graph rows and vector docs to the same OpenSearch
+    partition as hybrid chunk search (defaults to ``OPENSEARCH__INGESTION_NAME``).
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="KG__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    enabled: bool = False
+    # Empty uses OPENSEARCH__INGESTION_NAME at runtime via factory
+    ingestion_name: str = ""
+    entity_index_suffix: str = "kg-entities"
+    relation_index_suffix: str = "kg-relations"
+    max_concurrent_extractions: int = 3
+    extract_model: str = ""
+    max_entities_per_chunk: int = 20
+    max_relations_per_chunk: int = 20
+    top_k_entities: int = 10
+    top_k_relations: int = 10
+    max_entity_tokens: int = 4000
+    max_relation_tokens: int = 4000
+    max_total_tokens: int = 12000
+    keyword_model: str = ""
+
+
 class LangfuseSettings(BaseConfigSettings):
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
@@ -161,6 +194,7 @@ class Settings(BaseConfigSettings):
     pdf_parser: PDFParserSettings = Field(default_factory=PDFParserSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     opensearch: OpenSearchSettings = Field(default_factory=OpenSearchSettings)
+    kg: KGSettings = Field(default_factory=KGSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
 
     @field_validator("postgres_database_url")

@@ -158,12 +158,7 @@ class OpenSearchClient:
         return {"bool": {"must": [query], "filter": filters}}
 
     def keyword_search(
-        self,
-        query: str,
-        size: int = 10,
-        from_: int = 0,
-        categories: Optional[List[str]] = None,
-        latest: bool = True
+        self, query: str, size: int = 10, from_: int = 0, categories: Optional[List[str]] = None, latest: bool = True
     ) -> Dict[str, Any]:
         """BM25 search for papers."""
         return self._search_bm25_only(
@@ -351,10 +346,7 @@ class OpenSearchClient:
             index=self.index_name, body=search_body, params={"search_pipeline": HYBRID_RRF_PIPELINE["id"]}
         )
 
-        results = {
-            "total": response["hits"]["total"]["value"],
-            "hits": []
-        }
+        results = {"total": response["hits"]["total"]["value"], "hits": []}
 
         for hit in response["hits"]["hits"]:
             if hit["_score"] < min_score:
@@ -477,3 +469,61 @@ class OpenSearchClient:
         except Exception as e:
             logger.error(f"Error getting chunks: {e}")
             return []
+
+    def get_chunks_by_chunk_keys(
+        self,
+        chunk_keys: list[str],
+        *,
+        batch_size: int = 50,
+        ingestion_name: Optional[str] = None,
+    ) -> list[Dict[str, Any]]:
+        """Load chunk documents by stable keys arxiv_id:chunk_index."""
+        if not chunk_keys:
+            return []
+
+        resolved_ingestion = self._resolve_ingestion_name(ingestion_name)
+        results: list[Dict[str, Any]] = []
+        key_order = {key: idx for idx, key in enumerate(chunk_keys)}
+
+        for offset in range(0, len(chunk_keys), batch_size):
+            batch = chunk_keys[offset : offset + batch_size]
+            should_clauses: List[Dict[str, Any]] = []
+            for key in batch:
+                if ":" not in key:
+                    continue
+                arxiv_id, index_str = key.rsplit(":", 1)
+                try:
+                    chunk_index = int(index_str)
+                except ValueError:
+                    continue
+                must = [
+                    {"term": {"arxiv_id": arxiv_id}},
+                    {"term": {"chunk_index": chunk_index}},
+                ]
+                if resolved_ingestion:
+                    must.append({"term": {"ingestion_name": resolved_ingestion}})
+                should_clauses.append({"bool": {"must": must}})
+
+            if not should_clauses:
+                continue
+
+            search_body = {
+                "query": {"bool": {"should": should_clauses, "minimum_should_match": 1}},
+                "size": len(should_clauses),
+                "_source": {"excludes": ["embedding"]},
+            }
+            response = self.client.search(index=self.index_name, body=search_body)
+            for hit in response["hits"]["hits"]:
+                chunk = hit["_source"]
+                arxiv_id = chunk.get("arxiv_id", "")
+                chunk_index = chunk.get("chunk_index", 0)
+                chunk_key = f"{arxiv_id}:{chunk_index}"
+                chunk["chunk_id"] = hit["_id"]
+                chunk["chunk_key"] = chunk_key
+                chunk["_sort_order"] = key_order.get(chunk_key, 9999)
+                results.append(chunk)
+
+        results.sort(key=lambda c: c.get("_sort_order", 9999))
+        for chunk in results:
+            chunk.pop("_sort_order", None)
+        return results
