@@ -100,7 +100,11 @@ class ExperimentRunner(EvalRunner):
             dataset_location=get_dataset_location(dataset),
             metadata={
                 "settings_path": str(self.run_config.config_path),
-                "ingestion": {key: ingestion[key] for key in ("skipped", "chunk_count", "ingestion_name")},
+                "ingestion": {
+                    key: ingestion[key]
+                    for key in ("skipped", "chunk_count", "ingestion_name", "kg")
+                    if key in ingestion
+                },
                 "retrieval": {
                     "top_k": self.settings.experiment_top_k,
                     "ingestion_name": self.settings.experiment_ingestion_name,
