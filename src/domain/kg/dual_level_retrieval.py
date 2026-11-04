@@ -18,7 +18,7 @@ from src.domain.kg.schemas import (
     KgEntityHit,
     KgRelationHit,
 )
-from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
+from src.domain.opensearch.hybrid_rrf_search import PaperRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ class DualLevelKGRetrievalService:
     @staticmethod
     def _chunk_hit_from_opensearch_doc(chunk: dict[str, Any]) -> KgChunkHit:
         return KgChunkHit(
-            chunk_key=chunk.get("chunk_key") or f"{chunk.get('arxiv_id')}:{chunk.get('chunk_index')}",
+            chunk_key=chunk.get("chunk_key") or f"{chunk.get('document_id')}:{chunk.get('chunk_index')}",
             arxiv_id=chunk.get("arxiv_id", ""),
             chunk_index=int(chunk.get("chunk_index", 0)),
             chunk_text=chunk.get("chunk_text", ""),

@@ -16,9 +16,9 @@ def test_query_builder_basic_query():
 
     multi_match = bool_query["must"][0]["multi_match"]
     assert multi_match["query"] == "machine learning"
-    assert "title^3" in multi_match["fields"]
-    assert "abstract^2" in multi_match["fields"]
-    assert "authors^1" in multi_match["fields"]
+    assert "metadata.title^3" in multi_match["fields"]
+    assert "metadata.abstract^2" in multi_match["fields"]
+    assert "metadata.authors^1" in multi_match["fields"]
 
 
 def test_query_builder_with_ingestion_name():
@@ -40,7 +40,7 @@ def test_query_builder_with_categories():
 
     filters = bool_query["filter"]
     assert len(filters) == 1
-    assert filters[0]["terms"]["categories"] == ["cs.AI", "cs.LG"]
+    assert filters[0]["terms"]["metadata.categories"] == ["cs.AI", "cs.LG"]
 
 
 def test_query_builder_latest_papers_sorting():
@@ -51,7 +51,7 @@ def test_query_builder_latest_papers_sorting():
     assert "sort" in query
     sort_config = query["sort"]
     assert len(sort_config) == 2
-    assert sort_config[0]["published_date"]["order"] == "desc"
+    assert sort_config[0]["metadata.published_date"]["order"] == "desc"
     assert sort_config[1] == "_score"
 
 
@@ -70,7 +70,7 @@ def test_query_builder_empty_query_sorting():
 
     assert "sort" in query
     sort_config = query["sort"]
-    assert sort_config[0]["published_date"]["order"] == "desc"
+    assert sort_config[0]["metadata.published_date"]["order"] == "desc"
 
 
 def test_query_builder_highlighting():
@@ -82,13 +82,13 @@ def test_query_builder_highlighting():
     assert "fields" in highlight
 
     fields = highlight["fields"]
-    assert "title" in fields
-    assert "abstract" in fields
-    assert "authors" in fields
+    assert "metadata.title" in fields
+    assert "metadata.abstract" in fields
+    assert "metadata.authors" in fields
 
-    assert fields["title"]["fragment_size"] == 0
-    assert fields["abstract"]["fragment_size"] == 150
-    assert fields["authors"]["pre_tags"] == ["<mark>"]
+    assert fields["metadata.title"]["fragment_size"] == 0
+    assert fields["metadata.abstract"]["fragment_size"] == 150
+    assert fields["metadata.authors"]["pre_tags"] == ["<mark>"]
 
 
 def test_query_builder_source_fields():
@@ -97,7 +97,16 @@ def test_query_builder_source_fields():
     query = builder.build()
 
     source_fields = query["_source"]
-    expected_fields = ["arxiv_id", "title", "authors", "abstract", "categories", "published_date", "pdf_url"]
+    expected_fields = [
+        "document_id",
+        "arxiv_id",
+        "metadata.title",
+        "metadata.authors",
+        "metadata.abstract",
+        "metadata.categories",
+        "metadata.published_date",
+        "metadata.pdf_url",
+    ]
 
     for field in expected_fields:
         assert field in source_fields

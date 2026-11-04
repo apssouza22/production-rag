@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
-from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
+from src.domain.opensearch.hybrid_rrf_search import HybridRrfSearch
 
 from .chunk_contextualizer import ChunkContextualizer
 from .text_chunker import TextChunker
@@ -24,7 +24,7 @@ class HybridIndexingService:
         self,
         chunker: TextChunker,
         embeddings_client: JinaEmbeddingsClient,
-        paper_rrf_search: PaperRrfSearch,
+        paper_rrf_search: HybridRrfSearch,
         contextualizer: Optional[ChunkContextualizer] = None,
     ):
         """Initialize hybrid indexing service.
@@ -103,27 +103,30 @@ class HybridIndexingService:
                 contextualized_text = chunk.get_contextualized_text()
                 # Prepare chunk data for OpenSearch
                 chunk_data = {
+                    "document_id": arxiv_id,
                     "arxiv_id": chunk.arxiv_id,
                     "paper_id": chunk.paper_id,
                     "chunk_index": chunk.metadata.chunk_index,
                     "chunk_text": chunk.text,
                     "chunk_context": chunk.metadata.chunk_context,
                     "contextualized_text": contextualized_text,
-                    "chunk_word_count": chunk.metadata.word_count,
-                    "start_char": chunk.metadata.start_char,
-                    "end_char": chunk.metadata.end_char,
-                    "section_title": chunk.metadata.section_title,
-                    "section_breadcrumb": chunk.metadata.section_breadcrumb,
                     "embedding_model": "jina-embeddings-v3",
-                    # Denormalized paper metadata for efficient search
-                    "title": paper_data.get("title", ""),
-                    "authors": ", ".join(paper_data.get("authors", []))
-                    if isinstance(paper_data.get("authors"), list)
-                    else paper_data.get("authors", ""),
-                    "abstract": paper_data.get("abstract", ""),
-                    "categories": paper_data.get("categories", []),
-                    "published_date": paper_data.get("published_date"),
                     "ingestion_name": ingestion_name,
+                    "metadata": {
+                        "title": paper_data.get("title", ""),
+                        "authors": ", ".join(paper_data.get("authors", []))
+                        if isinstance(paper_data.get("authors"), list)
+                        else paper_data.get("authors", ""),
+                        "abstract": paper_data.get("abstract", ""),
+                        "categories": paper_data.get("categories", []),
+                        "published_date": paper_data.get("published_date"),
+                        "pdf_url": paper_data.get("pdf_url", ""),
+                        "chunk_word_count": chunk.metadata.word_count,
+                        "start_char": chunk.metadata.start_char,
+                        "end_char": chunk.metadata.end_char,
+                        "section_title": chunk.metadata.section_title,
+                        "section_breadcrumb": chunk.metadata.section_breadcrumb,
+                    },
                 }
 
                 chunks_with_embeddings.append({"chunk_data": chunk_data, "embedding": embedding})

@@ -16,7 +16,7 @@ The project retrieves relevant excerpts ("chunks") of arXiv papers to feed a RAG
 
 The philosophy is deliberate and mirrors production retrieval systems: **keyword search first, vectors second, fusion on top**. Hybrid is the default because it combines exact term matching (great for names, acronyms, equations) with semantic recall (great for paraphrases and concepts).
 
-The main entry point is `PaperRrfSearch.search_unified()`, which picks a strategy based on the arguments it receives:
+The main entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`), which picks a strategy based on the arguments it receives:
 
 ```134:216:src/domain/opensearch/client.py
     def search_papers(
@@ -65,7 +65,13 @@ Key points:
 - **`text_analyzer`** is a custom analyzer applied to `chunk_text`, `title`, and `abstract`. It lowercases, removes stopwords, and applies **snowball stemming** so that `learning` and `learned` match the same stem. This directly improves BM25 recall.
 - **`standard_analyzer`** (with English stopwords) is used for `authors`, where stemming would be inappropriate.
 - Text fields also expose a `.keyword` sub-field for exact matching/aggregations, while `categories`, `arxiv_id`, etc. are `keyword` types used for filtering.
-- **`dynamic: "strict"`** rejects documents with unknown fields, keeping the schema clean.
+- **`dynamic: "strict"`** at the root rejects unknown top-level fields, keeping the core chunk schema explicit.
+- Document-type-specific fields (title, authors, categories, custom tags, etc.) live under **`metadata`**, an object with **`dynamic: true`**, so new keys can be indexed without mapping updates.
+- Every chunk requires **`document_id`** (for arXiv papers this equals `arxiv_id`). Optional top-level **`arxiv_id`** remains for arXiv denormalization.
+
+The mapping is built by `build_hybrid_chunk_mapping()` in `chunk_index_schema.py` (replacing the static `ARXIV_PAPERS_CHUNKS_MAPPING` body). **After upgrading**, recreate the index (`setup_indices(force=True)`) or re-run ingestion; old documents with paper fields at the top level will not match BM25 on `metadata.*` paths until reindexed.
+
+The main search entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`).
 
 ### The vector field
 

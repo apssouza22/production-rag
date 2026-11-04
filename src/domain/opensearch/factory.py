@@ -1,4 +1,4 @@
-"""Unified factory for OpenSearch client and paper RRF search."""
+"""Unified factory for OpenSearch client and hybrid RRF search."""
 
 import logging
 from functools import lru_cache
@@ -7,7 +7,7 @@ from typing import Optional
 from src.config import Settings, get_settings
 
 from .client import OpenSearchClient
-from .paper_rrf_search import PaperRrfSearch
+from .hybrid_rrf_search import HybridRrfSearch, PaperRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -37,39 +37,55 @@ def make_opensearch_client_fresh(settings: Optional[Settings] = None, host: Opti
     return OpenSearchClient(host=opensearch_host)
 
 
-@lru_cache(maxsize=1)
-def make_paper_rrf_search(settings: Optional[Settings] = None) -> PaperRrfSearch:
-    """Cached PaperRrfSearch wired to OpenSearch; ensures hybrid index and RRF pipeline."""
-    settings = settings or get_settings()
-
-    opensearch_client = make_opensearch_client()
-    paper_rrf_search = PaperRrfSearch(opensearch_client, settings)
-
+def _setup_hybrid_rrf_search(hybrid_rrf_search: HybridRrfSearch, opensearch_client: OpenSearchClient) -> HybridRrfSearch:
     if not opensearch_client.health_check():
-        return paper_rrf_search
+        return hybrid_rrf_search
 
-    setup_results = paper_rrf_search.setup_indices(force=False)
+    setup_results = hybrid_rrf_search.setup_indices(force=False)
     if setup_results.get("hybrid_index"):
         logger.info("Hybrid index created")
     else:
         logger.info("Hybrid index already exists")
 
     try:
-        count = opensearch_client.count(paper_rrf_search.index_name)
+        count = opensearch_client.count(hybrid_rrf_search.index_name)
         logger.info("OpenSearch ready: %s documents indexed", count)
     except Exception:
         logger.info("OpenSearch index ready (stats unavailable)")
 
-    return paper_rrf_search
+    return hybrid_rrf_search
+
+
+@lru_cache(maxsize=1)
+def make_hybrid_rrf_search(settings: Optional[Settings] = None) -> HybridRrfSearch:
+    """Cached HybridRrfSearch wired to OpenSearch; ensures hybrid index and RRF pipeline."""
+    settings = settings or get_settings()
+
+    opensearch_client = make_opensearch_client()
+    hybrid_rrf_search = HybridRrfSearch(opensearch_client, settings)
+    return _setup_hybrid_rrf_search(hybrid_rrf_search, opensearch_client)
+
+
+def make_hybrid_rrf_search_fresh(
+    settings: Optional[Settings] = None,
+    host: Optional[str] = None,
+) -> HybridRrfSearch:
+    """Fresh HybridRrfSearch instance (e.g. indexing with host override)."""
+    if settings is None:
+        settings = get_settings()
+
+    opensearch_client = make_opensearch_client_fresh(settings, host=host)
+    return HybridRrfSearch(opensearch_client, settings)
+
+
+def make_paper_rrf_search(settings: Optional[Settings] = None) -> PaperRrfSearch:
+    """Backward-compatible alias for make_hybrid_rrf_search."""
+    return make_hybrid_rrf_search(settings)
 
 
 def make_paper_rrf_search_fresh(
     settings: Optional[Settings] = None,
     host: Optional[str] = None,
 ) -> PaperRrfSearch:
-    """Fresh PaperRrfSearch instance (e.g. indexing with host override)."""
-    if settings is None:
-        settings = get_settings()
-
-    opensearch_client = make_opensearch_client_fresh(settings, host=host)
-    return PaperRrfSearch(opensearch_client, settings)
+    """Backward-compatible alias for make_hybrid_rrf_search_fresh."""
+    return make_hybrid_rrf_search_fresh(settings, host=host)

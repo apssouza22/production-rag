@@ -1,4 +1,4 @@
-"""ArXiv paper chunk search: BM25, vector kNN, and native RRF hybrid retrieval."""
+"""Generic document chunk search: BM25, vector kNN, and native RRF hybrid retrieval."""
 
 import logging
 from typing import Any
@@ -7,21 +7,36 @@ from opensearchpy import OpenSearch
 
 from src.config import Settings
 
+from .chunk_index_schema import (
+    PAPER_CHUNK_PROFILE,
+    ChunkIndexDocument,
+    ChunkSearchProfile,
+    build_hybrid_chunk_mapping,
+    flatten_hit_metadata,
+)
 from .client import OpenSearchClient
-from .index_config_hybrid import ARXIV_PAPERS_CHUNKS_MAPPING, HYBRID_RRF_PIPELINE
+from .index_config_hybrid import hybrid_rrf_pipeline_body
 from .query_builder import QueryBuilder
 
 logger = logging.getLogger(__name__)
 
 
-class PaperRrfSearch:
-    """Hybrid chunk index for arXiv papers (BM25 + vector fused via RRF pipeline)."""
+class HybridRrfSearch:
+    """Hybrid chunk index (BM25 + vector fused via RRF pipeline) for any document type."""
 
-    def __init__(self, opensearch: OpenSearchClient, settings: Settings):
+    def __init__(
+        self,
+        opensearch: OpenSearchClient,
+        settings: Settings,
+        *,
+        profile: ChunkSearchProfile | None = None,
+    ):
         self._opensearch = opensearch
         self.settings = settings
+        self.profile = profile or PAPER_CHUNK_PROFILE
         self.index_name = f"{settings.opensearch.index_name}-{settings.opensearch.chunk_index_suffix}"
         self.ingestion_name = settings.opensearch.ingestion_name
+        self._rrf_pipeline_id = settings.opensearch.rrf_pipeline_name
 
     @property
     def client(self) -> OpenSearch:
@@ -35,17 +50,15 @@ class PaperRrfSearch:
 
     def setup_indices(self, force: bool = False) -> dict[str, bool]:
         """Setup the hybrid search index and RRF pipeline."""
+        mapping = build_hybrid_chunk_mapping(self.settings.opensearch)
         hybrid_index = self._opensearch.create_index(
             self.index_name,
-            ARXIV_PAPERS_CHUNKS_MAPPING,
+            mapping,
             force=force,
         )
-        pipeline_body = {
-            "description": HYBRID_RRF_PIPELINE["description"],
-            "phase_results_processors": HYBRID_RRF_PIPELINE["phase_results_processors"],
-        }
+        pipeline_body = hybrid_rrf_pipeline_body(self.settings.opensearch)
         rrf_pipeline = self._opensearch.ensure_search_pipeline(
-            HYBRID_RRF_PIPELINE["id"],
+            self._rrf_pipeline_id,
             pipeline_body,
             force=force,
         )
@@ -66,7 +79,8 @@ class PaperRrfSearch:
         if resolved_ingestion:
             filters.append({"term": {"ingestion_name": resolved_ingestion}})
         if categories:
-            filters.append({"terms": {"categories": categories}})
+            field = self.profile.term_filters.get("categories", "metadata.categories")
+            filters.append({"terms": {field: categories}})
         return filters
 
     @staticmethod
@@ -74,6 +88,11 @@ class PaperRrfSearch:
         if not filters:
             return query
         return {"bool": {"must": [query], "filter": filters}}
+
+    @staticmethod
+    def _flatten_results(results: dict[str, Any]) -> dict[str, Any]:
+        hits = [flatten_hit_metadata(h) for h in results.get("hits", [])]
+        return {**results, "hits": hits}
 
     def keyword_search(
         self,
@@ -83,7 +102,7 @@ class PaperRrfSearch:
         categories: list[str] | None = None,
         latest: bool = True,
     ) -> dict[str, Any]:
-        """BM25 search for papers."""
+        """BM25 search for chunks."""
         return self._search_bm25_only(
             query=query,
             size=size,
@@ -112,7 +131,8 @@ class PaperRrfSearch:
         if filter_clause:
             search_body["query"] = self._wrap_query_with_filters(search_body["query"], filter_clause)
 
-        return self._opensearch.search(self.index_name, search_body)
+        results = self._opensearch.search(self.index_name, search_body)
+        return self._flatten_results(results)
 
     def search_unified(
         self,
@@ -168,11 +188,12 @@ class PaperRrfSearch:
             ingestion_name=self._resolve_ingestion_name(ingestion_name),
             latest_papers=latest,
             search_chunks=True,
+            profile=self.profile,
         )
         search_body = builder.build()
         results = self._opensearch.search(self.index_name, search_body)
         logger.info("BM25 search for '%s...' returned %s results", query[:50], results["total"])
-        return results
+        return self._flatten_results(results)
 
     def _search_hybrid_native(
         self,
@@ -191,6 +212,7 @@ class PaperRrfSearch:
             ingestion_name=self._resolve_ingestion_name(ingestion_name),
             latest_papers=False,
             search_chunks=True,
+            profile=self.profile,
         )
         bm25_search_body = builder.build()
 
@@ -213,37 +235,43 @@ class PaperRrfSearch:
         results = self._opensearch.search(
             self.index_name,
             search_body,
-            params={"search_pipeline": HYBRID_RRF_PIPELINE["id"]},
+            params={"search_pipeline": self._rrf_pipeline_id},
             min_score=min_score,
             total_from_filtered_count=True,
         )
         logger.info("Native hybrid search for '%s...' returned %s results", query[:50], results["total"])
-        return results
+        return self._flatten_results(results)
+
+    def _prepare_chunk_source(self, chunk_data: dict[str, Any], embedding: list[float]) -> dict[str, Any]:
+        doc = ChunkIndexDocument.from_index_payload(chunk_data)
+        return doc.to_opensearch_source(embedding=embedding)
 
     def index_chunk(self, chunk_data: dict[str, Any], embedding: list[float]) -> bool:
-        body = {**chunk_data, "embedding": embedding}
+        body = self._prepare_chunk_source(chunk_data, embedding)
         return self._opensearch.index_document(self.index_name, body)
 
     def bulk_index_chunks(self, chunks: list[dict[str, Any]]) -> dict[str, int]:
         sources = []
         for chunk in chunks:
-            chunk_data = chunk["chunk_data"].copy()
-            chunk_data["embedding"] = chunk["embedding"]
-            sources.append(chunk_data)
+            sources.append(self._prepare_chunk_source(chunk["chunk_data"], chunk["embedding"]))
         return self._opensearch.bulk_index(self.index_name, sources)
 
-    def delete_paper_chunks(self, arxiv_id: str, ingestion_name: str | None = None) -> bool:
-        must_clauses: list[dict[str, Any]] = [{"term": {"arxiv_id": arxiv_id}}]
+    def delete_document_chunks(self, document_id: str, ingestion_name: str | None = None) -> bool:
+        must_clauses: list[dict[str, Any]] = [{"term": {"document_id": document_id}}]
         resolved_ingestion = self._resolve_ingestion_name(ingestion_name)
         if resolved_ingestion:
             must_clauses.append({"term": {"ingestion_name": resolved_ingestion}})
 
         deleted = self._opensearch.delete_by_query(self.index_name, {"bool": {"must": must_clauses}})
-        logger.info("Deleted %s chunks for paper %s", deleted, arxiv_id)
+        logger.info("Deleted %s chunks for document %s", deleted, document_id)
         return deleted > 0
 
-    def get_chunks_by_paper(self, arxiv_id: str, ingestion_name: str | None = None) -> list[dict[str, Any]]:
-        must_clauses: list[dict[str, Any]] = [{"term": {"arxiv_id": arxiv_id}}]
+    def delete_paper_chunks(self, arxiv_id: str, ingestion_name: str | None = None) -> bool:
+        """Backward-compatible delete by arxiv_id (same as document_id for arXiv corpus)."""
+        return self.delete_document_chunks(arxiv_id, ingestion_name=ingestion_name)
+
+    def get_chunks_by_document(self, document_id: str, ingestion_name: str | None = None) -> list[dict[str, Any]]:
+        must_clauses: list[dict[str, Any]] = [{"term": {"document_id": document_id}}]
         resolved_ingestion = self._resolve_ingestion_name(ingestion_name)
         if resolved_ingestion:
             must_clauses.append({"term": {"ingestion_name": resolved_ingestion}})
@@ -263,10 +291,13 @@ class PaperRrfSearch:
 
         chunks = []
         for hit in response["hits"]["hits"]:
-            chunk = hit["_source"]
+            chunk = flatten_hit_metadata(dict(hit["_source"]))
             chunk["chunk_id"] = hit["_id"]
             chunks.append(chunk)
         return chunks
+
+    def get_chunks_by_paper(self, arxiv_id: str, ingestion_name: str | None = None) -> list[dict[str, Any]]:
+        return self.get_chunks_by_document(arxiv_id, ingestion_name=ingestion_name)
 
     def get_chunks_by_chunk_keys(
         self,
@@ -275,7 +306,7 @@ class PaperRrfSearch:
         batch_size: int = 50,
         ingestion_name: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Load chunk documents by stable keys arxiv_id:chunk_index."""
+        """Load chunk documents by stable keys document_id:chunk_index."""
         if not chunk_keys:
             return []
 
@@ -289,13 +320,13 @@ class PaperRrfSearch:
             for key in batch:
                 if ":" not in key:
                     continue
-                arxiv_id, index_str = key.rsplit(":", 1)
+                document_id, index_str = key.rsplit(":", 1)
                 try:
                     chunk_index = int(index_str)
                 except ValueError:
                     continue
                 must = [
-                    {"term": {"arxiv_id": arxiv_id}},
+                    {"term": {"document_id": document_id}},
                     {"term": {"chunk_index": chunk_index}},
                 ]
                 if resolved_ingestion:
@@ -312,10 +343,10 @@ class PaperRrfSearch:
             }
             response = self.client.search(index=self.index_name, body=search_body)
             for hit in response["hits"]["hits"]:
-                chunk = hit["_source"]
-                hit_arxiv_id = chunk.get("arxiv_id", "")
+                chunk = flatten_hit_metadata(dict(hit["_source"]))
+                hit_document_id = chunk.get("document_id", "")
                 hit_chunk_index = chunk.get("chunk_index", 0)
-                chunk_key = f"{hit_arxiv_id}:{hit_chunk_index}"
+                chunk_key = f"{hit_document_id}:{hit_chunk_index}"
                 chunk["chunk_id"] = hit["_id"]
                 chunk["chunk_key"] = chunk_key
                 chunk["_sort_order"] = key_order.get(chunk_key, 9999)
@@ -325,3 +356,6 @@ class PaperRrfSearch:
         for chunk in results:
             chunk.pop("_sort_order", None)
         return results
+
+
+PaperRrfSearch = HybridRrfSearch

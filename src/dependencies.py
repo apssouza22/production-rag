@@ -18,7 +18,7 @@ from src.domain.arxiv.client import ArxivClient
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
+from src.domain.opensearch.hybrid_rrf_search import HybridRrfSearch, PaperRrfSearch
 from src.domain.pdf_parser.parser import PDFParserService
 from src.domain.rerank.service import RerankSearchService
 from src.platform.langfuse.client import LangfuseTracer

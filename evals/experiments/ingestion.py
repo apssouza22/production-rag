@@ -6,7 +6,7 @@ from typing import Any
 
 from src.domain.arxiv_ingestion import setup_environment
 from src.domain.arxiv_ingestion.service import get_ingestion_service
-from src.domain.opensearch.paper_rrf_search import PaperRrfSearch
+from src.domain.opensearch.hybrid_rrf_search import PaperRrfSearch
 
 from evals.experiments.config import ExperimentSettings
 
