@@ -112,13 +112,13 @@ class HybridIndexingService:
                     "contextualized_text": contextualized_text,
                     "embedding_model": "jina-embeddings-v3",
                     "ingestion_name": ingestion_name,
+                    "categories": paper_data.get("categories", []),
                     "metadata": {
                         "title": paper_data.get("title", ""),
                         "authors": ", ".join(paper_data.get("authors", []))
                         if isinstance(paper_data.get("authors"), list)
                         else paper_data.get("authors", ""),
                         "abstract": paper_data.get("abstract", ""),
-                        "categories": paper_data.get("categories", []),
                         "published_date": paper_data.get("published_date"),
                         "pdf_url": paper_data.get("pdf_url", ""),
                         "chunk_word_count": chunk.metadata.word_count,

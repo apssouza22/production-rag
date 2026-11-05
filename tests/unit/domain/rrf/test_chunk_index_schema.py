@@ -13,6 +13,7 @@ def test_build_hybrid_chunk_mapping_has_strict_core_and_dynamic_metadata() -> No
     assert mapping["mappings"]["dynamic"] == "strict"
     props = mapping["mappings"]["properties"]
     assert props["document_id"]["type"] == "keyword"
+    assert props["categories"]["type"] == "keyword"
     assert props["metadata"]["dynamic"] is True
     assert "title" not in props
 
@@ -32,13 +33,31 @@ def test_chunk_index_document_moves_paper_fields_to_metadata() -> None:
         }
     )
     assert doc.metadata["title"] == "Paper"
-    assert doc.metadata["categories"] == ["cs.AI"]
+    assert doc.categories == ["cs.AI"]
+    assert "categories" not in doc.metadata
     assert doc.metadata["section_title"] == "Intro"
     assert doc.metadata["start_char"] == 10
     source = doc.to_opensearch_source()
     assert "title" not in source
     assert "section_title" not in source
     assert source["metadata"]["section_title"] == "Intro"
+    assert source["categories"] == ["cs.AI"]
+
+
+def test_chunk_index_document_lifts_categories_from_legacy_metadata() -> None:
+    doc = ChunkIndexDocument.from_index_payload(
+        {
+            "document_id": "2024.1",
+            "chunk_index": 0,
+            "chunk_text": "body",
+            "contextualized_text": "ctx\n\nbody",
+            "ingestion_name": "dev",
+            "metadata": {"categories": ["cs.LG"], "title": "Paper"},
+        }
+    )
+    assert doc.categories == ["cs.LG"]
+    assert "categories" not in doc.metadata
+    assert doc.metadata["title"] == "Paper"
 
 
 def test_chunk_index_document_rejects_unknown_top_level_fields() -> None:

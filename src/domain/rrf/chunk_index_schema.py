@@ -15,7 +15,6 @@ METADATA_FIELD_NAMES: frozenset[str] = frozenset(
         "title",
         "authors",
         "abstract",
-        "categories",
         "published_date",
         "pdf_url",
         "chunk_word_count",
@@ -57,6 +56,7 @@ CORE_CHUNK_PROPERTIES: dict[str, Any] = {
     "contextualized_text": TEXT_FIELD,
     "embedding_model": {"type": "keyword"},
     "ingestion_name": {"type": "keyword"},
+    "categories": {"type": "keyword"},
     "created_at": {"type": "date"},
     "updated_at": {"type": "date"},
     "metadata": {"type": "object", "dynamic": True},
@@ -113,6 +113,7 @@ class ChunkIndexDocument(BaseModel):
     chunk_text: str
     contextualized_text: str
     ingestion_name: str
+    categories: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     chunk_context: str | None = None
     arxiv_id: str | None = None
@@ -131,6 +132,8 @@ class ChunkIndexDocument(BaseModel):
         for name in METADATA_FIELD_NAMES:
             if name in data:
                 metadata[name] = data.pop(name)
+        if "categories" in metadata and "categories" not in data:
+            data["categories"] = metadata.pop("categories")
         return cls.model_validate({**data, "metadata": metadata})
 
     def to_opensearch_source(self, *, embedding: list[float] | None = None) -> dict[str, Any]:
@@ -163,11 +166,9 @@ _DEFAULT_HIGHLIGHT_CHUNK = {
 PAPER_CHUNK_PROFILE = ChunkSearchProfile(
     bm25_fields=[
         "contextualized_text^4",
-        "chunk_text^2",
-        "metadata.title^2",
-        "metadata.abstract^1",
+        "chunk_text^2"
     ],
-    term_filters={"categories": "metadata.categories"},
+    term_filters={"categories": "categories"},
     sort_field="metadata.published_date",
     highlight_fields={
         "contextualized_text": _DEFAULT_HIGHLIGHT_CHUNK,
@@ -187,7 +188,7 @@ PAPER_CHUNK_PROFILE = ChunkSearchProfile(
         "metadata.title",
         "metadata.authors",
         "metadata.abstract",
-        "metadata.categories",
+        "categories",
         "metadata.published_date",
         "metadata.pdf_url",
     ],

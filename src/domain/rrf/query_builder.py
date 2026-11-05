@@ -125,7 +125,7 @@ class QueryBuilder:
         filters = []
 
         if self.categories:
-            field = self.profile.term_filters.get("categories", "metadata.categories")
+            field = self.profile.term_filters.get("categories", "categories")
             filters.append({"terms": {field: self.categories}})
 
         if self.ingestion_name:

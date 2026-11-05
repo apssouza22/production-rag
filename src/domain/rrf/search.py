@@ -77,7 +77,7 @@ class HybridRrfSearch:
         if self.ingestion_name:
             filters.append({"term": {"ingestion_name": self.ingestion_name}})
         if categories:
-            field = self.profile.term_filters.get("categories", "metadata.categories")
+            field = self.profile.term_filters.get("categories", "categories")
             filters.append({"terms": {field: categories}})
         return filters
 

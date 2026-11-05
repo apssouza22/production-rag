@@ -40,7 +40,7 @@ def test_query_builder_with_categories():
 
     filters = bool_query["filter"]
     assert len(filters) == 1
-    assert filters[0]["terms"]["metadata.categories"] == ["cs.AI", "cs.LG"]
+    assert filters[0]["terms"]["categories"] == ["cs.AI", "cs.LG"]
 
 
 def test_query_builder_latest_papers_sorting():
@@ -103,7 +103,7 @@ def test_query_builder_source_fields():
         "metadata.title",
         "metadata.authors",
         "metadata.abstract",
-        "metadata.categories",
+        "categories",
         "metadata.published_date",
         "metadata.pdf_url",
     ]
