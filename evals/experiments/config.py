@@ -113,6 +113,15 @@ def _apply_experiment_env(experiment: ExperimentSettings) -> None:
         os.environ[env_name] = _serialize_env_value(value)
 
 
+def sync_experiment_opensearch_partition(experiment: ExperimentSettings) -> None:
+    """Align OpenSearch partition env with the experiment so index, count, and search match."""
+    os.environ["OPENSEARCH__INGESTION_NAME"] = experiment.experiment_ingestion_name
+    from src.domain.rrf.factory import make_hybrid_rrf_search
+
+    make_hybrid_rrf_search.cache_clear()
+    get_cached_services.cache_clear()
+
+
 def apply_experiment_platform_settings(pdf_parser: PDFParserSettings, chunking: ChunkingSettings) -> None:
     """Push parser/chunking config into env and reset cached ingestion services."""
     _apply_prefixed_env("PDF_PARSER", pdf_parser)
@@ -168,6 +177,7 @@ def build_run_config(config_path: Path | None = None) -> ExperimentRunConfig:
     _apply_experiment_env(file_config.experiment)
     # Environment (including .env) wins over JSON for experiment fields and secrets.
     experiment = ExperimentSettings()
+    sync_experiment_opensearch_partition(experiment)
     return ExperimentRunConfig(
         pdf_parser=file_config.pdf_parser,
         chunking=file_config.chunking,

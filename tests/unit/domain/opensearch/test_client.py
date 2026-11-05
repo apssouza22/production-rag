@@ -14,3 +14,15 @@ def client() -> OpenSearchClient:
 
 def test_health_check_returns_true_when_cluster_green(client: OpenSearchClient) -> None:
     assert client.health_check() is True
+
+
+def test_ensure_index_mapping_updates_existing_index(client: OpenSearchClient) -> None:
+    client.client.indices.exists.return_value = True
+    mapping_body = {"mappings": {"properties": {"document_id": {"type": "keyword"}}}}
+
+    client.ensure_index_mapping("arxiv-papers-chunks", mapping_body)
+
+    client.client.indices.put_mapping.assert_called_once_with(
+        index="arxiv-papers-chunks",
+        body={"properties": {"document_id": {"type": "keyword"}}},
+    )

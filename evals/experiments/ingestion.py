@@ -106,7 +106,21 @@ class HybridChunkIngestor:
 
         chunk_count = self.partition_chunk_count()
         if not chunk_count:
-            raise RuntimeError(f"Ingestion produced no chunks for ingestion_name={self._ingestion_name}")
+            created = int(hybrid_stats.get("total_chunks_created", 0))
+            indexed = int(hybrid_stats.get("total_chunks_indexed", 0))
+            errors = int(hybrid_stats.get("total_errors", 0))
+            if created > 0 and indexed == 0:
+                raise RuntimeError(
+                    f"Chunking created {created} chunk(s) but OpenSearch indexed none for "
+                    f"ingestion_name={self._ingestion_name} (indexing errors={errors}). "
+                    "Check logs for strict mapping or bulk index failures; ensure hybrid index "
+                    "setup ran (restart stack or run setup_indices)."
+                )
+            raise RuntimeError(
+                f"Ingestion produced no chunks for ingestion_name={self._ingestion_name} "
+                f"(chunks_created={created}, indexing_errors={errors}). "
+                "Ensure PDFs parsed successfully and papers have raw_text in Postgres."
+            )
 
         logger.info(
             "Hybrid ingestion complete: %s chunks indexed for ingestion_name=%s",

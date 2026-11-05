@@ -72,7 +72,7 @@ class PaperIndexer:
     @staticmethod
     async def _index_papers_with_chunks(papers: list[Any], ingestion_name: str) -> dict[str, Any]:
         """Index papers with chunking and embeddings."""
-        indexing_service = make_hybrid_indexing_service()
+        indexing_service = make_hybrid_indexing_service(ingestion_name=ingestion_name)
 
         papers_data = []
         for paper in papers:

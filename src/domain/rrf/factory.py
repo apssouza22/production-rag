@@ -33,13 +33,9 @@ def _setup_hybrid_rrf_search(hybrid_rrf_search: HybridRrfSearch, opensearch_clie
 
 
 @lru_cache(maxsize=16)
-def make_hybrid_rrf_search(
-    settings: Optional[Settings] = None,
-    ingestion_name: str | None = None,
-) -> HybridRrfSearch:
+def make_hybrid_rrf_search(ingestion_name: str | None = None) -> HybridRrfSearch:
     """Cached HybridRrfSearch wired to OpenSearch; ensures hybrid index and RRF pipeline."""
-    settings = settings or get_settings()
-
+    settings = get_settings()
     opensearch_client = make_opensearch_client()
     hybrid_rrf_search = HybridRrfSearch(opensearch_client, settings, ingestion_name=ingestion_name)
     return _setup_hybrid_rrf_search(hybrid_rrf_search, opensearch_client)
@@ -63,7 +59,9 @@ def make_paper_rrf_search(
     ingestion_name: str | None = None,
 ) -> PaperRrfSearch:
     """Backward-compatible alias for make_hybrid_rrf_search."""
-    return make_hybrid_rrf_search(settings, ingestion_name=ingestion_name)
+    if settings is not None:
+        return make_hybrid_rrf_search_fresh(settings, ingestion_name=ingestion_name)
+    return make_hybrid_rrf_search(ingestion_name=ingestion_name)
 
 
 def make_paper_rrf_search_fresh(

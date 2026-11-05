@@ -110,10 +110,6 @@ def main() -> None:
 
     run_config = build_run_config(resolve_settings_path(args.settings))
 
-    # OpenSearch filters every search by the configured partition, so indexing and
-    # retrieval must agree on the same ingestion name.
-    os.environ["OPENSEARCH__INGESTION_NAME"] = run_config.experiment.experiment_ingestion_name
-
     asyncio.run(run_experiment(args, run_config))
 
 

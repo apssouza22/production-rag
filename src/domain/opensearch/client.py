@@ -76,6 +76,22 @@ class OpenSearchClient:
             logger.error("Error creating index: %s", e)
             raise
 
+    def ensure_index_mapping(self, index: str, body: dict[str, Any]) -> None:
+        """Apply mapping properties to an existing index (adds new fields only)."""
+        if not self.index_exists(index):
+            return
+
+        properties = body.get("mappings", {}).get("properties")
+        if not properties:
+            return
+
+        try:
+            self.client.indices.put_mapping(index=index, body={"properties": properties})
+            logger.info("Updated index mapping for %s", index)
+        except Exception as e:
+            logger.error("Failed to update index mapping for %s: %s", index, e)
+            raise
+
     def ensure_search_pipeline(
         self,
         pipeline_id: str,

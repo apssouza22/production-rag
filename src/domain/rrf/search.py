@@ -59,6 +59,8 @@ class HybridRrfSearch:
             mapping,
             force=force,
         )
+        if not hybrid_index:
+            self._opensearch.ensure_index_mapping(self.index_name, mapping)
         pipeline_body = hybrid_rrf_pipeline_body(self.settings.opensearch)
         rrf_pipeline = self._opensearch.ensure_search_pipeline(
             self._rrf_pipeline_id,

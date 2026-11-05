@@ -42,3 +42,13 @@ def test_get_chunks_by_chunk_keys_sorts_by_request_order(hybrid_rrf_search: Hybr
         ["1234.5678:0", "1234.5678:1"],
     )
     assert [c["chunk_index"] for c in chunks] == [0, 1]
+
+
+def test_setup_indices_updates_mapping_when_index_already_exists(hybrid_rrf_search: HybridRrfSearch) -> None:
+    hybrid_rrf_search._opensearch.create_index = MagicMock(return_value=False)
+    hybrid_rrf_search._opensearch.ensure_index_mapping = MagicMock()
+    hybrid_rrf_search._opensearch.ensure_search_pipeline = MagicMock(return_value=True)
+
+    hybrid_rrf_search.setup_indices(force=False)
+
+    hybrid_rrf_search._opensearch.ensure_index_mapping.assert_called_once()
