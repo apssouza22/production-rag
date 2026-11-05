@@ -28,6 +28,7 @@
     "experiment_ingestion_name": "evals-experiments-1",
     "experiment_questions_per_paper": 4,
     "experiment_chunks_per_paper": 12,
-    "experiment_top_k": 5
+    "experiment_top_k": 5,
+    "retrieval_mode": "rrf"
   }
 }

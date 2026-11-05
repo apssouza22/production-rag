@@ -67,7 +67,7 @@ def get_reranker_service(request: Request) -> JinaRerankerClient:
 
 def get_rerank_search_service(request: Request) -> SearchService:
     """Get rerank search service from the request state."""
-    return request.app.state.rerank_search_service
+    return request.app.state.search_service
 
 
 def get_langfuse_tracer(request: Request) -> LangfuseTracer:
@@ -98,7 +98,7 @@ ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
-RerankSearchDep = Annotated[SearchService, Depends(get_rerank_search_service)]
+SearchServiceDep = Annotated[SearchService, Depends(get_rerank_search_service)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]
 TextToSQLDep = Annotated[TextToSQLService, Depends(get_text_to_sql_service)]

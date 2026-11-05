@@ -1,4 +1,4 @@
-"""Build evaluation samples from rerank search retrieval over the experiment partition."""
+"""Build evaluation samples from hybrid RRF or dual-level KG retrieval over the experiment partition."""
 
 import logging
 
@@ -31,7 +31,7 @@ class ExperimentDataset:
         settings: ExperimentSettings,
     ) -> None:
         self.queries = queries
-        self.rerank_search_service = rerank_search_service
+        self.search_service = rerank_search_service
         self.chat_model = chat_model
         self.settings = settings
         self.total_items = len(queries)
@@ -46,7 +46,12 @@ class ExperimentDataset:
         return samples
 
     async def _build_sample(self, query: ExperimentQuery) -> EvalSample | None:
-        result = await self.rerank_search_service.search_rrf(query.user_input, top_k=self.settings.experiment_top_k)
+        if self.settings.retrieval_mode == "kg":
+            return await self._build_sample_kg(query)
+        return await self._build_sample_rrf(query)
+
+    async def _build_sample_rrf(self, query: ExperimentQuery) -> EvalSample | None:
+        result = await self.search_service.search_rrf(query.user_input, top_k=self.settings.experiment_top_k)
         contexts = [document.chunk_text for document in result.after_rerank if document.chunk_text.strip()]
         if not contexts:
             logger.warning("Skipping query with no retrieved contexts: %s", query.user_input)
@@ -59,9 +64,35 @@ class ExperimentDataset:
             contexts=contexts,
             source_id=query.arxiv_id or None,
             metadata={
+                "retrieval_mode": "rrf",
                 "rerank_applied": result.rerank_applied,
                 "search_mode": result.search_mode,
                 "retrieved_arxiv_ids": sorted({document.arxiv_id for document in result.after_rerank}),
+            },
+        )
+
+    async def _build_sample_kg(self, query: ExperimentQuery) -> EvalSample | None:
+        result = await self.search_service.dual_search(query.user_input)
+        top_k = self.settings.experiment_top_k
+        chunks = result.chunks[:top_k]
+        contexts = [chunk.chunk_text for chunk in chunks if chunk.chunk_text.strip()]
+        if not contexts:
+            logger.warning("Skipping query with no KG evidence chunks: %s", query.user_input)
+            return None
+
+        return EvalSample(
+            input=query.user_input,
+            output=await self._generate_response(query.user_input, contexts),
+            reference=query.reference,
+            contexts=contexts,
+            source_id=query.arxiv_id or None,
+            metadata={
+                "retrieval_mode": "kg",
+                "high_level_keywords": result.high_level_keywords,
+                "low_level_keywords": result.low_level_keywords,
+                "entity_count": len(result.entities),
+                "relation_count": len(result.relations),
+                "retrieved_arxiv_ids": sorted({chunk.arxiv_id for chunk in chunks if chunk.arxiv_id}),
             },
         )
 

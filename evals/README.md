@@ -194,7 +194,7 @@ Settings load from [`evals/experiments/data/settings/experiment-config.json`](..
 | `pdf_parser` | Docling PDF parser limits (`max_pages`, `do_ocr`, …) — applied as `PDF_PARSER__*` env vars before ingestion |
 | `chunking` | Chunk size, overlap, contextualization — applied as `CHUNKING__*` before indexing |
 | `query` | Retrieval knobs for `rerank_search_service` (`use_hybrid`, `rerank_enabled`, `rerank_model`, `rerank_candidate_multiplier`) |
-| `experiment` | Judge model, ingestion partition, PDF directory, query cache paths, question counts, `experiment_top_k` |
+| `experiment` | Judge model, ingestion partition, PDF directory, query cache paths, question counts, `experiment_top_k`, `retrieval_mode` (`rrf` or `kg`) |
 
 Merge order for the `experiment` section: defaults → JSON → environment variables. API keys (`OPENAI_API_KEY`, `EVALUATION_API_KEY`) stay in the root `.env`, not in the JSON file.
 
@@ -215,6 +215,7 @@ Environment variables still override individual fields when set:
 | `EXPERIMENT_QUESTIONS_PER_PAPER` | Questions generated per paper (default: `4`) |
 | `EXPERIMENT_CHUNKS_PER_PAPER` | Chunks shown to the generator per paper (default: `12`) |
 | `EXPERIMENT_TOP_K` | Contexts retrieved per query (default: `5`) |
+| `EXPERIMENT_RETRIEVAL_MODE` | `rrf` (hybrid + optional Jina rerank) or `kg` (dual-level graph retrieval; requires `KG__ENABLED=true`) |
 
 ### Usage
 
