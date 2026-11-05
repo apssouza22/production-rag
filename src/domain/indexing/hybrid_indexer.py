@@ -104,8 +104,6 @@ class HybridIndexingService:
                 # Prepare chunk data for OpenSearch
                 chunk_data = {
                     "document_id": arxiv_id,
-                    "arxiv_id": chunk.arxiv_id,
-                    "paper_id": chunk.paper_id,
                     "chunk_index": chunk.metadata.chunk_index,
                     "chunk_text": chunk.text,
                     "chunk_context": chunk.metadata.chunk_context,
@@ -114,6 +112,8 @@ class HybridIndexingService:
                     "ingestion_name": ingestion_name,
                     "categories": paper_data.get("categories", []),
                     "metadata": {
+                        "arxiv_id": chunk.arxiv_id or arxiv_id,
+                        "paper_id": chunk.paper_id or paper_id,
                         "title": paper_data.get("title", ""),
                         "authors": ", ".join(paper_data.get("authors", []))
                         if isinstance(paper_data.get("authors"), list)

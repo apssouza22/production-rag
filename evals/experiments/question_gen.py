@@ -35,8 +35,8 @@ def load_chunks_by_paper(
         body={
             "query": {"term": {"ingestion_name": ingestion_name}},
             "size": MAX_CHUNKS_SCANNED,
-            "sort": [{"arxiv_id": "asc"}, {"chunk_index": "asc"}],
-            "_source": ["arxiv_id", "chunk_text", "title"],
+            "sort": [{"document_id": "asc"}, {"chunk_index": "asc"}],
+            "_source": ["document_id", "chunk_text", "metadata.arxiv_id", "metadata.title"],
         },
     )
 
@@ -46,7 +46,10 @@ def load_chunks_by_paper(
         chunk_text = (source.get("chunk_text") or "").strip()
         if not chunk_text:
             continue
-        chunks = chunks_by_paper.setdefault(source["arxiv_id"], [])
+        paper_key = source.get("metadata", {}).get("arxiv_id") or source.get("document_id", "")
+        if not paper_key:
+            continue
+        chunks = chunks_by_paper.setdefault(paper_key, [])
         if len(chunks) < chunks_per_paper:
             chunks.append(chunk_text)
 

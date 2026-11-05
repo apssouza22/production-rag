@@ -9,7 +9,7 @@ from src.config import Settings
 from src.domain.opensearch.client import OpenSearchClient
 
 from .chunk_index_schema import (
-    PAPER_CHUNK_PROFILE,
+    DEFAULT_CHUNK_PROFILE,
     ChunkIndexDocument,
     ChunkSearchProfile,
     build_hybrid_chunk_mapping,
@@ -34,7 +34,7 @@ class HybridRrfSearch:
     ):
         self._opensearch = opensearch
         self.settings = settings
-        self.profile = profile or PAPER_CHUNK_PROFILE
+        self.profile = profile or DEFAULT_CHUNK_PROFILE
         self.index_name = f"{settings.opensearch.index_name}-{settings.opensearch.chunk_index_suffix}"
         self.ingestion_name = (
             settings.opensearch.ingestion_name if ingestion_name is None else ingestion_name
@@ -179,7 +179,6 @@ class HybridRrfSearch:
             categories=categories,
             ingestion_name=self.ingestion_name or None,
             latest_papers=latest,
-            search_chunks=True,
             profile=self.profile,
         )
         search_body = builder.build()
@@ -202,7 +201,6 @@ class HybridRrfSearch:
             categories=categories,
             ingestion_name=self.ingestion_name or None,
             latest_papers=False,
-            search_chunks=True,
             profile=self.profile,
         )
         bm25_search_body = builder.build()

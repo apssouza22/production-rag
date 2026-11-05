@@ -1,17 +1,13 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from .chunk_index_schema import PAPER_CHUNK_PROFILE, ChunkSearchProfile
+from .chunk_index_schema import DEFAULT_CHUNK_PROFILE, ChunkSearchProfile
 
 logger = logging.getLogger(__name__)
 
 
 class QueryBuilder:
-    """
-    Unified query builder for OpenSearch supporting both paper-level and chunk-level search.
-
-    Builds complex OpenSearch queries with proper scoring, filtering, and highlighting.
-    """
+    """Build OpenSearch queries for hybrid chunk search (BM25, filters, highlighting)."""
 
     def __init__(
         self,
@@ -23,7 +19,6 @@ class QueryBuilder:
         ingestion_name: Optional[str] = None,
         track_total_hits: bool = True,
         latest_papers: bool = False,
-        search_chunks: bool = False,
         profile: ChunkSearchProfile | None = None,
     ):
         """Initialize query builder.
@@ -31,12 +26,11 @@ class QueryBuilder:
         :param query: Search query text
         :param size: Number of results to return
         :param from_: Offset for pagination
-        :param fields: Fields to search in (if None, auto-determined based on search_chunks)
+        :param fields: BM25 fields (defaults to profile.bm25_fields)
         :param categories: Filter by categories
         :param ingestion_name: Filter by ingestion partition (exact match)
         :param track_total_hits: Whether to track total hits accurately
-        :param latest_papers: Sort by publication date instead of relevance
-        :param search_chunks: Whether searching chunks (True) or papers (False)
+        :param latest_papers: Sort by profile.sort_field (newest first) instead of relevance
         :param profile: BM25/filter/highlight profile for chunk search
         """
         self.query = query
@@ -46,16 +40,8 @@ class QueryBuilder:
         self.ingestion_name = ingestion_name
         self.track_total_hits = track_total_hits
         self.latest_papers = latest_papers
-        self.search_chunks = search_chunks
-        self.profile = profile or PAPER_CHUNK_PROFILE
-
-        if fields is None:
-            if search_chunks:
-                self.fields = list(self.profile.bm25_fields)
-            else:
-                self.fields = list(self.profile.paper_level_bm25_fields)
-        else:
-            self.fields = fields
+        self.profile = profile or DEFAULT_CHUNK_PROFILE
+        self.fields = list(fields) if fields is not None else list(self.profile.bm25_fields)
 
     def build(self) -> Dict[str, Any]:
         """Build the complete OpenSearch query.
@@ -133,27 +119,17 @@ class QueryBuilder:
 
         return filters
 
-    def _build_source_fields(self) -> Any:
-        """Define which fields to return in results.
-
-        :returns: Source field configuration (list for papers, dict for chunks)
-        """
-        if self.search_chunks:
-            return {"excludes": ["embedding"]}
-        return list(self.profile.paper_level_source_fields)
+    def _build_source_fields(self) -> dict[str, list[str]]:
+        """Define which fields to return in results."""
+        return {"excludes": ["embedding"]}
 
     def _build_highlight(self) -> Dict[str, Any]:
         """Build highlighting configuration.
 
         :returns: Highlight configuration dictionary
         """
-        if self.search_chunks:
-            return {
-                "fields": dict(self.profile.highlight_fields),
-                "require_field_match": False,
-            }
         return {
-            "fields": dict(self.profile.paper_level_highlight_fields),
+            "fields": dict(self.profile.highlight_fields),
             "require_field_match": False,
         }
 

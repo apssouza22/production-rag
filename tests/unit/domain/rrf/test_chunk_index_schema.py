@@ -16,9 +16,11 @@ def test_build_hybrid_chunk_mapping_has_strict_core_and_dynamic_metadata() -> No
     assert props["categories"]["type"] == "keyword"
     assert props["metadata"]["dynamic"] is True
     assert "title" not in props
+    assert "arxiv_id" not in props
+    assert "paper_id" not in props
 
 
-def test_chunk_index_document_moves_paper_fields_to_metadata() -> None:
+def test_chunk_index_document_accepts_arbitrary_metadata() -> None:
     doc = ChunkIndexDocument.from_index_payload(
         {
             "document_id": "2024.1",
@@ -26,38 +28,39 @@ def test_chunk_index_document_moves_paper_fields_to_metadata() -> None:
             "chunk_text": "body",
             "contextualized_text": "ctx\n\nbody",
             "ingestion_name": "dev",
-            "title": "Paper",
             "categories": ["cs.AI"],
-            "section_title": "Intro",
-            "start_char": 10,
+            "metadata": {
+                "title": "Paper",
+                "section_title": "Intro",
+                "start_char": 10,
+                "custom_tag": "eval-run-1",
+            },
         }
     )
     assert doc.metadata["title"] == "Paper"
+    assert doc.metadata["custom_tag"] == "eval-run-1"
     assert doc.categories == ["cs.AI"]
-    assert "categories" not in doc.metadata
-    assert doc.metadata["section_title"] == "Intro"
-    assert doc.metadata["start_char"] == 10
     source = doc.to_opensearch_source()
     assert "title" not in source
-    assert "section_title" not in source
-    assert source["metadata"]["section_title"] == "Intro"
+    assert source["metadata"]["custom_tag"] == "eval-run-1"
     assert source["categories"] == ["cs.AI"]
+    assert "created_at" in source
+    assert "updated_at" in source
 
 
-def test_chunk_index_document_lifts_categories_from_legacy_metadata() -> None:
-    doc = ChunkIndexDocument.from_index_payload(
-        {
-            "document_id": "2024.1",
-            "chunk_index": 0,
-            "chunk_text": "body",
-            "contextualized_text": "ctx\n\nbody",
-            "ingestion_name": "dev",
-            "metadata": {"categories": ["cs.LG"], "title": "Paper"},
-        }
+def test_to_opensearch_source_preserves_created_at_and_refreshes_updated_at() -> None:
+    doc = ChunkIndexDocument(
+        document_id="1",
+        chunk_index=0,
+        chunk_text="t",
+        contextualized_text="t",
+        ingestion_name="dev",
+        created_at="2020-01-01T00:00:00+00:00",
     )
-    assert doc.categories == ["cs.LG"]
-    assert "categories" not in doc.metadata
-    assert doc.metadata["title"] == "Paper"
+    source = doc.to_opensearch_source()
+    assert source["created_at"] == "2020-01-01T00:00:00+00:00"
+    assert source["updated_at"] != "2020-01-01T00:00:00+00:00"
+    assert source["updated_at"].endswith("+00:00")
 
 
 def test_chunk_index_document_rejects_unknown_top_level_fields() -> None:
@@ -74,13 +77,28 @@ def test_chunk_index_document_rejects_unknown_top_level_fields() -> None:
         )
 
 
+def test_chunk_index_document_rejects_denormalized_fields_at_top_level() -> None:
+    with pytest.raises(ValidationError):
+        ChunkIndexDocument.from_index_payload(
+            {
+                "document_id": "2024.1",
+                "chunk_index": 0,
+                "chunk_text": "body",
+                "contextualized_text": "ctx",
+                "ingestion_name": "dev",
+                "title": "Paper",
+            }
+        )
+
+
 def test_flatten_hit_metadata() -> None:
     flat = flatten_hit_metadata(
         {
             "document_id": "1",
-            "metadata": {"title": "T", "abstract": "A"},
+            "metadata": {"title": "T", "abstract": "A", "arxiv_id": "1"},
         }
     )
     assert flat["title"] == "T"
     assert flat["abstract"] == "A"
+    assert flat["arxiv_id"] == "1"
     assert "metadata" not in flat

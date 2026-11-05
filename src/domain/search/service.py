@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def _hit_to_document(hit: dict, rank: int) -> SearchDocument:
     return SearchDocument(
-        arxiv_id=hit["arxiv_id"],
+        arxiv_id=hit.get("arxiv_id") or hit.get("document_id", ""),
         chunk_text=hit["chunk_text"],
         title=hit.get("title", ""),
         authors=hit.get("authors", ""),
