@@ -7,11 +7,13 @@ from unittest.mock import patch
 
 import pytest
 from evals.experiments.config import (
+    ExperimentSettings,
     QuerySettings,
     apply_experiment_platform_settings,
     build_run_config,
     load_experiment_config,
     resolve_settings_path,
+    sync_experiment_opensearch_partition,
 )
 from src.config import PDFParserSettings
 
@@ -112,3 +114,24 @@ def test_build_run_config_applies_json_before_env(monkeypatch: pytest.MonkeyPatc
 
     assert run_config.experiment.experiment_ingestion_name == "from-env"
     assert run_config.config_path == config_path
+
+
+def test_load_experiment_config_parses_retrieval_mode(tmp_path: Path) -> None:
+    config_path = tmp_path / "experiment-config.json"
+    config_path.write_text(json.dumps({"experiment": {"retrieval_mode": "kg"}}), encoding="utf-8")
+
+    loaded = load_experiment_config(config_path)
+
+    assert loaded.experiment.retrieval_mode == "kg"
+
+
+def test_sync_experiment_partition_sets_kg_ingestion_for_kg_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("KG__INGESTION_NAME", raising=False)
+    experiment = ExperimentSettings(experiment_ingestion_name="eval-partition", retrieval_mode="kg")
+
+    sync_experiment_opensearch_partition(experiment)
+
+    assert os.environ["OPENSEARCH__INGESTION_NAME"] == "eval-partition"
+    assert os.environ["KG__INGESTION_NAME"] == "eval-partition"

@@ -3,14 +3,15 @@
 from src.config import Settings, get_settings
 from src.domain.db.factory import make_database
 from src.domain.db.interfaces.base import BaseDatabase
-from src.domain.jinaai.factory import make_embeddings_service
+from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
+from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.indexing_service import KgIndexingService
 from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.opensearch.factory import make_opensearch_client
-from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.rrf.factory import make_hybrid_rrf_search
 from src.platform.llm.chat_model import make_chat_model
 
 
@@ -67,7 +68,7 @@ def make_kg_indexing_service(
     database = database or make_database()
     opensearch_client = make_opensearch_client()
     ingestion_name = resolve_kg_ingestion_name(settings)
-    paper_rrf_search = make_paper_rrf_search(ingestion_name=ingestion_name)
+    paper_rrf_search = make_hybrid_rrf_search(ingestion_name=ingestion_name)
     return KgIndexingService(
         database=database,
         paper_rrf_search=paper_rrf_search,
@@ -81,12 +82,13 @@ def make_kg_indexing_service(
 def make_dual_level_kg_retrieval_service(
     database: BaseDatabase | None = None,
     settings: Settings | None = None,
+    reranker_client: JinaRerankerClient | None = None,
 ) -> DualLevelKGRetrievalService:
     settings = settings or get_settings()
     database = database or make_database()
     opensearch_client = make_opensearch_client()
     ingestion_name = resolve_kg_ingestion_name(settings)
-    paper_rrf_search = make_paper_rrf_search(ingestion_name=ingestion_name)
+    paper_rrf_search = make_hybrid_rrf_search(ingestion_name=ingestion_name)
     return DualLevelKGRetrievalService(
         database=database,
         paper_rrf_search=paper_rrf_search,
@@ -95,4 +97,5 @@ def make_dual_level_kg_retrieval_service(
         embeddings_client=make_embeddings_service(),
         kg_settings=settings.kg,
         ingestion_name=ingestion_name,
+        reranker_client=reranker_client if reranker_client is not None else make_reranker_client(settings),
     )

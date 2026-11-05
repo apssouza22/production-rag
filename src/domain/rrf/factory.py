@@ -8,7 +8,7 @@ from src.config import Settings, get_settings
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.opensearch.factory import make_opensearch_client, make_opensearch_client_fresh
 
-from .search import HybridRrfSearch, PaperRrfSearch
+from .search import HybridRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -52,22 +52,3 @@ def make_hybrid_rrf_search_fresh(
 
     opensearch_client = make_opensearch_client_fresh(settings, host=host)
     return HybridRrfSearch(opensearch_client, settings, ingestion_name=ingestion_name)
-
-
-def make_paper_rrf_search(
-    settings: Optional[Settings] = None,
-    ingestion_name: str | None = None,
-) -> PaperRrfSearch:
-    """Backward-compatible alias for make_hybrid_rrf_search."""
-    if settings is not None:
-        return make_hybrid_rrf_search_fresh(settings, ingestion_name=ingestion_name)
-    return make_hybrid_rrf_search(ingestion_name=ingestion_name)
-
-
-def make_paper_rrf_search_fresh(
-    settings: Optional[Settings] = None,
-    host: Optional[str] = None,
-    ingestion_name: str | None = None,
-) -> PaperRrfSearch:
-    """Backward-compatible alias for make_hybrid_rrf_search_fresh."""
-    return make_hybrid_rrf_search_fresh(settings, host=host, ingestion_name=ingestion_name)

@@ -2,6 +2,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,6 +41,7 @@ class ExperimentSettings(BaseSettings):
     experiment_questions_per_paper: int = Field(default=4, ge=1, le=20)
     experiment_chunks_per_paper: int = Field(default=12, ge=1, le=100)
     experiment_top_k: int = Field(default=5, ge=1, le=50)
+    retrieval_mode: Literal["rrf", "kg"] = "rrf"
 
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
 
@@ -116,6 +118,8 @@ def _apply_experiment_env(experiment: ExperimentSettings) -> None:
 def sync_experiment_opensearch_partition(experiment: ExperimentSettings) -> None:
     """Align OpenSearch partition env with the experiment so index, count, and search match."""
     os.environ["OPENSEARCH__INGESTION_NAME"] = experiment.experiment_ingestion_name
+    if experiment.retrieval_mode == "kg" and "KG__INGESTION_NAME" not in os.environ:
+        os.environ["KG__INGESTION_NAME"] = experiment.experiment_ingestion_name
     from src.domain.rrf.factory import make_hybrid_rrf_search
 
     make_hybrid_rrf_search.cache_clear()

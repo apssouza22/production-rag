@@ -19,7 +19,7 @@ from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.pdf_parser.parser import PDFParserService
-from src.domain.rrf import HybridRrfSearch, PaperRrfSearch
+from src.domain.rrf import HybridRrfSearch
 from src.domain.search.service import SearchService
 from src.platform.langfuse.client import LangfuseTracer
 
@@ -40,9 +40,9 @@ def get_db_session(database: Annotated[BaseDatabase, Depends(get_database)]) -> 
         yield session
 
 
-def get_paper_rrf_search(request: Request) -> PaperRrfSearch:
-    """Get paper hybrid RRF search service from the request state."""
-    return request.app.state.paper_rrf_search
+def get_hybrid_rrf_search(request: Request) -> HybridRrfSearch:
+    """Get hybrid RRF search service from the request state."""
+    return request.app.state.hybrid_rrf_search
 
 
 def get_arxiv_client(request: Request) -> ArxivClient:
@@ -67,7 +67,7 @@ def get_reranker_service(request: Request) -> JinaRerankerClient:
 
 def get_rerank_search_service(request: Request) -> SearchService:
     """Get rerank search service from the request state."""
-    return request.app.state.rerank_search_service
+    return request.app.state.search_service
 
 
 def get_langfuse_tracer(request: Request) -> LangfuseTracer:
@@ -93,12 +93,12 @@ def get_knowledge_router_service(request: Request) -> KnowledgeRouterService:
 SettingsDep = Annotated[Settings, Depends(get_request_settings)]
 DatabaseDep = Annotated[BaseDatabase, Depends(get_database)]
 SessionDep = Annotated[Session, Depends(get_db_session)]
-PaperRrfSearchDep = Annotated[PaperRrfSearch, Depends(get_paper_rrf_search)]
+HybridRrfSearchDep = Annotated[HybridRrfSearch, Depends(get_hybrid_rrf_search)]
 ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
 PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
 EmbeddingsDep = Annotated[JinaEmbeddingsClient, Depends(get_embeddings_service)]
 RerankerDep = Annotated[JinaRerankerClient, Depends(get_reranker_service)]
-RerankSearchDep = Annotated[SearchService, Depends(get_rerank_search_service)]
+SearchServiceDep = Annotated[SearchService, Depends(get_rerank_search_service)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]
 TextToSQLDep = Annotated[TextToSQLService, Depends(get_text_to_sql_service)]

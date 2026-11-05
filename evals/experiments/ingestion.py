@@ -11,7 +11,7 @@ from src.domain.arxiv_ingestion import setup_environment
 from src.domain.arxiv_ingestion.schemas import DownloadResults
 from src.domain.arxiv_ingestion.service import ArxivIngestionService, get_ingestion_service
 from src.domain.kg.factory import make_kg_indexing_service
-from src.domain.rrf import PaperRrfSearch
+from src.domain.rrf import HybridRrfSearch
 
 from evals.experiments.config import ExperimentSettings
 from evals.experiments.schemas import ExperimentIngestionResult, KgIngestionSummary
@@ -19,7 +19,7 @@ from evals.experiments.schemas import ExperimentIngestionResult, KgIngestionSumm
 logger = logging.getLogger(__name__)
 
 
-def count_indexed_chunks(paper_rrf_search: PaperRrfSearch, ingestion_name: str) -> int:
+def count_indexed_chunks(paper_rrf_search: HybridRrfSearch, ingestion_name: str) -> int:
     """Return how many chunks are indexed for an ingestion partition."""
     if not paper_rrf_search.client.indices.exists(index=paper_rrf_search.index_name):
         return 0
@@ -69,7 +69,7 @@ class ExperimentPaperLoader:
 class HybridChunkIngestor:
     """Ensure hybrid OpenSearch chunks exist for an experiment ingestion partition."""
 
-    def __init__(self, paper_rrf_search: PaperRrfSearch, ingestion_name: str) -> None:
+    def __init__(self, paper_rrf_search: HybridRrfSearch, ingestion_name: str) -> None:
         self._paper_rrf_search = paper_rrf_search
         self._ingestion_name = ingestion_name
 
@@ -158,7 +158,7 @@ class ExperimentIngestor:
 
     def __init__(
         self,
-        paper_rrf_search: PaperRrfSearch,
+        paper_rrf_search: HybridRrfSearch,
         settings: ExperimentSettings,
         *,
         force: bool = False,
@@ -192,7 +192,7 @@ class ExperimentIngestor:
 
 
 def ensure_ingested(
-    paper_rrf_search: PaperRrfSearch,
+    paper_rrf_search: HybridRrfSearch,
     settings: ExperimentSettings,
     *,
     force: bool = False,

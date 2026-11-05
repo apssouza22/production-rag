@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from src.config import KGSettings
+from src.domain.jinaai.jina import JinaRerankResult
 from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
 from src.domain.kg.models import KgNode
 from src.domain.kg.schemas import DualKeywords
@@ -16,6 +17,29 @@ def kg_settings() -> KGSettings:
         max_entity_tokens=500,
         max_relation_tokens=500,
         max_total_tokens=2000,
+        chunk_rerank_enabled=False,
+    )
+
+
+def _build_service(
+    *,
+    kg_settings: KGSettings,
+    extraction: AsyncMock,
+    embeddings: AsyncMock,
+    kg_vector: MagicMock,
+    database: MagicMock,
+    opensearch: MagicMock,
+    reranker: AsyncMock | None = None,
+) -> DualLevelKGRetrievalService:
+    return DualLevelKGRetrievalService(
+        database=database,
+        paper_rrf_search=opensearch,
+        kg_vector_client=kg_vector,
+        extraction_service=extraction,
+        embeddings_client=embeddings,
+        kg_settings=kg_settings,
+        ingestion_name="dev",
+        reranker_client=reranker,
     )
 
 
@@ -51,7 +75,7 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
 
     repo_patch = MagicMock()
     repo_patch.get_nodes_by_entity_ids.return_value = [node]
-    repo_patch.node_degrees.return_value = {"transformer": 2}
+    repo_patch.node_counts.return_value = {"transformer": 2}
 
     opensearch = MagicMock()
     opensearch.get_chunks_by_chunk_keys.return_value = [
@@ -66,14 +90,13 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
         }
     ]
 
-    service = DualLevelKGRetrievalService(
-        database=database,
-        paper_rrf_search=opensearch,
-        kg_vector_client=kg_vector,
-        extraction_service=extraction,
-        embeddings_client=embeddings,
+    service = _build_service(
         kg_settings=kg_settings,
-        ingestion_name="dev",
+        extraction=extraction,
+        embeddings=embeddings,
+        kg_vector=kg_vector,
+        database=database,
+        opensearch=opensearch,
     )
 
     with patch("src.domain.kg.dual_level_retrieval.KgGraphRepository", return_value=repo_patch):
@@ -83,3 +106,88 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
     assert len(result.entities) == 1
     assert len(result.chunks) == 1
     assert "Transformer" in result.formatted_context
+
+
+@pytest.mark.asyncio
+async def test_retrieve_reranks_chunks_before_formatting() -> None:
+    kg_settings = KGSettings(
+        enabled=True,
+        chunk_rerank_enabled=True,
+        max_entity_tokens=500,
+        max_relation_tokens=500,
+        max_total_tokens=2000,
+    )
+    extraction = AsyncMock()
+    extraction.extract_keywords.return_value = DualKeywords(
+        high_level_keywords=[],
+        low_level_keywords=["topic"],
+    )
+    embeddings = AsyncMock()
+    embeddings.embed_query.return_value = [0.1] * 8
+
+    kg_vector = MagicMock()
+    kg_vector.knn_search_entities.return_value = [{"entity_id": "e1", "score": 1.0}]
+    kg_vector.knn_search_relations.return_value = []
+
+    node = KgNode(
+        entity_id="e1",
+        entity_name="E1",
+        entity_type="CONCEPT",
+        description="First entity",
+        source_chunk_keys=["1111.1111:0", "2222.2222:0"],
+        arxiv_ids=["1111.1111", "2222.2222"],
+        ingestion_name="dev",
+    )
+
+    database = MagicMock()
+    database.get_session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+    database.get_session.return_value.__exit__ = MagicMock(return_value=None)
+
+    repo_patch = MagicMock()
+    repo_patch.get_nodes_by_entity_ids.return_value = [node]
+    repo_patch.node_counts.return_value = {"e1": 1}
+
+    opensearch = MagicMock()
+    opensearch.get_chunks_by_chunk_keys.return_value = [
+        {
+            "chunk_key": "1111.1111:0",
+            "arxiv_id": "1111.1111",
+            "chunk_index": 0,
+            "chunk_text": "Less relevant chunk.",
+            "title": "Paper A",
+        },
+        {
+            "chunk_key": "2222.2222:0",
+            "arxiv_id": "2222.2222",
+            "chunk_index": 0,
+            "chunk_text": "Most relevant chunk.",
+            "title": "Paper B",
+        },
+    ]
+
+    reranker = AsyncMock()
+    reranker.is_configured = True
+    reranker.rerank = AsyncMock(
+        return_value=[
+            JinaRerankResult(index=1, relevance_score=0.99),
+            JinaRerankResult(index=0, relevance_score=0.1),
+        ]
+    )
+
+    service = _build_service(
+        kg_settings=kg_settings,
+        extraction=extraction,
+        embeddings=embeddings,
+        kg_vector=kg_vector,
+        database=database,
+        opensearch=opensearch,
+        reranker=reranker,
+    )
+
+    with patch("src.domain.kg.dual_level_retrieval.KgGraphRepository", return_value=repo_patch):
+        result = await service.retrieve("find the relevant evidence")
+
+    assert [chunk.arxiv_id for chunk in result.chunks] == ["2222.2222", "1111.1111"]
+    assert result.chunks[0].rerank_score == 0.99
+    assert result.formatted_context.index("Most relevant chunk.") < result.formatted_context.index("Less relevant chunk.")
+    reranker.rerank.assert_awaited_once()

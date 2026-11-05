@@ -5,8 +5,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from src.config import get_settings as get_app_settings
+from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
-from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.kg.factory import make_dual_level_kg_retrieval_service
+from src.domain.rrf.factory import make_hybrid_rrf_search
 from src.domain.search.factory import make_rerank_search_service
 
 from evals.core.evaluator import Evaluator
@@ -48,19 +51,32 @@ class ExperimentRunner(EvalRunner):
         self.force_ingest = force_ingest
         self.regenerate_queries = regenerate_queries
 
+        if self.settings.retrieval_mode == "kg" and not get_app_settings().kg.enabled:
+            raise RuntimeError(
+                "experiment retrieval_mode=kg requires KG__ENABLED=true and a indexed KG for the experiment partition"
+            )
+
         self.chat_model = make_eval_chat_model(
             model=self.settings.evaluation_llm,
             api_key=self.settings.judge_api_key,
             base_url=self.settings.evaluation_base_url,
         )
-        self.paper_rrf_search = make_paper_rrf_search(
+        self.paper_rrf_search = make_hybrid_rrf_search(
             ingestion_name=self.settings.experiment_ingestion_name,
         )
+        kg_retrieval_service = None
+        if self.settings.retrieval_mode == "kg":
+            kg_retrieval_service = make_dual_level_kg_retrieval_service(
+                database=make_database(),
+                settings=get_app_settings(),
+                reranker_client=make_reranker_client(),
+            )
         self.rerank_search_service = make_rerank_search_service(
             paper_rrf_search=self.paper_rrf_search,
             embeddings_client=make_embeddings_service(),
             reranker_client=make_reranker_client(),
             config=self.run_config.query.to_rerank_config(),
+            kg_retrieval_service=kg_retrieval_service,
         )
         self.question_generator = QuestionGenerator(
             paper_rrf_search=self.paper_rrf_search,
@@ -108,6 +124,7 @@ class ExperimentRunner(EvalRunner):
                     if key in ingestion
                 },
                 "retrieval": {
+                    "retrieval_mode": self.settings.retrieval_mode,
                     "top_k": self.settings.experiment_top_k,
                     "ingestion_name": self.settings.experiment_ingestion_name,
                     **query_settings,

@@ -1,14 +1,14 @@
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
-from src.domain.rrf import PaperRrfSearch
+from src.domain.rrf import HybridRrfSearch
 
 from .config import RerankSearchConfig
 from .service import SearchService
 
 
 def make_rerank_search_service(
-    paper_rrf_search: PaperRrfSearch,
+    paper_rrf_search: HybridRrfSearch,
     embeddings_client: JinaEmbeddingsClient,
     config: RerankSearchConfig | None = None,
     reranker_client: JinaRerankerClient | None = None,

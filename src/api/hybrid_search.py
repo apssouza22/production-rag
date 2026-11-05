@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from src.dependencies import EmbeddingsDep, PaperRrfSearchDep
+from src.dependencies import EmbeddingsDep, HybridRrfSearchDep
 from src.domain.opensearch.schemas import HybridSearchRequest, SearchHit, SearchResponse
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ def _build_search_response(request: HybridSearchRequest, results: dict, query_em
 @router.post("/", response_model=SearchResponse)
 async def hybrid_search(
     request: HybridSearchRequest,
-    paper_rrf_search: PaperRrfSearchDep,
+    paper_rrf_search: HybridRrfSearchDep,
     embeddings_service: EmbeddingsDep,
 ) -> SearchResponse:
     """Hybrid search endpoint supporting multiple search modes."""

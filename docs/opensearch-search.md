@@ -16,14 +16,25 @@ The project retrieves relevant excerpts ("chunks") of arXiv papers to feed a RAG
 
 The philosophy is deliberate and mirrors production retrieval systems: **keyword search first, vectors second, fusion on top**. Hybrid is the default because it combines exact term matching (great for names, acronyms, equations) with semantic recall (great for paraphrases and concepts).
 
-The main entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`), which picks a strategy based on the arguments it receives:
+The main entry point is `HybridRrfSearch.search_unified()` in `src/domain/rrf/search.py`, which picks BM25-only vs native RRF hybrid based on `query_embedding` and `use_hybrid`:
 
-```134:216:src/domain/opensearch/client.py
-    def search_papers(
-        self, query: str, size: int = 10, from_: int = 0, categories: Optional[List[str]] = None, latest: bool = True
-    ) -> Dict[str, Any]:
-        """BM25 search for papers."""
-        return self._search_bm25_only(query=query, size=size, from_=from_, categories=categories, latest=latest)
+```132:160:src/domain/rrf/search.py
+    def search_unified(
+        self,
+        query: str,
+        query_embedding: list[float] | None = None,
+        size: int = 10,
+        from_: int = 0,
+        categories: list[str] | None = None,
+        latest: bool = False,
+        use_hybrid: bool = True,
+        min_score: float = 0.0,
+    ) -> dict[str, Any]:
+        """Unified search supporting BM25, vector, and RRF hybrid modes."""
+        try:
+            if not query_embedding or not use_hybrid:
+                return self._search_bm25_only(...)
+            return self._search_hybrid_native(...)
 ```
 
 ---
@@ -32,9 +43,7 @@ The main entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearc
 
 Everything is stored in **one** index rather than separate keyword and vector indices. The name is derived from settings as `{index_name}-{chunk_index_suffix}`, which resolves to `arxiv-papers-chunks` by default.
 
-```19:21:src/domain/opensearch/client.py
-        self.host = host
-        self.settings = settings
+```29:29:src/domain/rrf/indexing.py
         self.index_name = f"{settings.opensearch.index_name}-{settings.opensearch.chunk_index_suffix}"
 ```
 
@@ -71,7 +80,7 @@ Key points:
 
 The mapping is built by `build_hybrid_chunk_mapping()` in `chunk_index_schema.py` (replacing the static `ARXIV_PAPERS_CHUNKS_MAPPING` body). **After upgrading**, recreate the index (`setup_indices(force=True)`) or re-run ingestion; old documents with paper fields at the top level will not match BM25 on `metadata.*` paths until reindexed.
 
-The main search entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`).
+The main search entry point is `HybridRrfSearch.search_unified()`.
 
 ### The vector field
 
@@ -226,41 +235,59 @@ The full query body is assembled in `build()`:
 
 ### Executing BM25
 
-`_search_bm25_only()` builds the body, runs the search, and normalizes each hit — attaching `_score`, the document `_id` as `chunk_id`, and any highlights:
+`_search_bm25_only()` builds the body via `QueryBuilder`, runs the search through `OpenSearchClient.search()`, and flattens metadata on each hit:
 
-```218:247:src/domain/opensearch/client.py
+```166:186:src/domain/rrf/search.py
     def _search_bm25_only(
-        self, query: str, size: int, from_: int, categories: Optional[List[str]], latest: bool
-    ) -> Dict[str, Any]:
-        """Pure BM25 search implementation."""
+        self,
+        query: str,
+        size: int,
+        from_: int,
+        categories: list[str] | None,
+        latest: bool,
+    ) -> dict[str, Any]:
         builder = QueryBuilder(
             query=query,
             size=size,
             from_=from_,
             categories=categories,
+            ingestion_name=self.ingestion_name or None,
             latest_papers=latest,
-            search_chunks=True,  # Enable chunk search mode
+            profile=self.profile,
         )
         search_body = builder.build()
-
-        response = self.client.search(index=self.index_name, body=search_body)
+        results = self._opensearch.search(self.index_name, search_body)
+        logger.info("BM25 search for '%s...' returned %s results", query[:50], results["total"])
+        return self._flatten_results(results)
 ```
 
 ---
 
 ## 5. Vector (kNN) search
 
-Pure semantic search is handled by `search_chunks_vector()`. It runs a `knn` query against the `embedding` field and requests the top `k` nearest neighbors by cosine similarity. Category filters are added by wrapping the kNN query in a `bool` with a `filter` clause.
+Pure semantic search is handled by `HybridRrfSearch.vector_search()`. It runs a `knn` query against the `embedding` field and requests the top `k` nearest neighbors by cosine similarity. Category and ingestion filters wrap the kNN query in a `bool` with a `filter` clause when needed.
 
-```156:165:src/domain/opensearch/client.py
-            search_body = {
-                "size": size,
-                "query": {"knn": {"embedding": {"vector": query_embedding, "k": size}}},
-                "_source": {"excludes": ["embedding"]},
-            }
+```111:130:src/domain/rrf/search.py
+    def vector_search(
+        self,
+        query_embedding: list[float],
+        size: int = 10,
+        categories: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Pure vector search on chunks."""
+        filter_clause = self._build_search_filters(categories=categories)
 
-            if filter_clause:
-                search_body["query"] = {"bool": {"must": [search_body["query"]], "filter": filter_clause}}
+        search_body: dict[str, Any] = {
+            "size": size,
+            "query": {"knn": {"embedding": {"vector": query_embedding, "k": size}}},
+            "_source": {"excludes": ["embedding"]},
+        }
+
+        if filter_clause:
+            search_body["query"] = self._wrap_query_with_filters(search_body["query"], filter_clause)
+
+        results = self._opensearch.search(self.index_name, search_body)
+        return self._flatten_results(results)
 ```
 
 The caller is responsible for producing `query_embedding` (via the Jina client). This mode is strong for paraphrased or conceptual queries where the exact keywords don't appear in the text.
@@ -273,34 +300,36 @@ Hybrid search combines BM25 and vector results and fuses them into a single rank
 
 ### Building the hybrid query
 
-`_search_hybrid_native()` reuses the `QueryBuilder` to produce the BM25 leg, builds a kNN leg, and wraps both in a `hybrid` query. Note it over-fetches (`size * 2` on each leg) so fusion has a richer candidate pool to work with:
+`_search_hybrid_native()` reuses the `QueryBuilder` to produce the BM25 leg, builds a kNN leg, and wraps both in a `hybrid` query. It over-fetches (`size * 2` on each leg) so fusion has a richer candidate pool to work with:
 
-```249:273:src/domain/opensearch/client.py
+```188:231:src/domain/rrf/search.py
     def _search_hybrid_native(
-        self, query: str, query_embedding: List[float], size: int, categories: Optional[List[str]], min_score: float
-    ) -> Dict[str, Any]:
-        """Native OpenSearch hybrid search with RRF pipeline."""
+        self,
+        query: str,
+        query_embedding: list[float],
+        size: int,
+        categories: list[str] | None,
+        min_score: float,
+    ) -> dict[str, Any]:
         builder = QueryBuilder(
-            query=query, size=size * 2, from_=0, categories=categories, latest_papers=False, search_chunks=True
+            query=query,
+            size=size * 2,
+            from_=0,
+            categories=categories,
+            ingestion_name=self.ingestion_name or None,
+            latest_papers=False,
+            profile=self.profile,
         )
         bm25_search_body = builder.build()
-
-        bm25_query = bm25_search_body["query"]
-        embedding_query = {"knn": {"embedding": {"vector": query_embedding, "k": size * 2}}}
-
-        hybrid_query = {"hybrid": {"queries": [bm25_query, embedding_query]}}
-
-        search_body = {
-            "size": size,
-            "query": hybrid_query,
-            "_source": bm25_search_body["_source"],
-            "highlight": bm25_search_body["highlight"],
-        }
-
-        # Execute search with RRF pipeline
-        response = self.client.search(
-            index=self.index_name, body=search_body, params={"search_pipeline": HYBRID_RRF_PIPELINE["id"]}
+        ...
+        results = self._opensearch.search(
+            self.index_name,
+            search_body,
+            params={"search_pipeline": self._rrf_pipeline_id},
+            min_score=min_score,
+            total_from_filtered_count=True,
         )
+        return self._flatten_results(results)
 ```
 
 The two legs run independently, each producing its own ranked list. The magic is in the `search_pipeline` parameter, which tells OpenSearch to post-process and fuse those two lists.
@@ -342,23 +371,15 @@ with `k = rank_constant = 60`. A document ranked #1 in a list contributes `1/61`
 
 ### Post-filtering
 
-After fusion, `_search_hybrid_native()` drops any hit below `min_score`, then recomputes the total from what actually survived:
+After fusion, `OpenSearchClient.search()` filters by `min_score` in `normalize_search_hits()` (called from `HybridRrfSearch._search_hybrid_native()` with `total_from_filtered_count=True`):
 
-```280:294:src/domain/opensearch/client.py
+```137:151:src/domain/opensearch/client.py
         for hit in response["hits"]["hits"]:
             if hit["_score"] < min_score:
                 continue
-
-            chunk = hit["_source"]
-            chunk["score"] = hit["_score"]
-            chunk["chunk_id"] = hit["_id"]
-
-            if "highlight" in hit:
-                chunk["highlights"] = hit["highlight"]
-
-            results["hits"].append(chunk)
-
-        results["total"] = len(results["hits"])
+            ...
+        if total_from_filtered_count:
+            results["total"] = len(results["hits"])
 ```
 
 ---
@@ -367,13 +388,14 @@ After fusion, `_search_hybrid_native()` drops any hit below `min_score`, then re
 
 Before any search can run, the index and the RRF pipeline must exist. `setup_indices()` creates both idempotently.
 
-```62:95:src/domain/opensearch/client.py
-    def setup_indices(self, force: bool = False) -> Dict[str, bool]:
+```39:45:src/domain/rrf/indexing.py
+    def setup_indices(self, force: bool = False) -> dict[str, bool]:
         """Setup the hybrid search index and RRF pipeline."""
-        results = {}
-        results["hybrid_index"] = self._create_hybrid_index(force)
-        results["rrf_pipeline"] = self._create_rrf_pipeline(force)
-        return results
+        mapping = build_hybrid_chunk_mapping(self.settings.opensearch)
+        hybrid_index = self._opensearch.create_index(
+            self.index_name,
+            mapping,
+            force=force,
 ```
 
 Two production-minded details worth calling out:
@@ -437,18 +459,23 @@ The request/response contracts are defined in `schemas.py` (`HybridSearchRequest
 
 ### The agent retriever tool
 
-The LangGraph agent wraps the same `search_unified()` call in a LangChain tool. It embeds the query, retrieves the top-k chunks, and converts each hit into a `Document` with metadata (arxiv_id, title, score, source URL, section):
+The LangGraph agent does **not** call `search_unified()` directly. `create_retriever_tool()` in `src/agents/fusionsearch/tools.py` calls `SearchService.search_rrf()`, which embeds the query, runs `HybridRrfSearch.search_unified()` for hybrid recall, optionally reranks with Jina, then returns formatted context and confidence metadata:
 
-```52:57:src/domain/agents/tools.py
-        search_results = paper_rrf_search.search_unified(
-            query=query,
-            query_embedding=query_embedding,
-            size=top_k,
-            use_hybrid=use_hybrid,
+```42:52:src/agents/fusionsearch/tools.py
+        search_result = await rerank_search_service.search_rrf(query=query, top_k=top_k)
+        rerank_applied = search_result.rerank_applied
+
+        confident_documents = filter_confident_documents(
+            search_result.after_rerank,
+            min_document_score=graph_config.min_document_score,
+            rerank_applied=rerank_applied,
         )
+        retrieval_confidence = compute_retrieval_confidence(confident_documents, rerank_applied=rerank_applied)
+        sources = build_source_items(confident_documents, rerank_applied=rerank_applied)
+        formatted_context = format_documents_for_context(confident_documents)
 ```
 
-Because both the HTTP endpoint and the agent go through `search_unified()`, they share identical retrieval behavior — the same fusion, filtering, and scoring.
+The `/hybrid-search` HTTP route still calls `HybridRrfSearch.search_unified()` without the `SearchService` rerank layer. For parity with the agent, use `/api/v1/rerank-search` or call `SearchService.search_rrf()` in process.
 
 ---
 
@@ -502,7 +529,8 @@ search_unified(query, query_embedding, use_hybrid=True)
 
 | Concern | File |
 |---------|------|
-| Search orchestration, index/pipeline lifecycle, chunk indexing | `src/domain/rrf/search.py` |
+| Hybrid recall orchestration | `src/domain/rrf/search.py` |
+| Hybrid + rerank + optional `dual_search` | `src/domain/search/service.py` |
 | BM25 query construction (boosts, fuzziness, filters, highlight, sort) | `src/domain/rrf/query_builder.py` |
 | Index mapping, HNSW config | `src/domain/rrf/chunk_index_schema.py` |
 | RRF search pipeline body | `src/domain/rrf/pipeline.py` |
@@ -511,6 +539,6 @@ search_unified(query, query_embedding, use_hybrid=True)
 | OpenSearch client factory (cached + fresh) | `src/domain/opensearch/factory.py` |
 | RRF search factory (cached + fresh) | `src/domain/rrf/factory.py` |
 | HTTP search endpoint | `src/api/hybrid_search.py` |
-| Agent retriever tool | `src/domain/agents/tools.py` |
+| Agent retriever tool | `src/agents/fusionsearch/tools.py` (via `SearchService.search_rrf`) |
 | Ingestion / indexing DAG | `src/domain/arxiv_ingestion/indexing.py` |
 | Query/passage embeddings | `src/domain/jinaai/jina_client.py` |

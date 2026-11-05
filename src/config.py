@@ -146,6 +146,8 @@ class KGSettings(BaseConfigSettings):
     max_relation_tokens: int = 4000
     max_total_tokens: int = 12000
     keyword_model: str = ""
+    chunk_rerank_enabled: bool = True
+    chunk_rerank_model: str = "jina-reranker-v2-base-multilingual"
 
 
 class LangfuseSettings(BaseConfigSettings):

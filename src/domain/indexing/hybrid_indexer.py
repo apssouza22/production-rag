@@ -106,7 +106,6 @@ class HybridIndexingService:
                     "document_id": arxiv_id,
                     "chunk_index": chunk.metadata.chunk_index,
                     "chunk_text": chunk.text,
-                    "chunk_context": chunk.metadata.chunk_context,
                     "contextualized_text": contextualized_text,
                     "embedding_model": "jina-embeddings-v3",
                     "ingestion_name": ingestion_name,
@@ -175,7 +174,7 @@ class HybridIndexingService:
 
             # Optionally delete existing chunks
             if replace_existing and arxiv_id:
-                self.paper_rrf_search.delete_paper_chunks(arxiv_id)
+                self.paper_rrf_search.delete_document_chunks(arxiv_id)
 
             # Index the paper
             stats = await self._index_paper(paper, ingestion_name=ingestion_name)
@@ -204,7 +203,7 @@ class HybridIndexingService:
         """
         self.paper_rrf_search.ingestion_name = ingestion_name
         # Delete existing chunks
-        deleted = self.paper_rrf_search.delete_paper_chunks(arxiv_id)
+        deleted = self.paper_rrf_search.delete_document_chunks(arxiv_id)
         if deleted:
             logger.info(f"Deleted existing chunks for paper {arxiv_id}")
 

@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from src.platform.llm.chat_model import check_openai_health
 
-from ..dependencies import DatabaseDep, PaperRrfSearchDep, SettingsDep
+from ..dependencies import DatabaseDep, HybridRrfSearchDep, SettingsDep
 
 router = APIRouter()
 
@@ -46,7 +46,7 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
-async def health_check(settings: SettingsDep, database: DatabaseDep, paper_rrf_search: PaperRrfSearchDep) -> HealthResponse:
+async def health_check(settings: SettingsDep, database: DatabaseDep, paper_rrf_search: HybridRrfSearchDep) -> HealthResponse:
     """Comprehensive health check endpoint for monitoring and load balancer probes.
 
     :returns: Service health status with version and connectivity checks
