@@ -303,7 +303,7 @@ This runner is **self-contained**:
 1. **Ingestion partition** — default `evals-experiments`, set via `OPENSEARCH__INGESTION_NAME` so experiment chunks never mix with dev/production partitions.
 2. **Conditional ingest** — if OpenSearch already has chunks for that partition, skip; else run `src.ingest.run_pipeline` from local PDFs in `evals/experiments/data/arxiv_pdfs/` (metadata fetched from arXiv by filename stem).
 3. **Question generation** — LLM writes Q/A pairs from indexed chunks; cached to `evals/experiments/data/generated_queries.json`.
-4. **In-process retrieval** — `make_rerank_search_service()` directly (no HTTP).
+4. **In-process retrieval** — `make_rerank_search_service()` in `src/domain/search/factory.py` (no HTTP).
 5. **Same Ragas metrics** as `rag_evals`.
 
 Settings merge from `evals/experiments/data/settings/experiment-config.json` (chunking, parser, query knobs) with env overrides. Use alternate JSON via `--settings` or `make experiment-eval EXPERIMENT_SETTINGS=...`.

@@ -194,7 +194,7 @@ When `TextChunker` encounters a section larger than 800 words, it splits the con
 
 Every child chunk also inherits the paper-level header (title + abstract) prepended at chunk time, so generation gets minimum document identity even without parent expansion.
 
-The design intent is clear: search hits a tight child chunk where the relevant sentence lives; generation can later pull the full section when broader context is needed. A post-retrieval step can query `arxiv_id` + `section_breadcrumb`, sort siblings by `chunk_index`, and concatenate their `chunk_text` values into the parent section. `OpenSearchClient.get_chunks_by_paper()` already returns all chunks for a paper sorted by `chunk_index`. That parent expansion is not wired into the agentic RAG path today — retrieval returns the matched child chunk only — but the indexed fields exist to support it without reindexing.
+The design intent is clear: search hits a tight child chunk where the relevant sentence lives; generation can later pull the full section when broader context is needed. A post-retrieval step can query `arxiv_id` + `section_breadcrumb`, sort siblings by `chunk_index`, and concatenate their `chunk_text` values into the parent section. `HybridRrfSearch.get_chunks_by_paper()` already returns all chunks for a paper sorted by `chunk_index`. That parent expansion is not wired into the agentic RAG path today — retrieval returns the matched child chunk only — but the indexed fields exist to support it without reindexing.
 
 ---
 
@@ -235,7 +235,31 @@ Reranking is the last stage and a different kind of model. Bi-encoder retrieval 
 
 Both external calls degrade rather than fail. If embedding generation raises, the request continues as a BM25 search with a warning logged. If reranking raises, the original search order is used. The user gets a slightly worse answer instead of an error page. The cost of this politeness is that a misconfigured API key produces quietly mediocre results, so these fallbacks need to be visible in your metrics, not just your logs.
 
-One structural benefit: the HTTP search endpoint and the agent's retrieval tool both call the same `search_unified()`. Two retrieval paths that drift apart is a debugging nightmare you get for free if you let it happen.
+One structural benefit: the HTTP search endpoint and the agent's retrieval tool both call the same `HybridRrfSearch.search_unified()` path through `SearchService`. Two retrieval stacks that drift apart is a debugging nightmare you get for free if you let it happen.
+
+### 5.1 Dual-level knowledge graph (optional)
+
+Hybrid chunk search is the default retrieval story above. The codebase also ships an **optional** LightRAG-style path: at index time, an LLM extracts entities and relations from each chunk into a **table graph** in PostgreSQL (`kg_nodes`, `kg_edges`), with separate OpenSearch kNN indices for entity and relation embeddings; at query time, a second LLM splits the question into **high-level** (thematic) and **low-level** (specific) keywords, runs two vector searches, hydrates the graph, and loads **evidence chunks** from the hybrid index using provenance keys `{arxiv_id}:{chunk_index}`.
+
+```mermaid
+flowchart LR
+    Q["Query"] --> KW["Dual keywords<br/>LLM structured"]
+    KW --> EL["Embed low-level"]
+    KW --> EH["Embed high-level"]
+    EL --> VE["Entity kNN<br/>OS kg-entities"]
+    EH --> VR["Relation kNN<br/>OS kg-relations"]
+    VE --> PG[("Postgres graph")]
+    VR --> PG
+    PG --> CH["Chunk lookup<br/>hybrid index"]
+    CH --> RR["Jina rerank on<br/>evidence chunks"]
+    RR --> CTX["formatted_context<br/>token budgets"]
+```
+
+That path is **disabled by default** (`KG__ENABLED=false`). Turning it on wires `DualLevelKGRetrievalService` into `SearchService.dual_search()` and exposes `POST /api/v1/kg-retrieval/debug` for inspection. Indexing is offline: `make kg-index ARXIV_IDS=...` after hybrid chunks exist, or the eval ingestor when running experiments. Evidence chunks loaded by graph provenance can be **reranked with the same Jina cross-encoder** as hybrid search (`KG__CHUNK_RERANK_ENABLED`, on by default) before token-budget formatting. It does **not** replace BM25+RRF for the LangGraph agent today—the fusionsearch retriever still calls `HybridRrfSearch.search_unified()` via `SearchService` only—so the KG layer is an experimental second channel until product wiring merges graph context with graded chunk retrieval.
+
+Why bother with a second channel? Chunk kNN answers "which passage looks like this query?" Graph-guided retrieval answers "which entities and relationships are relevant, and which chunks proved them?"—a different failure mode, useful for comparing structured context against flat recall on the same `ingestion_name` partition. Index-time cost is real: one structured LLM call per chunk plus Jina embeds for deduplicated entity/relation docs; merge into nodes and edges is deterministic Python (append unique description sentences, union chunk keys) without a second summarize model.
+
+The full implementation walkthrough—schemas, merge semantics, factory wiring, configuration table, and known gaps—is in [docs/knowledge-graph.md](knowledge-graph.md).
 
 ---
 
@@ -855,6 +879,9 @@ The layer-by-layer walk above spreads the quality techniques across eight sectio
 | Index | Title + abstract header per chunk | Every chunk is attributable without retrieval context | ~50 tokens per chunk of index size | Yes |
 | Index | Abstract-duplicate and metadata section filtering | Fewer weak-matching junk chunks competing for slots | None | Yes |
 | Index | **Contextual retrieval** | Chunks become findable by the vocabulary that describes them, not just the words inside them | One LLM call per chunk at index time | **No** |
+| Index | **Dual-level KG extract** | Entity/relation graph + provenance-linked chunks for LightRAG-style retrieval | One LLM call per chunk + entity/relation embeds; separate OS indices | **No** (`KG__ENABLED`) |
+| Retrieve | **Dual-level KG path** | Thematic + specific keyword routing into graph, then evidence chunks | Keyword LLM + 2× embed/kNN + Postgres hydrate; optional Jina rerank on provenance chunks | **No**; debug API + `dual_search` only |
+| Retrieve | **KG evidence chunk rerank** | Orders graph-linked passages by query–passage relevance before context trim | One Jina call over provenance set (not whole corpus) | **Yes** when `KG__ENABLED` (`KG__CHUNK_RERANK_ENABLED`, default on) |
 | Index | Asymmetric embedding tasks | Correct query/passage geometry for Jina v3 | None; it is one parameter | Yes |
 | Index | Snowball stemming + stopword analyzer | "learning"/"learned" collapse, BM25 recall improves | None | Yes |
 | Index | Plain analyzer on `authors` | Surnames are not mangled by a stemmer | None | Yes |
@@ -888,7 +915,7 @@ Three things are worth reading out of that table.
 
 The techniques are not interchangeable, they compose in a specific direction. Contextual retrieval makes the candidate pool better; over-fetching makes the pool bigger; RRF orders it using two views of relevance; the cross-encoder reorders the top of it accurately; retrieval confidence gates weak results before generation; grading decides whether the whole retrieval round worked; citation validation and the abstention judge catch failures that survive grading. Skipping an early stage cannot be compensated for by a later one, because a reranker can only reorder what retrieval found, and a citation validator can only verify citations against what retrieval returned. This is why "just add a reranker" is such a common disappointment: it is the last retrieval stage, and it inherits every recall failure upstream of it.
 
-Exactly one lever is off by default, and it is the one that costs money per chunk rather than per query. That asymmetry is not an accident. Query-time techniques scale with traffic and can be tuned or disabled per request; index-time techniques scale with corpus size and are committed to at ingestion. Getting contextual retrieval wrong means reindexing everything, which is the argument for keeping it behind a flag and enabling it after `rag_evals` exists rather than before — you need a way to measure whether `context_recall` actually moved before you pay to reindex the corpus.
+The expensive index-time levers are off by default: **contextual retrieval** and the **dual-level KG** (`KG__ENABLED`). Both scale with corpus size and are committed at ingestion—one LLM call per chunk (KG adds entity/relation embedding work on top). Query-time techniques scale with traffic and can be tuned per request. That asymmetry is deliberate. Getting contextual retrieval or KG extraction wrong means re-running index jobs, which is the argument for keeping them behind flags and enabling them after `rag_evals` (or KG-specific debug traces) can show whether quality moved enough to justify the cost.
 
 Most of these are cheap. Field boosts, the asymmetric embedding task, the analyzer configuration, prompt trimming and the abstract-duplicate filter cost nothing at runtime and are pure configuration. They are also the ones most likely to be skipped, because none of them are interesting enough to write a blog post about. The expensive techniques get the attention; the free ones get the results.
 
@@ -912,6 +939,8 @@ No cache invalidation is tied to reindexing.
 
 The reranker is wired into the agentic path but not the plain `/ask` endpoint, so the two paths have different retrieval quality. Inconsistencies like that are how "it works in the demo but not in the app" happens.
 
+The dual-level knowledge graph can be indexed and queried via `dual_search` and `/kg-retrieval/debug`, but it is **not** connected to the LangGraph retriever tool. Operating KG alongside hybrid search doubles operational surface (Postgres graph rows, two extra OpenSearch indices, per-chunk extract jobs) without yet changing what end users get from `/agentic-ask`.
+
 ---
 
 ## 16. If you take one thing from each layer
@@ -920,6 +949,7 @@ The reranker is wired into the agentic path but not the plain `/ask` endpoint, s
 - **Chunking:** respect document structure, split oversized sections into breadcrumb-linked child chunks for precision, and match your embedding model's asymmetric tasks. This is where quality is won.
 - **Contextual retrieval:** give the retriever an enriched chunk and the generator the original one. A chunk that says "the second variant improves recall by 12%" is unfindable until something puts the paper back around it.
 - **Retrieval:** keyword and vector are peers, fuse them by rank not score, then rerank with a cross-encoder. Cheap recall, expensive precision, in that order.
+- **Knowledge graph (optional):** extract entities and relations at index time, retrieve with dual keywords into graph + provenance chunks—not a substitute for hybrid search until you wire it into the agent and measure it ([knowledge-graph.md](knowledge-graph.md)).
 - **Generation:** put a gateway in front of providers, configure an explicit model fallback chain per provider (`BIFROST_FALLBACK_MODELS`), seed virtual keys with budgets and rate limits per agent workload, and stop paying tokens for metadata the model doesn't need.
 - **Orchestration:** a state machine with explicit guardrail, grading, bounded retry, and confidence-aware abstention beats a straight pipeline, and costs you extra LLM calls.
 - **Verification:** score retrieval confidence before generation, require verifiable citations, and add an LLM judge for answers where being wrong is worse than saying "I don't know."

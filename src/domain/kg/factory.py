@@ -3,7 +3,8 @@
 from src.config import Settings, get_settings
 from src.domain.db.factory import make_database
 from src.domain.db.interfaces.base import BaseDatabase
-from src.domain.jinaai.factory import make_embeddings_service
+from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
+from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.indexing_service import KgIndexingService
@@ -81,6 +82,7 @@ def make_kg_indexing_service(
 def make_dual_level_kg_retrieval_service(
     database: BaseDatabase | None = None,
     settings: Settings | None = None,
+    reranker_client: JinaRerankerClient | None = None,
 ) -> DualLevelKGRetrievalService:
     settings = settings or get_settings()
     database = database or make_database()
@@ -95,4 +97,5 @@ def make_dual_level_kg_retrieval_service(
         embeddings_client=make_embeddings_service(),
         kg_settings=settings.kg,
         ingestion_name=ingestion_name,
+        reranker_client=reranker_client if reranker_client is not None else make_reranker_client(settings),
     )

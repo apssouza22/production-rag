@@ -7,6 +7,7 @@ from typing import Any
 from src.config import KGSettings
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
+from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.kg.context_format import format_kg_context
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.kg_vector_client import KgVectorClient
@@ -63,6 +64,7 @@ class DualLevelKGRetrievalService:
         embeddings_client: JinaEmbeddingsClient,
         kg_settings: KGSettings,
         ingestion_name: str,
+        reranker_client: JinaRerankerClient | None = None,
     ) -> None:
         self._database = database
         self._paper_rrf_search = paper_rrf_search
@@ -71,6 +73,7 @@ class DualLevelKGRetrievalService:
         self._embeddings_client = embeddings_client
         self._kg_settings = kg_settings
         self._ingestion_name = ingestion_name
+        self._reranker_client = reranker_client
 
     async def retrieve(
         self,
@@ -94,6 +97,7 @@ class DualLevelKGRetrievalService:
         relation_hits.sort(key=lambda r: r.rank, reverse=True)
 
         chunk_hits = self._load_chunk_hits(chunk_keys.sorted_keys())
+        chunk_hits = await self._rerank_chunk_hits(query, chunk_hits)
         formatted = format_kg_context(
             entity_hits,
             relation_hits,
@@ -189,6 +193,45 @@ class DualLevelKGRetrievalService:
     def _load_chunk_hits(self, chunk_keys: list[str]) -> list[KgChunkHit]:
         os_chunks = self._paper_rrf_search.get_chunks_by_chunk_keys(chunk_keys)
         return [self._chunk_hit_from_opensearch_doc(chunk) for chunk in os_chunks]
+
+    def _should_rerank_chunks(self) -> bool:
+        return (
+            self._kg_settings.chunk_rerank_enabled
+            and self._reranker_client is not None
+            and self._reranker_client.is_configured
+        )
+
+    async def _rerank_chunk_hits(self, query: str, chunks: list[KgChunkHit]) -> list[KgChunkHit]:
+        if not self._should_rerank_chunks() or len(chunks) <= 1:
+            return chunks
+
+        documents = [chunk.chunk_text for chunk in chunks]
+        model = self._kg_settings.chunk_rerank_model.strip() or "jina-reranker-v2-base-multilingual"
+        try:
+            logger.info("Reranking %d KG evidence chunks with Jina reranker", len(chunks))
+            rerank_results = await self._reranker_client.rerank(
+                query=query,
+                documents=documents,
+                top_n=len(chunks),
+                model=model,
+            )
+        except Exception as e:
+            logger.warning(
+                "KG chunk reranking failed, keeping discovery order: query_preview=%r, "
+                "candidate_count=%d, model=%s, error_type=%s, error=%s",
+                query[:100],
+                len(chunks),
+                model,
+                type(e).__name__,
+                e,
+            )
+            return chunks
+
+        reranked: list[KgChunkHit] = []
+        for result in rerank_results:
+            chunk = chunks[result.index].model_copy(update={"rerank_score": result.relevance_score})
+            reranked.append(chunk)
+        return reranked
 
     @contextmanager
     def _graph_repository(self) -> Iterator[KgGraphRepository]:

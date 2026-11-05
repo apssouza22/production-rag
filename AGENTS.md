@@ -34,7 +34,10 @@ src/
 │   ├── knowledgerouter/          # Multi-source routing agent
 │   └── texttosql/                # SQL agent
 └── domain/                       # Shared infrastructure & business domains
-    ├── opensearch/               # Index config, query builder, client
+    ├── rrf/                      # Hybrid chunk index, RRF search, query builder
+    ├── search/                   # SearchService (hybrid retrieval + rerank + dual_search)
+    ├── kg/                       # Optional dual-level knowledge graph
+    ├── opensearch/               # OpenSearch transport client
     ├── llm/                      # LLMClient protocol + factory
     ├── jinaai/                   # Embeddings + reranker
     ├── indexing/                 # Chunking, contextualization
@@ -60,7 +63,7 @@ src/
 └── schemas/
 ```
 
-A new retrieval feature belongs under `domain/opensearch/` (or the relevant agent under `agents/`), not spread across `services/` and `repositories/`.
+A new retrieval feature belongs under `domain/rrf/` and/or `domain/search/` (or the relevant agent under `agents/`), not spread across `services/` and `repositories/`.
 
 ### Where new code goes
 
@@ -169,6 +172,7 @@ Key env vars: `JINA_API_KEY` (required for hybrid search), `OPENAI_API_KEY`, `LA
 | Architecture deep dive | [docs/ARTICLE.md](docs/ARTICLE.md) |
 | Onboarding & service access | [docs/onboarding.md](docs/onboarding.md) |
 | OpenSearch retrieval layer | [docs/opensearch-search.md](docs/opensearch-search.md) |
+| Dual-level knowledge graph | [docs/knowledge-graph.md](docs/knowledge-graph.md) |
 | Evals framework | [evals/README.md](evals/README.md) |
 | Evals architecture | [docs/evals.md](docs/evals.md) |
 | Interactive API docs | http://localhost:8000/docs (when stack is running) |

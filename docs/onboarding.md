@@ -339,8 +339,11 @@ src/
     │   ├── knowledgerouter/   # Multi-source router
     │   └── fault_tolerance/   # Retry, timeout, error-handler policies
     ├── arxiv/ + arxiv_ingestion/   # Fetching and ingestion orchestration
-    ├── indexing/              # Chunking, contextualization, hybrid indexing
-    ├── opensearch/            # Index config, query builder, search client
+    ├── indexing/              # Chunking, contextualization, hybrid chunk writes
+    ├── rrf/                   # Hybrid index schema, RRF search, chunk lookups
+    ├── search/                # SearchService (hybrid + rerank + optional dual_search)
+    ├── kg/                    # Dual-level knowledge graph (optional)
+    ├── opensearch/            # OpenSearch transport client
     ├── jinaai/                # Embeddings + reranker clients
     ├── platform/llm/   # OpenAI ChatOpenAI factory
     ├── langfuse/              # Tracing
@@ -396,12 +399,13 @@ Full interactive docs: http://localhost:8000/docs
 
 ### Dual-level knowledge graph (optional)
 
-LightRAG-style entity/relation graph stored in PostgreSQL (`kg_nodes`, `kg_edges`) with entity/relation vectors in OpenSearch. Disabled by default.
+LightRAG-style entity/relation graph stored in PostgreSQL (`kg_nodes`, `kg_edges`) with entity/relation vectors in OpenSearch. Disabled by default. Architecture and implementation details: [knowledge-graph.md](knowledge-graph.md).
 
 1. Set `KG__ENABLED=true` in `.env` (uses the same `OPENSEARCH__INGESTION_NAME` partition unless `KG__INGESTION_NAME` is set).
 2. Ensure papers are already hybrid-indexed in OpenSearch.
 3. Build the graph for a slice: `make kg-index ARXIV_IDS=2611.02200,2611.02208` (add `REPLACE=1` to re-extract).
-4. Debug retrieval: `POST /api/v1/kg-retrieval/debug` with `{"query": "..."}` — returns keywords, graph rows, chunks, and `formatted_context`.
+4. Debug retrieval: `POST /api/v1/kg-retrieval/debug` with `{"query": "..."}` — returns keywords, graph rows, chunks (with optional `rerank_score`), and `formatted_context`.
+5. Optional: `KG__CHUNK_RERANK_ENABLED=false` to keep graph discovery order for evidence chunks; requires `JINA_API_KEY` when enabled (default).
 
 The agentic RAG path does not use KG retrieval yet (Phase 3).
 
@@ -421,6 +425,7 @@ The agentic RAG path does not use KG retrieval yet (Phase 3).
 | `REASONING_EFFORT` | Optional | Reasoning effort for GPT-5.x models (default `low`) |
 | `CHUNKING__*` | Optional | Chunk size, overlap, and contextualization tuning |
 | `KG__ENABLED` | Optional | Dual-level KG indexing/retrieval (default `false`) |
+| `KG__CHUNK_RERANK_ENABLED` | Optional | Rerank KG evidence chunks with Jina (default `true` when KG is on) |
 | `REDIS__TTL_HOURS` | Optional | Cache expiration (default `6`) |
 
 All defaults work for local dev except external API keys. See [.env.example](../.env.example) for the full list.
@@ -432,7 +437,7 @@ All defaults work for local dev except external API keys. See [.env.example](../
 0. **Read first:** [Anatomy of a Production-Grade Agentic RAG System](ARTICLE.md) for the architectural reasoning
 1. **Day 1:** `docker compose up`, then explore `compose.yml` and the `src/main.py` lifespan
 2. **Day 2:** Trace ingestion: Airflow DAG → `MetadataFetcher` → PostgreSQL. Trigger the DAG manually
-3. **Day 3:** Search layer: read `OpenSearchClient.search_unified()`, test all three modes via API
+3. **Day 3:** Search layer: read `HybridRrfSearch.search_unified()` in `src/domain/rrf/search.py` and `SearchService` in `src/domain/search/`, test hybrid/BM25 via API
 4. **Day 4:** RAG path: follow `ask.py` end-to-end, test streaming
 5. **Day 5:** Ops layer: explore Langfuse traces and latency breakdowns
 6. **Day 6:** Agents: step through the LangGraph nodes, test `/ask-agentic` with guardrail and rewrite scenarios

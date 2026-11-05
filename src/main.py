@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
         kg_retrieval_service = make_dual_level_kg_retrieval_service(
             database=app.state.database,
             settings=settings,
+            reranker_client=app.state.reranker_service,
         )
         app.state.kg_retrieval_service = kg_retrieval_service
         logger.info(

@@ -68,6 +68,7 @@ class KgChunkHit(BaseModel):
     title: str = ""
     authors: str = ""
     section_name: str = ""
+    rerank_score: float | None = None
 
 
 class DualLevelKGResult(BaseModel):
