@@ -9,7 +9,7 @@ from src.domain.kg.kg_vector_client import KgVectorClient
 from src.domain.kg.merge import make_chunk_key, normalize_entity_id, relation_vector_id
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import ChunkExtractionResult, ExtractedRelation
-from src.domain.rrf import PaperRrfSearch
+from src.domain.rrf import HybridRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class KgIndexingService:
     def __init__(
         self,
         database: BaseDatabase,
-        paper_rrf_search: PaperRrfSearch,
+        paper_rrf_search: HybridRrfSearch,
         kg_vector_client: KgVectorClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,

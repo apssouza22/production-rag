@@ -75,7 +75,7 @@ def client(mock_rerank_search_service, mock_paper_rrf_search):
         return mock_paper_rrf_search
 
     app.dependency_overrides[dependencies.get_rerank_search_service] = override_rerank_search_service
-    app.dependency_overrides[dependencies.get_paper_rrf_search] = override_paper_rrf_search
+    app.dependency_overrides[dependencies.get_hybrid_rrf_search] = override_paper_rrf_search
 
     yield TestClient(app)
 

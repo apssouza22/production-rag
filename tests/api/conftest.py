@@ -25,7 +25,7 @@ async def client():
         patch("src.main.make_database", return_value=mock_db),
         patch("src.domain.db.interfaces.postgresql.PostgreSQLDatabase.startup") as mock_startup,
         patch("src.domain.db.interfaces.postgresql.PostgreSQLDatabase.get_session") as mock_get_session,
-        patch("src.main.make_paper_rrf_search") as mock_paper_search,
+        patch("src.main.make_hybrid_rrf_search") as mock_paper_search,
         patch("src.main.make_kg_indexing_service", return_value=None),
         patch("src.main.make_dual_level_kg_retrieval_service", return_value=None),
         patch("src.main.make_text_to_sql_service", return_value=MagicMock()),

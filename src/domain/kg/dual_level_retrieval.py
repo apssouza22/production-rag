@@ -18,7 +18,7 @@ from src.domain.kg.schemas import (
     KgEntityHit,
     KgRelationHit,
 )
-from src.domain.rrf import PaperRrfSearch
+from src.domain.rrf import HybridRrfSearch
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class DualLevelKGRetrievalService:
     def __init__(
         self,
         database: BaseDatabase,
-        paper_rrf_search: PaperRrfSearch,
+        paper_rrf_search: HybridRrfSearch,
         kg_vector_client: KgVectorClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,

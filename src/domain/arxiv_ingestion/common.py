@@ -5,7 +5,7 @@ from typing import Any, Tuple
 from src.domain.arxiv.factory import make_arxiv_client
 from src.domain.db.factory import make_database
 from src.domain.pdf_parser.factory import make_pdf_parser_service
-from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.rrf.factory import make_hybrid_rrf_search
 
 from .service import make_arxiv_ingestion_service
 
@@ -24,7 +24,7 @@ def get_cached_services() -> Tuple[Any, Any, Any, Any, Any]:
     arxiv_client = make_arxiv_client()
     pdf_parser = make_pdf_parser_service()
     database = make_database()
-    paper_rrf_search = make_paper_rrf_search()
+    paper_rrf_search = make_hybrid_rrf_search()
 
     ingestion_service = make_arxiv_ingestion_service(arxiv_client, pdf_parser, database)
 

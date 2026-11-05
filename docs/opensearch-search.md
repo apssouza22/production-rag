@@ -16,7 +16,7 @@ The project retrieves relevant excerpts ("chunks") of arXiv papers to feed a RAG
 
 The philosophy is deliberate and mirrors production retrieval systems: **keyword search first, vectors second, fusion on top**. Hybrid is the default because it combines exact term matching (great for names, acronyms, equations) with semantic recall (great for paraphrases and concepts).
 
-The main entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`), which picks a strategy based on the arguments it receives:
+The main entry point is `HybridRrfSearch.search_unified()`, which picks a strategy based on the arguments it receives:
 
 ```134:216:src/domain/opensearch/client.py
     def search_papers(
@@ -71,7 +71,7 @@ Key points:
 
 The mapping is built by `build_hybrid_chunk_mapping()` in `chunk_index_schema.py` (replacing the static `ARXIV_PAPERS_CHUNKS_MAPPING` body). **After upgrading**, recreate the index (`setup_indices(force=True)`) or re-run ingestion; old documents with paper fields at the top level will not match BM25 on `metadata.*` paths until reindexed.
 
-The main search entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`).
+The main search entry point is `HybridRrfSearch.search_unified()`.
 
 ### The vector field
 

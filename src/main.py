@@ -15,7 +15,7 @@ from src.domain.db.factory import make_database
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
 from src.domain.kg.factory import make_dual_level_kg_retrieval_service, make_kg_indexing_service
 from src.domain.pdf_parser.factory import make_pdf_parser_service
-from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.rrf.factory import make_hybrid_rrf_search
 from src.domain.search.factory import make_rerank_search_service
 from src.platform.langfuse.factory import make_langfuse_tracer
 
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     app.state.database = database
     logger.info("Database connected")
 
-    app.state.paper_rrf_search = make_paper_rrf_search()
+    app.state.hybrid_rrf_search = make_hybrid_rrf_search()
     app.state.arxiv_client = make_arxiv_client()
     app.state.pdf_parser = make_pdf_parser_service()
     app.state.embeddings_service = make_embeddings_service()
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     app.state.langfuse_tracer = make_langfuse_tracer()
 
     app.state.agentic_rag_service = make_agentic_rag_service(
-        paper_rrf_search=app.state.paper_rrf_search,
+        paper_rrf_search=app.state.hybrid_rrf_search,
         embeddings_client=app.state.embeddings_service,
         reranker_client=app.state.reranker_service,
         langfuse_tracer=app.state.langfuse_tracer,
@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
         )
 
     app.state.rerank_search_service = make_rerank_search_service(
-        paper_rrf_search=app.state.paper_rrf_search,
+        paper_rrf_search=app.state.hybrid_rrf_search,
         embeddings_client=app.state.embeddings_service,
         reranker_client=app.state.reranker_service,
         kg_retrieval_service=kg_retrieval_service,

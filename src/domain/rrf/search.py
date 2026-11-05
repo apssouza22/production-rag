@@ -252,6 +252,3 @@ class HybridRrfSearch:
         batch_size: int = 50,
     ) -> list[dict[str, Any]]:
         return self._indexing.get_chunks_by_chunk_keys(chunk_keys, batch_size=batch_size)
-
-
-PaperRrfSearch = HybridRrfSearch

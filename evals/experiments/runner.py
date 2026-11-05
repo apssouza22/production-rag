@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.domain.jinaai.factory import make_embeddings_service, make_reranker_client
-from src.domain.rrf.factory import make_paper_rrf_search
+from src.domain.rrf.factory import make_hybrid_rrf_search
 from src.domain.search.factory import make_rerank_search_service
 
 from evals.core.evaluator import Evaluator
@@ -53,7 +53,7 @@ class ExperimentRunner(EvalRunner):
             api_key=self.settings.judge_api_key,
             base_url=self.settings.evaluation_base_url,
         )
-        self.paper_rrf_search = make_paper_rrf_search(
+        self.paper_rrf_search = make_hybrid_rrf_search(
             ingestion_name=self.settings.experiment_ingestion_name,
         )
         self.rerank_search_service = make_rerank_search_service(

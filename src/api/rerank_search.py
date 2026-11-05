@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from src.dependencies import PaperRrfSearchDep, RerankSearchDep
+from src.dependencies import HybridRrfSearchDep, RerankSearchDep
 from src.domain.search.schemas import RerankSearchRequest, DocumentSearchResult
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/rerank-search", tags=["rerank-search"])
 async def rerank_search(
     request: RerankSearchRequest,
     rerank_search_service: RerankSearchDep,
-    paper_rrf_search: PaperRrfSearchDep,
+    paper_rrf_search: HybridRrfSearchDep,
 ) -> DocumentSearchResult:
     """Search OpenSearch and optionally rerank results with Jina."""
     if not paper_rrf_search.health_check():
