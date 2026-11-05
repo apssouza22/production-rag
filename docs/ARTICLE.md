@@ -138,7 +138,7 @@ flowchart LR
     E --> F
     F --> G["Jina v3 embed_passages<br/>task = retrieval.passage, batch 50"]
     G --> H["bulk_index_chunks"]
-    H --> I[("arxiv-papers-chunks<br/>chunk_text + chunk_context +<br/>contextualized_text + knn_vector 1024d")]
+    H --> I[("arxiv-papers-chunks<br/>chunk_text + contextualized_text +<br/>knn_vector 1024d")]
 ```
 
 The chunker respects document structure rather than counting characters. Sections of 100-800 words become a single chunk; small sections merge with neighbours; oversized sections fall back to a sliding window with 100 words of overlap. If the parser found no sections at all, it degrades to paragraph chunking. Fixed-size splitting is easy to implement and reliably cuts sentences in half at the point where the useful information was.
@@ -159,13 +159,14 @@ The failure mode it addresses: chunk 14 of a paper says "the second variant impr
 
 `ChunkContextualizer` fixes this by asking an LLM to put the context back. For each chunk, it sends the full document (title and abstract as a header, body truncated at 50,000 characters) alongside the chunk itself, and asks for two to three sentences situating that chunk within the document. The prompt is explicit that the output must not be commentary about the chunk: no "this section discusses", just the facts, key figures and comparisons that place it. The result is a sentence like "Ablation results for the retrieval-augmented generation system introduced in this paper, comparing three reranking variants against the BM25-only baseline on NaturalQuestions."
 
-The important design decision is that this produces **three fields, not one**:
+The important design decision is that this produces **two indexed fields, not one**:
 
 | Field | Contents | Used by |
 |---|---|---|
 | `chunk_text` | The original text, untouched | Answer generation, reranking |
-| `chunk_context` | The LLM-generated situating sentences | Diagnostics, BM25 as a weak signal |
-| `contextualized_text` | `chunk_context` + `\n\n` + `chunk_text` | Embedding, BM25 as the primary field |
+| `contextualized_text` | LLM situating sentences + `\n\n` + `chunk_text` (or plain `chunk_text` when contextualization is off or failed) | Embedding, BM25 as the primary field |
+
+During ingestion, the LLM output lives on `ChunkMetadata.chunk_context` only long enough to build `contextualized_text`; it is not stored as a separate OpenSearch field.
 
 Retrieval searches the enriched version; generation reads the original. That split is the whole point. If you embed the enriched text but also feed it to the model, every chunk in your prompt arrives with two or three sentences of machine-written preamble, and the model starts quoting the preamble as though it were a finding in the paper. Conversely, if you generate context and then only use it for embedding, BM25 never benefits, and BM25 is exactly the signal that gains the most, because the generated context is where the searchable proper nouns end up.
 

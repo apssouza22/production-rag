@@ -106,7 +106,6 @@ class HybridIndexingService:
                     "document_id": arxiv_id,
                     "chunk_index": chunk.metadata.chunk_index,
                     "chunk_text": chunk.text,
-                    "chunk_context": chunk.metadata.chunk_context,
                     "contextualized_text": contextualized_text,
                     "embedding_model": "jina-embeddings-v3",
                     "ingestion_name": ingestion_name,

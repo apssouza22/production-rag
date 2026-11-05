@@ -35,7 +35,6 @@ CORE_CHUNK_PROPERTIES: dict[str, Any] = {
     "document_id": {"type": "keyword"},
     "chunk_index": {"type": "integer"},
     "chunk_text": TEXT_FIELD,
-    "chunk_context": {"type": "text", "analyzer": "text_analyzer"},
     "contextualized_text": TEXT_FIELD,
     "embedding_model": {"type": "keyword"},
     "ingestion_name": {"type": "keyword"},
@@ -98,7 +97,6 @@ class ChunkIndexDocument(BaseModel):
     ingestion_name: str
     categories: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    chunk_context: str | None = None
     embedding_model: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
