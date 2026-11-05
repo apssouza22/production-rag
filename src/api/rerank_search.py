@@ -2,22 +2,22 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from src.dependencies import OpenSearchDep, RerankSearchDep
-from src.domain.rerank.schemas import RerankSearchRequest, RerankSearchResult
+from src.dependencies import PaperRrfSearchDep, RerankSearchDep
+from src.domain.search.schemas import RerankSearchRequest, DocumentSearchResult
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rerank-search", tags=["rerank-search"])
 
 
-@router.post("", response_model=RerankSearchResult)
+@router.post("", response_model=DocumentSearchResult)
 async def rerank_search(
     request: RerankSearchRequest,
     rerank_search_service: RerankSearchDep,
-    opensearch_client: OpenSearchDep,
-) -> RerankSearchResult:
+    paper_rrf_search: PaperRrfSearchDep,
+) -> DocumentSearchResult:
     """Search OpenSearch and optionally rerank results with Jina."""
-    if not opensearch_client.health_check():
+    if not paper_rrf_search.health_check():
         raise HTTPException(status_code=503, detail="Search service is currently unavailable")
 
     original_use_hybrid = rerank_search_service.config.use_hybrid
@@ -35,7 +35,7 @@ async def rerank_search(
             request.top_k,
         )
 
-        result = await rerank_search_service.search(query=request.query, top_k=request.top_k)
+        result = await rerank_search_service.search_rrf(query=request.query, top_k=request.top_k)
         logger.info(
             "Rerank search completed: before=%d, after=%d, rerank_applied=%s",
             len(result.before_rerank),

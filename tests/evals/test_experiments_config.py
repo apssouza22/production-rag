@@ -85,6 +85,21 @@ def test_query_settings_to_rerank_config() -> None:
     assert config.rerank_candidate_multiplier == 3
 
 
+def test_build_run_config_syncs_opensearch_ingestion_partition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_path = tmp_path / "experiment-config.json"
+    config_path.write_text(
+        json.dumps({"experiment": {"experiment_ingestion_name": "eval-partition"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("OPENSEARCH__INGESTION_NAME", raising=False)
+
+    build_run_config(config_path)
+
+    assert os.environ["OPENSEARCH__INGESTION_NAME"] == "eval-partition"
+
+
 def test_build_run_config_applies_json_before_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = tmp_path / "experiment-config.json"
     config_path.write_text(

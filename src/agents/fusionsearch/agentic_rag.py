@@ -5,7 +5,7 @@ from typing import List, Optional
 from langchain_core.messages import HumanMessage
 
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.rerank.service import RerankSearchService
+from src.domain.search.service import SearchService
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.langfuse.langfuse_tracing_middleware import LangfuseTracingMiddleware
 from src.platform.middleware import (
@@ -30,7 +30,7 @@ class AgenticRAGService:
     def __init__(
         self,
         graph_builder: AgenticRAGGraph,
-        rerank_search_service: RerankSearchService,
+        rerank_search_service: SearchService,
         reranker_client: JinaRerankerClient | None = None,
         langfuse_tracer: Optional[LangfuseTracer] = None,
         graph_config: Optional[GraphConfig] = None,

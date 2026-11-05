@@ -1,6 +1,6 @@
 # Search in the arXiv Paper Curator: How OpenSearch Powers Retrieval
 
-This article is a deep dive into the search layer of the project. It explains **what** kinds of search are supported, **how** each one is implemented against OpenSearch, and **why** the design choices were made. All code references point at `src/domain/opensearch/`.
+This article is a deep dive into the search layer of the project. It explains **what** kinds of search are supported, **how** each one is implemented against OpenSearch, and **why** the design choices were made. Hybrid RRF retrieval lives in `src/domain/rrf/`; OpenSearch transport and HTTP DTOs live in `src/domain/opensearch/`.
 
 ---
 
@@ -16,7 +16,7 @@ The project retrieves relevant excerpts ("chunks") of arXiv papers to feed a RAG
 
 The philosophy is deliberate and mirrors production retrieval systems: **keyword search first, vectors second, fusion on top**. Hybrid is the default because it combines exact term matching (great for names, acronyms, equations) with semantic recall (great for paraphrases and concepts).
 
-The main entry point is `OpenSearchClient.search_unified()`, which picks a strategy based on the arguments it receives:
+The main entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`), which picks a strategy based on the arguments it receives:
 
 ```134:216:src/domain/opensearch/client.py
     def search_papers(
@@ -40,9 +40,9 @@ Everything is stored in **one** index rather than separate keyword and vector in
 
 ### Index mapping
 
-The mapping in `index_config_hybrid.py` defines both the text fields (for BM25) and a `knn_vector` field (for semantic search) on the same document, so a single query can score against both.
+The mapping in `chunk_index_schema.py` defines both the text fields (for BM25) and a `knn_vector` field (for semantic search) on the same document, so a single query can score against both.
 
-```10:70:src/domain/opensearch/index_config_hybrid.py
+```66:94:src/domain/rrf/chunk_index_schema.py
 ARXIV_PAPERS_CHUNKS_MAPPING = {
     "settings": {
         "number_of_shards": 1,
@@ -65,11 +65,17 @@ Key points:
 - **`text_analyzer`** is a custom analyzer applied to `chunk_text`, `title`, and `abstract`. It lowercases, removes stopwords, and applies **snowball stemming** so that `learning` and `learned` match the same stem. This directly improves BM25 recall.
 - **`standard_analyzer`** (with English stopwords) is used for `authors`, where stemming would be inappropriate.
 - Text fields also expose a `.keyword` sub-field for exact matching/aggregations, while `categories`, `arxiv_id`, etc. are `keyword` types used for filtering.
-- **`dynamic: "strict"`** rejects documents with unknown fields, keeping the schema clean.
+- **`dynamic: "strict"`** at the root rejects unknown top-level fields, keeping the core chunk schema explicit.
+- Document-type-specific fields (title, authors, categories, custom tags, etc.) live under **`metadata`**, an object with **`dynamic: true`**, so new keys can be indexed without mapping updates.
+- Every chunk requires **`document_id`** (for arXiv papers this equals `arxiv_id`). Optional top-level **`arxiv_id`** remains for arXiv denormalization.
+
+The mapping is built by `build_hybrid_chunk_mapping()` in `chunk_index_schema.py` (replacing the static `ARXIV_PAPERS_CHUNKS_MAPPING` body). **After upgrading**, recreate the index (`setup_indices(force=True)`) or re-run ingestion; old documents with paper fields at the top level will not match BM25 on `metadata.*` paths until reindexed.
+
+The main search entry point is `HybridRrfSearch.search_unified()` (alias `PaperRrfSearch`).
 
 ### The vector field
 
-```38:50:src/domain/opensearch/index_config_hybrid.py
+```36:46:src/domain/rrf/chunk_index_schema.py
             "embedding": {
                 "type": "knn_vector",
                 "dimension": 1024,  # Jina v3 embeddings dimension
@@ -126,7 +132,7 @@ BM25 is the lexical baseline. It is used directly by `search_papers()` and as th
 
 `QueryBuilder` decides which fields to search and how much to weight them. For chunk search, the chunk text dominates:
 
-```44:51:src/domain/opensearch/query_builder.py
+```44:51:src/domain/rrf/query_builder.py
         # The ^ sets a boost multiplier for that field’s relevance score.
         if fields is None:
             if search_chunks:
@@ -139,7 +145,7 @@ The `^N` suffix is a **boost multiplier** on that field's contribution to `_scor
 
 ### The text query
 
-```97:111:src/domain/opensearch/query_builder.py
+```97:111:src/domain/rrf/query_builder.py
     def _build_text_query(self) -> Dict[str, Any]:
         """Build the main text search query.
 
@@ -166,7 +172,7 @@ The `^N` suffix is a **boost multiplier** on that field's contribution to `_scor
 
 The full query body is assembled in `build()`:
 
-```53:71:src/domain/opensearch/query_builder.py
+```53:71:src/domain/rrf/query_builder.py
     def build(self) -> Dict[str, Any]:
         """Build the complete OpenSearch query.
 
@@ -184,7 +190,7 @@ The full query body is assembled in `build()`:
 
 - **Filters** are placed in the `bool.filter` context (not `must`), so category filtering does **not** affect relevance scoring — it only includes/excludes:
 
-```113:123:src/domain/opensearch/query_builder.py
+```113:123:src/domain/rrf/query_builder.py
     def _build_filters(self) -> List[Dict[str, Any]]:
         """Build filter clauses for the query.
 
@@ -203,7 +209,7 @@ The full query body is assembled in `build()`:
 - **Highlighting** wraps matched fragments in `<mark>` tags. For chunks it returns up to 2 fragments of `chunk_text` plus the full `title`.
 - **Sorting**: by default results are sorted by relevance (`_score`). When `latest_papers=True`, results are sorted by `published_date` descending with `_score` as a tiebreaker:
 
-```183:194:src/domain/opensearch/query_builder.py
+```183:194:src/domain/rrf/query_builder.py
     def _build_sort(self) -> Optional[List[Dict[str, Any]]]:
         """Build sorting configuration.
 
@@ -303,7 +309,7 @@ The two legs run independently, each producing its own ranked list. The magic is
 
 The fusion strategy is defined as a search pipeline:
 
-```72:85:src/domain/opensearch/index_config_hybrid.py
+```6:20:src/domain/rrf/pipeline.py
 HYBRID_RRF_PIPELINE = {
     "id": "hybrid-rrf-pipeline",
     "description": "Post processor for hybrid RRF search",
@@ -415,7 +421,7 @@ The FastAPI router ties everything together: health-check the cluster, generate 
 
         logger.info(f"Hybrid search: '{request.query}' (hybrid: {request.use_hybrid and query_embedding is not None})")
 
-        results = opensearch_client.search_unified(
+        results = paper_rrf_search.search_unified(
             query=request.query,
             query_embedding=query_embedding,
             size=request.size,
@@ -434,7 +440,7 @@ The request/response contracts are defined in `schemas.py` (`HybridSearchRequest
 The LangGraph agent wraps the same `search_unified()` call in a LangChain tool. It embeds the query, retrieves the top-k chunks, and converts each hit into a `Document` with metadata (arxiv_id, title, score, source URL, section):
 
 ```52:57:src/domain/agents/tools.py
-        search_results = opensearch_client.search_unified(
+        search_results = paper_rrf_search.search_unified(
             query=query,
             query_embedding=query_embedding,
             size=top_k,
@@ -496,11 +502,14 @@ search_unified(query, query_embedding, use_hybrid=True)
 
 | Concern | File |
 |---------|------|
-| Search orchestration, index/pipeline lifecycle, indexing | `src/domain/opensearch/client.py` |
-| BM25 query construction (boosts, fuzziness, filters, highlight, sort) | `src/domain/opensearch/query_builder.py` |
-| Index mapping, HNSW config, RRF pipeline | `src/domain/opensearch/index_config_hybrid.py` |
+| Search orchestration, index/pipeline lifecycle, chunk indexing | `src/domain/rrf/search.py` |
+| BM25 query construction (boosts, fuzziness, filters, highlight, sort) | `src/domain/rrf/query_builder.py` |
+| Index mapping, HNSW config | `src/domain/rrf/chunk_index_schema.py` |
+| RRF search pipeline body | `src/domain/rrf/pipeline.py` |
+| OpenSearch transport (search, bulk index, pipelines) | `src/domain/opensearch/client.py` |
 | Request/response models | `src/domain/opensearch/schemas.py` |
-| Client factory (cached + fresh) | `src/domain/opensearch/factory.py` |
+| OpenSearch client factory (cached + fresh) | `src/domain/opensearch/factory.py` |
+| RRF search factory (cached + fresh) | `src/domain/rrf/factory.py` |
 | HTTP search endpoint | `src/api/hybrid_search.py` |
 | Agent retriever tool | `src/domain/agents/tools.py` |
 | Ingestion / indexing DAG | `src/domain/arxiv_ingestion/indexing.py` |

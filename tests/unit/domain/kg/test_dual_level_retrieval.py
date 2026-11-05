@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from src.config import KGSettings
 from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
 from src.domain.kg.models import KgNode
@@ -69,7 +68,7 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
 
     service = DualLevelKGRetrievalService(
         database=database,
-        opensearch_client=opensearch,
+        paper_rrf_search=opensearch,
         kg_vector_client=kg_vector,
         extraction_service=extraction,
         embeddings_client=embeddings,

@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from src.dependencies import EmbeddingsDep, OpenSearchDep
+from src.dependencies import EmbeddingsDep, PaperRrfSearchDep
 from src.domain.opensearch.schemas import HybridSearchRequest, SearchHit, SearchResponse
 
 logger = logging.getLogger(__name__)
@@ -42,12 +42,12 @@ def _build_search_response(request: HybridSearchRequest, results: dict, query_em
 @router.post("/", response_model=SearchResponse)
 async def hybrid_search(
     request: HybridSearchRequest,
-    opensearch_client: OpenSearchDep,
+    paper_rrf_search: PaperRrfSearchDep,
     embeddings_service: EmbeddingsDep,
 ) -> SearchResponse:
     """Hybrid search endpoint supporting multiple search modes."""
     try:
-        if not opensearch_client.health_check():
+        if not paper_rrf_search.health_check():
             raise HTTPException(status_code=503, detail="Search service is currently unavailable")
 
         query_embedding = None
@@ -61,7 +61,7 @@ async def hybrid_search(
 
         logger.info("Hybrid search: '%s' (hybrid: %s)", request.query, request.use_hybrid and query_embedding is not None)
 
-        results = opensearch_client.search_unified(
+        results = paper_rrf_search.search_unified(
             query=request.query,
             query_embedding=query_embedding,
             size=request.size,

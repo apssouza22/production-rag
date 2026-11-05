@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.rrf import HybridRrfSearch
 
 from .chunk_contextualizer import ChunkContextualizer
 from .text_chunker import TextChunker
@@ -24,19 +24,19 @@ class HybridIndexingService:
         self,
         chunker: TextChunker,
         embeddings_client: JinaEmbeddingsClient,
-        opensearch_client: OpenSearchClient,
+        paper_rrf_search: HybridRrfSearch,
         contextualizer: Optional[ChunkContextualizer] = None,
     ):
         """Initialize hybrid indexing service.
 
         :param chunker: Text chunking service
         :param embeddings_client: Embeddings generation client
-        :param opensearch_client: OpenSearch client
+        :param paper_rrf_search: Paper chunk hybrid RRF search client
         :param contextualizer: Optional LLM-based chunk contextualizer
         """
         self.chunker = chunker
         self.embeddings_client = embeddings_client
-        self.opensearch_client = opensearch_client
+        self.paper_rrf_search = paper_rrf_search
         self.contextualizer = contextualizer
 
         logger.info(
@@ -103,33 +103,36 @@ class HybridIndexingService:
                 contextualized_text = chunk.get_contextualized_text()
                 # Prepare chunk data for OpenSearch
                 chunk_data = {
-                    "arxiv_id": chunk.arxiv_id,
-                    "paper_id": chunk.paper_id,
+                    "document_id": arxiv_id,
                     "chunk_index": chunk.metadata.chunk_index,
                     "chunk_text": chunk.text,
                     "chunk_context": chunk.metadata.chunk_context,
                     "contextualized_text": contextualized_text,
-                    "chunk_word_count": chunk.metadata.word_count,
-                    "start_char": chunk.metadata.start_char,
-                    "end_char": chunk.metadata.end_char,
-                    "section_title": chunk.metadata.section_title,
-                    "section_breadcrumb": chunk.metadata.section_breadcrumb,
                     "embedding_model": "jina-embeddings-v3",
-                    # Denormalized paper metadata for efficient search
-                    "title": paper_data.get("title", ""),
-                    "authors": ", ".join(paper_data.get("authors", []))
-                    if isinstance(paper_data.get("authors"), list)
-                    else paper_data.get("authors", ""),
-                    "abstract": paper_data.get("abstract", ""),
-                    "categories": paper_data.get("categories", []),
-                    "published_date": paper_data.get("published_date"),
                     "ingestion_name": ingestion_name,
+                    "categories": paper_data.get("categories", []),
+                    "metadata": {
+                        "arxiv_id": chunk.arxiv_id or arxiv_id,
+                        "paper_id": chunk.paper_id or paper_id,
+                        "title": paper_data.get("title", ""),
+                        "authors": ", ".join(paper_data.get("authors", []))
+                        if isinstance(paper_data.get("authors"), list)
+                        else paper_data.get("authors", ""),
+                        "abstract": paper_data.get("abstract", ""),
+                        "published_date": paper_data.get("published_date"),
+                        "pdf_url": paper_data.get("pdf_url", ""),
+                        "chunk_word_count": chunk.metadata.word_count,
+                        "start_char": chunk.metadata.start_char,
+                        "end_char": chunk.metadata.end_char,
+                        "section_title": chunk.metadata.section_title,
+                        "section_breadcrumb": chunk.metadata.section_breadcrumb,
+                    },
                 }
 
                 chunks_with_embeddings.append({"chunk_data": chunk_data, "embedding": embedding})
 
             # Step 5: Index chunks into OpenSearch
-            results = self.opensearch_client.bulk_index_chunks(chunks_with_embeddings)
+            results = self.paper_rrf_search.bulk_index_chunks(chunks_with_embeddings)
 
             logger.info(f"Indexed paper {arxiv_id}: {results['success']} chunks successful, {results['failed']} failed")
 
@@ -165,12 +168,14 @@ class HybridIndexingService:
             "total_errors": 0,
         }
 
+        self.paper_rrf_search.ingestion_name = ingestion_name
+
         for paper in papers:
             arxiv_id = paper.get("arxiv_id")
 
             # Optionally delete existing chunks
             if replace_existing and arxiv_id:
-                self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
+                self.paper_rrf_search.delete_paper_chunks(arxiv_id)
 
             # Index the paper
             stats = await self._index_paper(paper, ingestion_name=ingestion_name)
@@ -197,8 +202,9 @@ class HybridIndexingService:
         :param paper_data: Updated paper data
         :returns: Indexing statistics
         """
+        self.paper_rrf_search.ingestion_name = ingestion_name
         # Delete existing chunks
-        deleted = self.opensearch_client.delete_paper_chunks(arxiv_id, ingestion_name=ingestion_name)
+        deleted = self.paper_rrf_search.delete_paper_chunks(arxiv_id)
         if deleted:
             logger.info(f"Deleted existing chunks for paper {arxiv_id}")
 

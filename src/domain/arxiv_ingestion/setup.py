@@ -15,14 +15,14 @@ def setup_environment():
     logger.info("Setting up environment for arXiv paper ingestion")
 
     try:
-        arxiv_client, _pdf_parser, database, _metadata_fetcher, opensearch_client = get_cached_services()
+        arxiv_client, _pdf_parser, database, _metadata_fetcher, paper_rrf_search = get_cached_services()
 
         with database.get_session() as session:
             session.execute(text("SELECT 1"))
             logger.info("Database connection verified")
 
         try:
-            health = opensearch_client.client.cluster.health()
+            health = paper_rrf_search.client.cluster.health()
             if health["status"] in ["green", "yellow", "red"]:
                 logger.info(f"OpenSearch hybrid client connected (cluster status: {health['status']})")
             else:
@@ -30,7 +30,7 @@ def setup_environment():
         except Exception as e:
             raise Exception(f"OpenSearch hybrid client connection failed: {e}")
 
-        setup_results = opensearch_client.setup_indices(force=False)
+        setup_results = paper_rrf_search.setup_indices(force=False)
         if setup_results.get("hybrid_index"):
             logger.info("Hybrid search index created with vector support")
         else:

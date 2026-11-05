@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi.testclient import TestClient
 from src import dependencies
-from src.domain.rerank.schemas import RerankSearchResult, SearchDocument
+from src.domain.search.schemas import DocumentSearchResult, SearchDocument
 from src.main import app
 
 
@@ -12,8 +12,8 @@ def mock_rerank_search_service():
     service = Mock()
     service.config = Mock(use_hybrid=True, rerank_enabled=True)
 
-    async def _search(*, query: str, top_k: int) -> RerankSearchResult:
-        return RerankSearchResult(
+    async def _search(*, query: str, top_k: int) -> DocumentSearchResult:
+        return DocumentSearchResult(
             query=query,
             search_mode="hybrid",
             rerank_applied=True,
@@ -60,22 +60,22 @@ def mock_rerank_search_service():
 
 
 @pytest.fixture
-def mock_opensearch_client():
+def mock_paper_rrf_search():
     client = Mock()
     client.health_check.return_value = True
     return client
 
 
 @pytest.fixture
-def client(mock_rerank_search_service, mock_opensearch_client):
+def client(mock_rerank_search_service, mock_paper_rrf_search):
     def override_rerank_search_service():
         return mock_rerank_search_service
 
-    def override_opensearch_client():
-        return mock_opensearch_client
+    def override_paper_rrf_search():
+        return mock_paper_rrf_search
 
     app.dependency_overrides[dependencies.get_rerank_search_service] = override_rerank_search_service
-    app.dependency_overrides[dependencies.get_opensearch_client] = override_opensearch_client
+    app.dependency_overrides[dependencies.get_paper_rrf_search] = override_paper_rrf_search
 
     yield TestClient(app)
 
@@ -104,7 +104,7 @@ def test_rerank_search_endpoint_success(client, mock_rerank_search_service):
     assert data["after_rerank"][0]["arxiv_id"] == "2222.22222"
     assert data["after_rerank"][0]["rerank_score"] == 0.98
 
-    mock_rerank_search_service.search.assert_awaited_once_with(query="machine learning", top_k=2)
+    mock_rerank_search_service.search_rrf.assert_awaited_once_with(query="machine learning", top_k=2)
 
 
 def test_rerank_search_endpoint_minimal_request(client, mock_rerank_search_service):
@@ -113,7 +113,7 @@ def test_rerank_search_endpoint_minimal_request(client, mock_rerank_search_servi
     assert response.status_code == 200
     data = response.json()
     assert data["query"] == "machine learning neural networks"
-    mock_rerank_search_service.search.assert_awaited_once_with(
+    mock_rerank_search_service.search_rrf.assert_awaited_once_with(
         query="machine learning neural networks",
         top_k=10,
     )
@@ -127,8 +127,8 @@ def test_rerank_search_endpoint_validation_errors(client):
     assert response.status_code == 422
 
 
-def test_rerank_search_endpoint_unavailable(client, mock_opensearch_client):
-    mock_opensearch_client.health_check.return_value = False
+def test_rerank_search_endpoint_unavailable(client, mock_paper_rrf_search):
+    mock_paper_rrf_search.health_check.return_value = False
 
     response = client.post("/api/v1/rerank-search", json={"query": "machine learning"})
 

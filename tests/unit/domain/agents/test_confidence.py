@@ -5,7 +5,7 @@ from src.agents.fusionsearch.confidence import (
     filter_confident_documents,
     normalize_document_scores,
 )
-from src.domain.rerank.schemas import SearchDocument
+from src.domain.search.schemas import SearchDocument
 
 
 def _document(

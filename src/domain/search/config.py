@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class RerankSearchConfig:
-    """Mutable reranking settings for RerankSearchService."""
+    """Mutable reranking settings for SearchService."""
 
     use_hybrid: bool = True
     rerank_enabled: bool = True

@@ -3,17 +3,19 @@ from typing import Literal
 
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
+from src.domain.kg.schemas import DualLevelKGResult
+from src.domain.rrf import PaperRrfSearch
 
 from .config import RerankSearchConfig
-from .schemas import RerankSearchResult, SearchDocument
+from .schemas import DocumentSearchResult, SearchDocument
 
 logger = logging.getLogger(__name__)
 
 
 def _hit_to_document(hit: dict, rank: int) -> SearchDocument:
     return SearchDocument(
-        arxiv_id=hit["arxiv_id"],
+        arxiv_id=hit.get("arxiv_id") or hit.get("document_id", ""),
         chunk_text=hit["chunk_text"],
         title=hit.get("title", ""),
         authors=hit.get("authors", ""),
@@ -24,20 +26,22 @@ def _hit_to_document(hit: dict, rank: int) -> SearchDocument:
     )
 
 
-class RerankSearchService:
+class SearchService:
     """Search OpenSearch and optionally rerank candidates with Jina."""
 
     def __init__(
         self,
-        opensearch_client: OpenSearchClient,
+        paper_rrf_search: PaperRrfSearch,
         embeddings_client: JinaEmbeddingsClient,
         config: RerankSearchConfig,
         reranker_client: JinaRerankerClient | None = None,
+        kg_retrieval_service: DualLevelKGRetrievalService | None = None,
     ) -> None:
-        self.opensearch_client = opensearch_client
+        self.paper_rrf_search = paper_rrf_search
         self.embeddings_client = embeddings_client
         self.config = config
         self.reranker_client = reranker_client
+        self.kg_retrieval_service = kg_retrieval_service
 
     def _should_rerank(self) -> bool:
         return (
@@ -46,7 +50,7 @@ class RerankSearchService:
             and self.reranker_client.is_configured
         )
 
-    async def search(self, query: str, *, top_k: int) -> RerankSearchResult:
+    async def search_rrf(self, query: str, *, top_k: int) -> DocumentSearchResult:
         """Retrieve documents from OpenSearch and optionally rerank them with Jina.
 
         :param query: Search query
@@ -71,7 +75,7 @@ class RerankSearchService:
         )
 
         query_embedding = await self.embeddings_client.embed_query(query)
-        search_results = self.opensearch_client.search_unified(
+        search_results = self.paper_rrf_search.search_unified(
             query=query,
             query_embedding=query_embedding,
             size=search_size,
@@ -92,7 +96,7 @@ class RerankSearchService:
                     model=self.config.rerank_model,
                 )
                 logger.info("Reranking complete, returning top %d documents", len(after_rerank))
-                return RerankSearchResult(
+                return DocumentSearchResult(
                     query=query,
                     search_mode=search_mode,
                     rerank_applied=True,
@@ -111,14 +115,48 @@ class RerankSearchService:
                     e,
                 )
 
-        after_rerank = before_rerank[:top_k]
-        return RerankSearchResult(
+        return DocumentSearchResult(
             query=query,
             search_mode=search_mode,
             rerank_applied=False,
             before_rerank=before_rerank,
-            after_rerank=after_rerank,
+            after_rerank=[],
         )
+
+    async def dual_search(
+        self,
+        query: str,
+        *,
+        top_k_entities: int | None = None,
+        top_k_relations: int | None = None,
+    ) -> DualLevelKGResult:
+        """Run dual-level KG retrieval (entity + relation paths, graph hydrate, source chunks).
+
+        :param query: Natural-language query
+        :param top_k_entities: Override default entity kNN size
+        :param top_k_relations: Override default relation kNN size
+        :returns: Structured KG hits and token-budgeted ``formatted_context``
+        :raises RuntimeError: When ``kg_retrieval_service`` was not injected
+        """
+        if self.kg_retrieval_service is None:
+            raise RuntimeError(
+                "Dual-level KG retrieval is not configured. Enable KG__ENABLED and wire "
+                "DualLevelKGRetrievalService into SearchService."
+            )
+
+        logger.info("Dual-level KG search for query: %s...", query[:100])
+        result = await self.kg_retrieval_service.retrieve(
+            query,
+            top_k_entities=top_k_entities,
+            top_k_relations=top_k_relations,
+        )
+        logger.info(
+            "Dual-level KG search complete: entities=%d, relations=%d, chunks=%d",
+            len(result.entities),
+            len(result.relations),
+            len(result.chunks),
+        )
+        return result
 
     async def _rerank_hits(
         self,

@@ -20,7 +20,7 @@ from src.agents.fusionsearch.prompts import (
     REWRITE_PROMPT,
 )
 from src.agents.fusionsearch.utils import get_latest_context, get_latest_query, get_latest_retrieval_payload
-from src.domain.rerank.service import RerankSearchService
+from src.domain.search.service import SearchService
 from src.platform.graph import END, START, GraphBuilder, tools_condition
 from src.platform.graph.policies import (
     build_llm_timeout,
@@ -56,7 +56,7 @@ class AgenticRAGGraph:
 
     def __init__(
         self,
-        rerank_search_service: RerankSearchService,
+        rerank_search_service: SearchService,
         config: GraphConfig,
         langfuse_tracer: Optional[LangfuseTracer] = None,
     ):

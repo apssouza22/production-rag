@@ -2,7 +2,7 @@ from typing import Optional
 
 from src.config import Settings, get_settings
 from src.domain.jinaai.factory import make_embeddings_client
-from src.domain.opensearch.factory import make_opensearch_client_fresh
+from src.domain.rrf.factory import make_paper_rrf_search_fresh
 from src.platform.llm.chat_model import make_chat_model
 
 from .chunk_contextualizer import ChunkContextualizer
@@ -17,7 +17,9 @@ def _resolve_contextualization_model(settings: Settings) -> str:
 
 
 def make_hybrid_indexing_service(
-    settings: Optional[Settings] = None, opensearch_host: Optional[str] = None
+    settings: Optional[Settings] = None,
+    opensearch_host: Optional[str] = None,
+    ingestion_name: str | None = None,
 ) -> HybridIndexingService:
     """Factory function to create hybrid indexing service.
 
@@ -25,10 +27,13 @@ def make_hybrid_indexing_service(
 
     :param settings: Optional settings instance
     :param opensearch_host: Optional OpenSearch host override
+    :param ingestion_name: OpenSearch partition for deletes and search filters during indexing
     :returns: HybridIndexingService instance
     """
     if settings is None:
         settings = get_settings()
+
+    resolved_ingestion_name = ingestion_name or settings.opensearch.ingestion_name
 
     # Create dependencies using configuration
     chunker = TextChunker(
@@ -37,7 +42,11 @@ def make_hybrid_indexing_service(
         min_chunk_size=settings.chunking.min_chunk_size,
     )
     embeddings_client = make_embeddings_client(settings)
-    opensearch_client = make_opensearch_client_fresh(settings, host=opensearch_host)
+    paper_rrf_search = make_paper_rrf_search_fresh(
+        settings,
+        host=opensearch_host,
+        ingestion_name=resolved_ingestion_name,
+    )
 
     contextualizer = None
     if settings.chunking.contextualization_enabled:
@@ -55,6 +64,6 @@ def make_hybrid_indexing_service(
     return HybridIndexingService(
         chunker=chunker,
         embeddings_client=embeddings_client,
-        opensearch_client=opensearch_client,
+        paper_rrf_search=paper_rrf_search,
         contextualizer=contextualizer,
     )

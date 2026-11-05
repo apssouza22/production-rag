@@ -8,7 +8,7 @@ from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.factory import _build_rerank_search_config, make_agentic_rag_graph
 from src.agents.fusionsearch.models import GuardrailScoring
-from src.domain.rerank.factory import make_rerank_search_service
+from src.domain.search.factory import make_rerank_search_service
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def test_service(mock_opensearch_client, mock_jina_embeddings_client, mock_jina_
         guardrail_threshold=60,
     )
     rerank_search_service = make_rerank_search_service(
-        opensearch_client=mock_opensearch_client,
+        paper_rrf_search=mock_opensearch_client,
         embeddings_client=mock_jina_embeddings_client,
         reranker_client=mock_jina_reranker_client,
         config=_build_rerank_search_config(config),

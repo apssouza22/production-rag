@@ -1,15 +1,13 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+from .chunk_index_schema import DEFAULT_CHUNK_PROFILE, ChunkSearchProfile
+
 logger = logging.getLogger(__name__)
 
 
 class QueryBuilder:
-    """
-    Unified query builder for OpenSearch supporting both paper-level and chunk-level search.
-
-    Builds complex OpenSearch queries with proper scoring, filtering, and highlighting.
-    """
+    """Build OpenSearch queries for hybrid chunk search (BM25, filters, highlighting)."""
 
     def __init__(
         self,
@@ -21,19 +19,19 @@ class QueryBuilder:
         ingestion_name: Optional[str] = None,
         track_total_hits: bool = True,
         latest_papers: bool = False,
-        search_chunks: bool = False,
+        profile: ChunkSearchProfile | None = None,
     ):
         """Initialize query builder.
 
         :param query: Search query text
         :param size: Number of results to return
         :param from_: Offset for pagination
-        :param fields: Fields to search in (if None, auto-determined based on search_chunks)
+        :param fields: BM25 fields (defaults to profile.bm25_fields)
         :param categories: Filter by categories
         :param ingestion_name: Filter by ingestion partition (exact match)
         :param track_total_hits: Whether to track total hits accurately
-        :param latest_papers: Sort by publication date instead of relevance
-        :param search_chunks: Whether searching chunks (True) or papers (False)
+        :param latest_papers: Sort by profile.sort_field (newest first) instead of relevance
+        :param profile: BM25/filter/highlight profile for chunk search
         """
         self.query = query
         self.size = size
@@ -42,16 +40,8 @@ class QueryBuilder:
         self.ingestion_name = ingestion_name
         self.track_total_hits = track_total_hits
         self.latest_papers = latest_papers
-        self.search_chunks = search_chunks
-
-        # The ^ sets a boost multiplier for that field’s relevance score.
-        if fields is None:
-            if search_chunks:
-                self.fields = ["contextualized_text^4", "chunk_text^2", "title^2", "abstract^1"]
-            else:
-                self.fields = ["title^3", "abstract^2", "authors^1"]
-        else:
-            self.fields = fields
+        self.profile = profile or DEFAULT_CHUNK_PROFILE
+        self.fields = list(fields) if fields is not None else list(self.profile.bm25_fields)
 
     def build(self) -> Dict[str, Any]:
         """Build the complete OpenSearch query.
@@ -121,76 +111,27 @@ class QueryBuilder:
         filters = []
 
         if self.categories:
-            filters.append({"terms": {"categories": self.categories}})
+            field = self.profile.term_filters.get("categories", "categories")
+            filters.append({"terms": {field: self.categories}})
 
         if self.ingestion_name:
             filters.append({"term": {"ingestion_name": self.ingestion_name}})
 
         return filters
 
-    def _build_source_fields(self) -> Any:
-        """Define which fields to return in results.
-
-        :returns: Source field configuration (list for papers, dict for chunks)
-        """
-        if self.search_chunks:
-            return {"excludes": ["embedding"]}
-        else:
-            return ["arxiv_id", "title", "authors", "abstract", "categories", "published_date", "pdf_url"]
+    def _build_source_fields(self) -> dict[str, list[str]]:
+        """Define which fields to return in results."""
+        return {"excludes": ["embedding"]}
 
     def _build_highlight(self) -> Dict[str, Any]:
         """Build highlighting configuration.
 
         :returns: Highlight configuration dictionary
         """
-        if self.search_chunks:
-            return {
-                "fields": {
-                    "contextualized_text": {
-                        "fragment_size": 150,
-                        "number_of_fragments": 2,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"],
-                    },
-                    "chunk_text": {
-                        "fragment_size": 150,
-                        "number_of_fragments": 2,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"],
-                    },
-                    "title": {"fragment_size": 0, "number_of_fragments": 0, "pre_tags": ["<mark>"], "post_tags": ["</mark>"]},
-                    "abstract": {
-                        "fragment_size": 150,
-                        "number_of_fragments": 1,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"],
-                    },
-                },
-                "require_field_match": False,
-            }
-        else:
-            # Paper-specific highlighting
-            return {
-                "fields": {
-                    "title": {
-                        "fragment_size": 0,
-                        "number_of_fragments": 0,
-                    },
-                    "abstract": {
-                        "fragment_size": 150,
-                        "number_of_fragments": 3,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"],
-                    },
-                    "authors": {
-                        "fragment_size": 0,
-                        "number_of_fragments": 0,
-                        "pre_tags": ["<mark>"],
-                        "post_tags": ["</mark>"],
-                    },
-                },
-                "require_field_match": False,
-            }
+        return {
+            "fields": dict(self.profile.highlight_fields),
+            "require_field_match": False,
+        }
 
     def _build_sort(self) -> Optional[List[Dict[str, Any]]]:
         """Build sorting configuration.
@@ -198,9 +139,9 @@ class QueryBuilder:
         :returns: Sort configuration or None for relevance scoring
         """
         if self.latest_papers:
-            return [{"published_date": {"order": "desc"}}, "_score"]
+            return [{self.profile.sort_field: {"order": "desc"}}, "_score"]
 
         if self.query.strip():
             return None
 
-        return [{"published_date": {"order": "desc"}}, "_score"]
+        return [{self.profile.sort_field: {"order": "desc"}}, "_score"]

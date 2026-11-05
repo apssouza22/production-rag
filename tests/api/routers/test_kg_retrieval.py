@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from src.api import kg_retrieval
 from src.config import get_settings
 from src.domain.kg.schemas import DualLevelKGResult

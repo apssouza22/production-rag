@@ -7,7 +7,7 @@ Evaluation frameworks for the API, integrated with the main project. For archite
 - **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
 - **experiments** — self-contained experiment: ingests local PDFs, generates its own question set, then scores retrieval with Ragas
 
-Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.rerank.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.live_req_evals.config import get_settings`).
+Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.search.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.live_req_evals.config import get_settings`).
 
 ## Minimal example
 

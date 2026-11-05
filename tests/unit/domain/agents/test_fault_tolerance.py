@@ -190,7 +190,7 @@ class TestAgenticRagGraphCompilation:
         from src.agents.fusionsearch.factory import make_agentic_rag_service
 
         service = make_agentic_rag_service(
-            opensearch_client=MagicMock(),
+            paper_rrf_search=MagicMock(),
             embeddings_client=MagicMock(),
         )
 

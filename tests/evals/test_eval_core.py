@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from evals.core.evaluator import Evaluator
 from evals.core.metrics import MetricDefinition, SampleField
-from evals.core.reporting import build_report
 from evals.core.report_publisher import make_null_report_publisher
+from evals.core.reporting import build_report
 from evals.core.runner import EvalRunner
 from evals.core.schemas import EvalSample, MetricResult
 from evals.live_req_evals.config import Settings

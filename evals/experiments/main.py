@@ -10,6 +10,7 @@ import sys
 import colorama
 from colorama import Fore, Style
 
+from evals.core.report_publisher import make_report_publisher
 from evals.experiments.config import (
     DEFAULT_EXPERIMENT_CONFIG_PATH,
     REPO_ROOT,
@@ -17,7 +18,6 @@ from evals.experiments.config import (
     build_run_config,
     resolve_settings_path,
 )
-from evals.core.report_publisher import make_report_publisher
 from evals.experiments.runner import REPORTS_DIR, ExperimentRunner
 
 
@@ -109,10 +109,6 @@ def main() -> None:
         os.environ["EXPERIMENT_INGESTION_NAME"] = args.ingestion_name
 
     run_config = build_run_config(resolve_settings_path(args.settings))
-
-    # OpenSearch filters every search by the configured partition, so indexing and
-    # retrieval must agree on the same ingestion name.
-    os.environ["OPENSEARCH__INGESTION_NAME"] = run_config.experiment.experiment_ingestion_name
 
     asyncio.run(run_experiment(args, run_config))
 

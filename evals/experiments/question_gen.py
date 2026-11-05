@@ -6,7 +6,7 @@ from pathlib import Path
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from src.domain.opensearch.client import OpenSearchClient
+from src.domain.rrf import PaperRrfSearch
 
 from evals.experiments.config import ExperimentSettings
 from evals.experiments.schemas import ExperimentQuery, GeneratedQuestions
@@ -25,18 +25,18 @@ QUESTION_SYSTEM_PROMPT = (
 
 
 def load_chunks_by_paper(
-    opensearch_client: OpenSearchClient,
+    paper_rrf_search: PaperRrfSearch,
     ingestion_name: str,
     chunks_per_paper: int,
 ) -> dict[str, list[str]]:
     """Return up to ``chunks_per_paper`` chunk texts per paper in the ingestion partition."""
-    response = opensearch_client.client.search(
-        index=opensearch_client.index_name,
+    response = paper_rrf_search.client.search(
+        index=paper_rrf_search.index_name,
         body={
             "query": {"term": {"ingestion_name": ingestion_name}},
             "size": MAX_CHUNKS_SCANNED,
-            "sort": [{"arxiv_id": "asc"}, {"chunk_index": "asc"}],
-            "_source": ["arxiv_id", "chunk_text", "title"],
+            "sort": [{"document_id": "asc"}, {"chunk_index": "asc"}],
+            "_source": ["document_id", "chunk_text", "metadata.arxiv_id", "metadata.title"],
         },
     )
 
@@ -46,7 +46,10 @@ def load_chunks_by_paper(
         chunk_text = (source.get("chunk_text") or "").strip()
         if not chunk_text:
             continue
-        chunks = chunks_by_paper.setdefault(source["arxiv_id"], [])
+        paper_key = source.get("metadata", {}).get("arxiv_id") or source.get("document_id", "")
+        if not paper_key:
+            continue
+        chunks = chunks_by_paper.setdefault(paper_key, [])
         if len(chunks) < chunks_per_paper:
             chunks.append(chunk_text)
 
@@ -75,8 +78,8 @@ def write_queries(queries: list[ExperimentQuery], queries_path: Path) -> None:
 class QuestionGenerator:
     """Build a question/reference dataset from the indexed paper chunks."""
 
-    def __init__(self, opensearch_client: OpenSearchClient, chat_model: BaseChatModel, settings: ExperimentSettings) -> None:
-        self.opensearch_client = opensearch_client
+    def __init__(self, paper_rrf_search: PaperRrfSearch, chat_model: BaseChatModel, settings: ExperimentSettings) -> None:
+        self.paper_rrf_search = paper_rrf_search
         self.chat_model = chat_model
         self.settings = settings
 
@@ -89,7 +92,7 @@ class QuestionGenerator:
             return queries
 
         chunks_by_paper = load_chunks_by_paper(
-            self.opensearch_client,
+            self.paper_rrf_search,
             self.settings.experiment_ingestion_name,
             self.settings.experiment_chunks_per_paper,
         )

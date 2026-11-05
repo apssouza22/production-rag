@@ -44,7 +44,7 @@ def generate_daily_report(
     }
 
     try:
-        _arxiv_client, _pdf_parser, database, _metadata_fetcher, opensearch_client = get_cached_services()
+        _arxiv_client, _pdf_parser, database, _metadata_fetcher, paper_rrf_search = get_cached_services()
 
         with database.get_session() as session:
             from sqlalchemy import func
@@ -54,22 +54,25 @@ def generate_daily_report(
             total_papers = session.query(func.count(Paper.id)).scalar()
             report["database_statistics"] = {"total_papers": total_papers}
 
-        if opensearch_client.health_check():
+        if paper_rrf_search.health_check():
             try:
-                stats_response = opensearch_client.client.indices.stats(index=opensearch_client.index_name)
+                stats_response = paper_rrf_search.client.indices.stats(index=paper_rrf_search.index_name)
 
-                count_response = opensearch_client.client.count(index=opensearch_client.index_name)
+                count_response = paper_rrf_search.client.count(index=paper_rrf_search.index_name)
 
-                index_stats = stats_response["indices"][opensearch_client.index_name]["total"]
+                index_stats = stats_response["indices"][paper_rrf_search.index_name]["total"]
 
                 report["opensearch_statistics"] = {
-                    "index_name": opensearch_client.index_name,
+                    "index_name": paper_rrf_search.index_name,
                     "document_count": count_response["count"],
                     "index_size_mb": round(index_stats["store"]["size_in_bytes"] / (1024 * 1024), 2),
                 }
             except Exception as stats_error:
                 logger.error(f"Failed to get OpenSearch statistics: {stats_error}")
-                report["opensearch_statistics"] = {"index_name": opensearch_client.index_name, "error": str(stats_error)}
+                report["opensearch_statistics"] = {
+                    "index_name": paper_rrf_search.index_name,
+                    "error": str(stats_error),
+                }
     except Exception as e:
         logger.error(f"Failed to get statistics: {e}")
         report["error"] = str(e)

@@ -45,7 +45,7 @@ class SearchDocument(BaseModel):
     )
 
 
-class RerankSearchResult(BaseModel):
+class DocumentSearchResult(BaseModel):
     """OpenSearch retrieval result with optional Jina reranking."""
 
     query: str

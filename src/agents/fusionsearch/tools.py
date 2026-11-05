@@ -6,13 +6,13 @@ from langchain_core.tools import tool
 from src.agents.fusionsearch.confidence import compute_retrieval_confidence, filter_confident_documents
 from src.agents.fusionsearch.config import GraphConfig
 from src.agents.fusionsearch.utils import build_source_items, format_documents_for_context
-from src.domain.rerank.schemas import SearchDocument
-from src.domain.rerank.service import RerankSearchService
+from src.domain.search.schemas import SearchDocument
+from src.domain.search.service import SearchService
 
 logger = logging.getLogger(__name__)
 
 
-def create_retriever_tool(rerank_search_service: RerankSearchService, graph_config: GraphConfig):
+def create_retriever_tool(rerank_search_service: SearchService, graph_config: GraphConfig):
     """Create a retriever tool that wraps the rerank search service.
 
     :param rerank_search_service: OpenSearch + Jina rerank search service
@@ -39,7 +39,7 @@ def create_retriever_tool(rerank_search_service: RerankSearchService, graph_conf
 
         logger.info(f"Retrieving papers for query: {query[:100]}...")
 
-        search_result = await rerank_search_service.search(query=query, top_k=top_k)
+        search_result = await rerank_search_service.search_rrf(query=query, top_k=top_k)
         rerank_applied = search_result.rerank_applied
 
         confident_documents = filter_confident_documents(

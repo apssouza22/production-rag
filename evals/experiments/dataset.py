@@ -4,7 +4,7 @@ import logging
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from src.domain.rerank.service import RerankSearchService
+from src.domain.search.service import SearchService
 
 from evals.core.schemas import EvalSample
 from evals.experiments.config import ExperimentSettings
@@ -26,7 +26,7 @@ class ExperimentDataset:
     def __init__(
         self,
         queries: list[ExperimentQuery],
-        rerank_search_service: RerankSearchService,
+        rerank_search_service: SearchService,
         chat_model: BaseChatModel,
         settings: ExperimentSettings,
     ) -> None:
@@ -46,7 +46,7 @@ class ExperimentDataset:
         return samples
 
     async def _build_sample(self, query: ExperimentQuery) -> EvalSample | None:
-        result = await self.rerank_search_service.search(query.user_input, top_k=self.settings.experiment_top_k)
+        result = await self.rerank_search_service.search_rrf(query.user_input, top_k=self.settings.experiment_top_k)
         contexts = [document.chunk_text for document in result.after_rerank if document.chunk_text.strip()]
         if not contexts:
             logger.warning("Skipping query with no retrieved contexts: %s", query.user_input)
