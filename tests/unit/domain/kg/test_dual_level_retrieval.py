@@ -26,7 +26,7 @@ def _build_service(
     kg_settings: KGSettings,
     extraction: AsyncMock,
     embeddings: AsyncMock,
-    kg_vector: MagicMock,
+    kg_search: MagicMock,
     database: MagicMock,
     opensearch: MagicMock,
     reranker: AsyncMock | None = None,
@@ -34,7 +34,7 @@ def _build_service(
     return DualLevelKGRetrievalService(
         database=database,
         paper_rrf_search=opensearch,
-        kg_vector_client=kg_vector,
+        kg_search_client=kg_search,
         extraction_service=extraction,
         embeddings_client=embeddings,
         kg_settings=kg_settings,
@@ -54,9 +54,9 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
     embeddings = AsyncMock()
     embeddings.embed_query.return_value = [0.1] * 8
 
-    kg_vector = MagicMock()
-    kg_vector.knn_search_entities.return_value = [{"entity_id": "transformer", "score": 1.0}]
-    kg_vector.knn_search_relations.return_value = []
+    kg_search = MagicMock()
+    kg_search.search_entities.return_value = [{"entity_id": "transformer", "score": 1.0}]
+    kg_search.search_relations.return_value = []
 
     node = KgNode(
         entity_id="transformer",
@@ -94,7 +94,7 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
         kg_settings=kg_settings,
         extraction=extraction,
         embeddings=embeddings,
-        kg_vector=kg_vector,
+        kg_search=kg_search,
         database=database,
         opensearch=opensearch,
     )
@@ -125,9 +125,9 @@ async def test_retrieve_reranks_chunks_before_formatting() -> None:
     embeddings = AsyncMock()
     embeddings.embed_query.return_value = [0.1] * 8
 
-    kg_vector = MagicMock()
-    kg_vector.knn_search_entities.return_value = [{"entity_id": "e1", "score": 1.0}]
-    kg_vector.knn_search_relations.return_value = []
+    kg_search = MagicMock()
+    kg_search.search_entities.return_value = [{"entity_id": "e1", "score": 1.0}]
+    kg_search.search_relations.return_value = []
 
     node = KgNode(
         entity_id="e1",
@@ -178,7 +178,7 @@ async def test_retrieve_reranks_chunks_before_formatting() -> None:
         kg_settings=kg_settings,
         extraction=extraction,
         embeddings=embeddings,
-        kg_vector=kg_vector,
+        kg_search=kg_search,
         database=database,
         opensearch=opensearch,
         reranker=reranker,

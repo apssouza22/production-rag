@@ -1,102 +1,102 @@
 [
   {
-    "user_input": "What are the four crop species represented in the PlantShade dataset?",
-    "reference": "Tomato, soybean, sugar beet, and strawberry.",
+    "user_input": "What plant species are included in the PlantShade dataset?",
+    "reference": "The dataset covers tomato, soybean, sugar beet, and strawberry.",
     "arxiv_id": "2609.21059v1"
   },
   {
     "user_input": "How does the PlantShade generative model condition shadow-map generation on lighting and plant structure?",
-    "reference": "It encodes the textual supplementary-light position through cross-attention and uses a ControlNet branch conditioned on the RGB appearance image and its structural representation, such as Canny edges.",
+    "reference": "It uses a text-encoded complementary light position for semantic conditioning and a ControlNet branch that receives the plant\u2019s RGB appearance and structural edge representation to preserve geometric consistency.",
     "arxiv_id": "2609.21059v1"
   },
   {
-    "user_input": "What are the main specifications of the PlantShade dataset regarding size, resolution, viewpoint, plant ages, and layouts?",
-    "reference": "It contains 38,500 image pairs at 1920\u00d71080 resolution, captured from a nadir camera 1.8 m above the ground, covering plant ages from 7 to 119 days and layouts of 1\u00d71, 1\u00d73, and 3\u00d75 plants.",
+    "user_input": "What are the main characteristics of the PlantShade dataset\u2019s simulated scenes and imaging setup?",
+    "reference": "It contains 38,500 image pairs at 1920\u00d71080 resolution, covers plant ages from 7 to 119 days and layouts of 1\u00d71, 1\u00d73, and 3\u00d75 plants, and uses a nadir camera 1.8 m above the ground with a supplementary light orbiting at 1.8 m height and a 1.25 m radius.",
     "arxiv_id": "2609.21059v1"
   },
   {
-    "user_input": "How does PlantShade compare with Stable Diffusion under out-of-distribution layout settings?",
-    "reference": "Both methods perform worse under OOD settings, but PlantShade consistently outperforms Stable Diffusion across mIoU, Boundary IoU, LPIPS, and MSE, indicating stronger robustness to distribution shift.",
+    "user_input": "How does PlantShade compare with the Stable Diffusion baseline under out-of-distribution layout settings?",
+    "reference": "Both methods degrade under OOD settings, but PlantShade consistently outperforms Stable Diffusion across mIoU, Boundary IoU, LPIPS, and MSE, showing stronger robustness to distribution shifts and increasing layout complexity.",
     "arxiv_id": "2609.21059v1"
   },
   {
-    "user_input": "What improvement in AUPRC does LoRA adaptation provide for the frozen DINOv3 ViT-L backbone in SAS ATR?",
-    "reference": "It increases AUPRC from 0.300 \u00b1 0.011 to 0.679 \u00b1 0.027, a 2.3\u00d7 improvement.",
+    "user_input": "What AUPRC improvement did LoRA provide when adapting the frozen DINOv3 ViT-L backbone for SAS ATR, and what fraction of the backbone weights did the rank-4 adapter train?",
+    "reference": "LoRA increased AUPRC from 0.300 to 0.679 \u00b1 0.027, while the rank-4 adapter trained only 0.26% of the backbone weights.",
     "arxiv_id": "2609.21061v1"
   },
   {
-    "user_input": "How does Stage 2 hard-negative mining select acoustic mimics, and what control is used to isolate its effect?",
-    "reference": "A linear probe scores frozen Stage 1 embeddings, and the 5,000 clutter samples with the highest false-positive confidence are selected. The control uses an identical curriculum but samples 5,000 clutter snippets uniformly at random.",
+    "user_input": "How were hard-negative mining and supervised contrastive learning evaluated against controls in the SAS ATR pipeline?",
+    "reference": "Hard-negative mining was compared with an equal-size random curriculum, while supervised contrastive learning was compared with the preceding Stage 2 model; all comparisons used matched training conditions and were repeated over three random seeds.",
     "arxiv_id": "2609.21061v1"
   },
   {
-    "user_input": "What did the study find about the usefulness of increasing LoRA rank beyond 4?",
-    "reference": "Performance was essentially flat beyond rank 4: rank 4 trained only 0.26% of backbone weights and matched rank 64, while only rank 2 showed a notable drop, reaching 0.6229 AUPRC.",
+    "user_input": "Why did hard-negative mining fail to improve SAS ATR performance beyond its random-curriculum control?",
+    "reference": "The mined curriculum was selected from data that the encoder had already fit, so the selected hard negatives provided little additional information beyond exposure rebalancing.",
     "arxiv_id": "2609.21061v1"
   },
   {
-    "user_input": "How was the SAS ATR dataset split to test geographic generalization, and what were the training-set class statistics?",
-    "reference": "The 148 mission files were split by geographic mission so no mission appeared in multiple splits. Training used 106 missions and 336,298 snippets containing 2,791 targets, a 119:1 imbalance.",
+    "user_input": "What dataset split strategy was used to test geographic generalization in the SAS ATR experiments?",
+    "reference": "The 148 SAS mission files were partitioned by geographic location at the mission level, with 106 missions for training, 16 for validation, and 26 for testing; no mission contributed to more than one split.",
     "arxiv_id": "2609.21061v1"
   },
   {
-    "user_input": "What is the COPES dataset designed to support?",
-    "reference": "COPES is designed to support community-centered, lived-experience-informed peer-support response generation for mental health queries.",
+    "user_input": "What is the COPES dataset, and how many peer-support-seeking Reddit posts remained after automated labeling and filtering?",
+    "reference": "COPES (COmmunity-centered Peer Engaged Support) is a dataset of Reddit posts and preferred/rejected peer-support responses curated from mental-health communities. After filtering, 4,455 peer-support-seeking posts with coping-strategy labels remained.",
     "arxiv_id": "2609.21075v1"
   },
   {
-    "user_input": "How were coping strategies categorized when labeling Reddit posts in COPES?",
-    "reference": "Each post was independently labeled for four potentially co-occurring categories: problem-focused, emotion-focused, meaning-focused, and social coping.",
+    "user_input": "What four coping-strategy categories are used to classify peer-support-seeking Reddit posts in COPES?",
+    "reference": "The four categories are problem-focused coping, emotion-focused coping, meaning-focused coping, and social coping. Each category is modeled as an independent binary label because multiple strategies can co-occur in one post.",
     "arxiv_id": "2609.21075v1"
   },
   {
-    "user_input": "Which model and training configuration achieved the highest overall Strategy Alignment score?",
-    "reference": "Gemma-4-E4B trained with SFT achieved the highest score, reaching 0.50, or 50%.",
+    "user_input": "How did SFT and SFT+DPO affect Strategy Alignment for Qwen 3-4B Instruct compared with its zero-shot baseline?",
+    "reference": "Qwen 3-4B Instruct increased from 0.30 in the zero-shot setting to 0.47 with SFT, a 56.52% relative gain, and to 0.48 with SFT+DPO, a 60.32% relative gain.",
     "arxiv_id": "2609.21075v1"
   },
   {
-    "user_input": "Which subreddit categories generally showed the largest relative strategy-alignment improvements after post-training?",
-    "reference": "Psychosis & Anxiety (C2) and Coping & Therapy (C4) generally showed the largest relative improvements, excluding Qwen's outlier gains for Compulsive Disorders (C3).",
+    "user_input": "Which subreddit categories generally showed the greatest and smallest post-training gains in strategy alignment?",
+    "reference": "Psychosis & Anxiety (C2) and Coping & Therapy (C4) generally showed the greatest gains. Excluding unusually large Qwen gains for Compulsive Disorders (C3), Mood Disorders (C5) showed the smallest average improvement across model families.",
     "arxiv_id": "2609.21075v1"
   },
   {
-    "user_input": "What does ZeroGraph materialize to replace live cross-depth optimization dependencies?",
-    "reference": "A frozen teacher\u2019s deterministic boundary trajectory, consisting of predecessor-successor hidden-state pairs persisted as a versioned dataset with model, data-order, shape, and content provenance.",
+    "user_input": "What problem does ZeroGraph solve in independently trained neural-network blocks?",
+    "reference": "It preserves compositional compatibility by replacing live cross-depth optimization dependencies with persistent supervision from a frozen teacher\u2019s coherent boundary trajectory.",
     "arxiv_id": "2611.02200v1"
   },
   {
-    "user_input": "What happened in the GPT-2 Large unanchored blockwise diagnostic despite improved local optimization and systems metrics?",
-    "reference": "Assembled language quality collapsed: held-out cross-entropy increased from 3.6342 to 10.4811, token accuracy fell to 5.74%, and all measured low-noise context effects were negative.",
+    "user_input": "What happened in the GPT-2 Large unanchored blockwise-training diagnostic despite improvements in local optimization and memory usage?",
+    "reference": "Held-out cross-entropy worsened from 3.6342 to 10.4811, token accuracy fell from 34.89% to 5.74%, and all measured low-noise context effects were negative.",
     "arxiv_id": "2611.02200v1"
   },
   {
-    "user_input": "What did the TinyLlama causal study show about clean versus noisy teacher-boundary supervision?",
-    "reference": "Cached clean boundary regression restored composition, achieving held-out CE 1.3059 and passing context and generation gates, whereas the tested noisy objective failed with both cached and online targets despite similar teacher-forced CE; cached and online noisy training produced bitwise-equivalent states.",
+    "user_input": "What evidence showed that materialized and online clean teacher-boundary supervision provide the same learning targets?",
+    "reference": "Across 12 boundaries, 32 examples, and 8 steps, every cached-versus-online comparison had a bitwise-equal fraction of 1.0, maximum absolute error of 0, and MSE of 0.",
     "arxiv_id": "2611.02200v1"
   },
   {
-    "user_input": "Why had cached ZeroGraph training not reached wall-time break-even after 16 measured reuses?",
-    "reference": "Although cached execution was faster per reuse than online generation, constructing the cache cost 618.310 seconds; cache-inclusive amortized wall time remained higher than online through K = 16.",
+    "user_input": "Why did cached ZeroGraph training not achieve wall-time break-even through 16 reuses?",
+    "reference": "Although cached local jobs averaged 99.129 seconds versus 116.386 seconds online, constructing the cache required 618.310 seconds, so the one-time materialization cost kept amortized wall time higher through 16 reuses.",
     "arxiv_id": "2611.02200v1"
   },
   {
     "user_input": "What is semantic cluster voting, and how does it select an answer without using a reward model or self-judging?",
-    "reference": "It embeds each sampled response, clusters the embeddings by cosine distance, identifies the largest semantic cluster, and returns its medoid for text or its plurality answer for math. It uses no reward model and does not ask the generator to judge its own samples.",
+    "reference": "Semantic cluster voting embeds the sampled responses, groups them by meaning using agglomerative clustering, identifies the largest cluster, and returns its most central member for text or its plurality answer for math.",
     "arxiv_id": "2611.02208v1"
   },
   {
-    "user_input": "Why does test-time voting improve mathematical accuracy much more than open-ended text quality in the reported experiments?",
-    "reference": "Mathematical samples vary while remaining checkable, so agreement can identify the correct answer; open-ended samples from the instruct models almost all fall into one meaning cluster, leaving little meaningful variation to select over.",
+    "user_input": "Why does test-time voting improve math accuracy substantially but provide little benefit for open-ended text in small instruct models?",
+    "reference": "Math samples vary while remaining checkable, allowing agreement to identify correct answers. Open-ended samples almost all fall into one meaning cluster, leaving little meaningful variation for a selector to exploit.",
     "arxiv_id": "2611.02208v1"
   },
   {
     "user_input": "What evidence indicates that open-ended diversity collapse is caused more by instruction-tuning than by model size?",
-    "reference": "A 7B Qwen instruct model collapses as strongly as the 3B model, while the 3B base model remains diverse and the instruction-tuned version is not. This points to instruction-tuning rather than scale as the main cause.",
+    "reference": "At similar scale, the base Qwen2.5-3B model remains diverse while the instruction-tuned model collapses into similar outputs, and a larger 7B instruct model from the same family collapses similarly.",
     "arxiv_id": "2611.02208v1"
   },
   {
     "user_input": "What was the effect of increasing decoding temperature on open-ended generation quality and diversity?",
-    "reference": "Higher temperature did not restore usable diversity: it added diversity but reduced quality more than it helped, producing a net change of -0.64 judge points with a 95% confidence interval of [-0.93, -0.37].",
+    "reference": "Increasing temperature did not restore useful diversity: it reduced quality more than it helped, producing a net change of -0.64 judge points with a 95% confidence interval of [-0.93, -0.37].",
     "arxiv_id": "2611.02208v1"
   }
 ]

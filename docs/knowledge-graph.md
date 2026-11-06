@@ -184,7 +184,7 @@ Entity IDs are stable slugs from display names (`normalize_entity_id` in `src/do
 
 Chunk provenance uses keys `"{arxiv_id}:{chunk_index}"` (`make_chunk_key`), matching how chunks are addressed in OpenSearch.
 
-### 3.2 OpenSearch vector indices (`src/domain/kg/kg_vector_client.py`)
+### 3.2 OpenSearch vector indices (`src/domain/kg/kg_search_client.py`)
 
 Index names: `{OPENSEARCH__INDEX_NAME}-{KG__ENTITY_INDEX_SUFFIX}` and `...-{KG__RELATION_INDEX_SUFFIX}` (defaults `kg-entities`, `kg-relations`).
 
@@ -378,13 +378,13 @@ sequenceDiagram
     par Entity branch
         S->>J: embed(low_level joined)
         J-->>S: vector
-        S->>OS: knn_search_entities
+        S->>OS: search_entities
         OS-->>S: entity_ids
         S->>PG: get_nodes + node_counts
     and Relation branch
         S->>J: embed(high_level joined)
         J-->>S: vector
-        S->>OS: knn_search_relations
+        S->>OS: search_relations
         OS-->>S: source/target pairs
         S->>PG: get_edges_by_pairs
     end
@@ -638,7 +638,7 @@ Query length under 50 characters with empty keyword lists uses the raw query as 
 |---------|--------|
 | `make_kg_indexing_service` | Index pipeline with extract model |
 | `make_dual_level_kg_retrieval_service` | Query pipeline with keyword model + optional `JinaRerankerClient` |
-| `make_kg_vector_client` | OpenSearch KG indices for resolved `ingestion_name` |
+| `make_kg_search_client` | OpenSearch KG indices for resolved `ingestion_name` |
 
 `resolve_kg_ingestion_name()` uses `KG__INGESTION_NAME` when set, otherwise `OPENSEARCH__INGESTION_NAME`.
 

@@ -10,7 +10,7 @@ from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.kg.context_format import format_kg_context
 from src.domain.kg.extraction import KgExtractionService
-from src.domain.kg.kg_vector_client import KgVectorClient
+from src.domain.kg.kg_search_client import KgSearchClient
 from src.domain.kg.models import KgEdge, KgNode
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import (
@@ -59,7 +59,7 @@ class DualLevelKGRetrievalService:
         self,
         database: BaseDatabase,
         paper_rrf_search: HybridRrfSearch,
-        kg_vector_client: KgVectorClient,
+        kg_search_client: KgSearchClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,
         kg_settings: KGSettings,
@@ -68,7 +68,7 @@ class DualLevelKGRetrievalService:
     ) -> None:
         self._database = database
         self._paper_rrf_search = paper_rrf_search
-        self._kg_vector_client = kg_vector_client
+        self._kg_search_client = kg_search_client
         self._extraction_service = extraction_service
         self._embeddings_client = embeddings_client
         self._kg_settings = kg_settings
@@ -140,8 +140,9 @@ class DualLevelKGRetrievalService:
         if not low_level_keywords:
             return []
 
-        embedding = await self._embeddings_client.embed_query(", ".join(low_level_keywords))
-        vector_hits = self._kg_vector_client.knn_search_entities(embedding, top_k)
+        keyword_blob = ", ".join(low_level_keywords)
+        embedding = await self._embeddings_client.embed_query(keyword_blob)
+        vector_hits = self._kg_search_client.search_entities(embedding, top_k, query_text=keyword_blob)
         entity_ids = [hit["entity_id"] for hit in vector_hits if hit.get("entity_id")]
 
         with self._graph_repository() as repo:
@@ -168,8 +169,9 @@ class DualLevelKGRetrievalService:
         if not high_level_keywords:
             return []
 
-        embedding = await self._embeddings_client.embed_query(", ".join(high_level_keywords))
-        vector_hits = self._kg_vector_client.knn_search_relations(embedding, top_k)
+        keyword_blob = ", ".join(high_level_keywords)
+        embedding = await self._embeddings_client.embed_query(keyword_blob)
+        vector_hits = self._kg_search_client.search_relations(embedding, top_k, query_text=keyword_blob)
         pairs = [
             (hit["source_entity_id"], hit["target_entity_id"])
             for hit in vector_hits
