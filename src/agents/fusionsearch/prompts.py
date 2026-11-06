@@ -10,6 +10,7 @@ If the documents contain keywords or semantic meaning related to the question, g
 Give a binary score 'yes' or 'no' to indicate whether the documents are relevant to the question.
 Also provide brief reasoning for your decision.
 
+Output must use the exact structured fields expected by the API (e.g. binary_score, reasoning) with no extra keys.
 Respond in JSON format with 'binary_score' (yes/no) and 'reasoning' fields."""
 
 # Rewrite query for better retrieval
@@ -21,7 +22,9 @@ Here is the initial question:
 {question}
 
 Formulate an improved question that will retrieve more relevant documents.
-Provide only the improved question without any preamble or explanation."""
+
+Output must use the exact structured fields: `rewritten_query` (standalone search query only, no preamble)
+and `reasoning` (one short sentence on what you changed). Do not add other keys or free-form text outside those fields."""
 
 # System message for query generation/response
 SYSTEM_MESSAGE = """You are an AI assistant specializing in academic research papers from arXiv.
@@ -94,6 +97,7 @@ Provide:
 1. A score between 0 and 100
 2. A brief reason explaining why you gave this score
 
+Output must use the exact structured fields expected by the API (score, reason) with no extra keys.
 Respond in JSON format with 'score' (integer 0-100) and 'reason' (string) fields."""
 
 # Answer generation prompt (used in generate_answer_node)
@@ -121,6 +125,7 @@ Answer:"""
 # LLM abstention judge prompt (used in validate_answer node)
 ABSTENTION_JUDGE_PROMPT = """You are an answer quality judge. Given a question, retrieved context, and a generated answer, evaluate whether the answer is fully supported by the context.
 
+Output must use exactly these structured fields (verdict, confidence, reasoning) and no others.
 Respond ONLY in JSON format with these fields:
 - verdict: "supported" | "partial" | "unsupported"
 - confidence: float between 0.0 and 1.0

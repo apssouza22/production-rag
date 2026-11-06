@@ -1,7 +1,7 @@
 ENTITY_RELATION_EXTRACTION_PROMPT = """Extract entities and relationships from the text chunk below.
 
 Rules:
-- Entities: concrete nouns, methods, models, datasets, metrics, or named concepts.
+- Entities: concrete nouns, methods, professional titles, places, metrics, named concepts, etc.
 - Relations: directed links between entities mentioned in this chunk.
 - Keep descriptions short (1-2 sentences).
 - Do not invent entities not supported by the chunk.

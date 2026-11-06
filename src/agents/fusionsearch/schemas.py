@@ -60,6 +60,10 @@ class SourceDetail(BaseModel):
 class AgenticAskResponse(AskResponse):
     """Response model for agentic RAG question answering."""
 
+    rewritten_query: Optional[str] = Field(
+        None,
+        description="LLM-rewritten search query when retrieval was retried with an expanded query",
+    )
     reasoning_steps: List[str] = Field(..., description="Agent's decision-making steps")
     retrieval_attempts: int = Field(..., description="Number of document retrieval attempts")
     retrieval_confidence: Optional[float] = Field(
@@ -107,6 +111,7 @@ class AgenticAskResponse(AskResponse):
                     "Generated answer from relevant documents",
                 ],
                 "retrieval_attempts": 1,
+                "rewritten_query": None,
                 "trace_id": "abc123-def456-ghi789",
                 "trajectory": {
                     "started_at": 1712345678.1,

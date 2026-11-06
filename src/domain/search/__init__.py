@@ -1,6 +1,6 @@
 from .config import RerankSearchConfig
 from .factory import make_rerank_search_service
-from .schemas import RerankSearchRequest, DocumentSearchResult, SearchDocument
+from .schemas import DocumentSearchResult, RerankSearchRequest, SearchDocument
 from .service import SearchService
 
 __all__ = [

@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from src.dependencies import HybridRrfSearchDep, SearchServiceDep
-from src.domain.search.schemas import RerankSearchRequest, DocumentSearchResult
+from src.domain.search.schemas import DocumentSearchResult, RerankSearchRequest
 
 logger = logging.getLogger(__name__)
 
