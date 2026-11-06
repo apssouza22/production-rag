@@ -20,6 +20,7 @@ from src.agents.fusionsearch.prompts import (
     REWRITE_PROMPT,
 )
 from src.agents.fusionsearch.utils import get_latest_context, get_latest_query, get_latest_retrieval_payload
+from src.config import ReasoningEffort
 from src.domain.search.service import SearchService
 from src.platform.graph import END, START, GraphBuilder, tools_condition
 from src.platform.graph.policies import (
@@ -82,6 +83,10 @@ class AgenticRAGGraph:
             and self.langfuse_tracer is not None
             and self.langfuse_tracer.client is not None
         )
+
+    @property
+    def _reasoning_effort(self) -> ReasoningEffort | None:
+        return self.config.reasoning_effort
 
     def _create_node_span(
         self,
@@ -214,7 +219,12 @@ class AgenticRAGGraph:
 
         try:
             grading_prompt = GRADE_DOCUMENTS_PROMPT.format(context=context, question=question)
-            llm = make_chat_model(self.config.settings, self.model_name, temperature=0.0)
+            llm = make_chat_model(
+                self.config.settings,
+                self.model_name,
+                temperature=0.0,
+                reasoning_effort=self._reasoning_effort,
+            )
             structured_llm = llm.with_structured_output(GradeDocuments)
             grading_response = await structured_llm.ainvoke(grading_prompt)
 
@@ -328,7 +338,12 @@ class AgenticRAGGraph:
         )
 
         try:
-            llm = make_chat_model(self.config.settings, self.model_name, temperature=0.3)
+            llm = make_chat_model(
+                self.config.settings,
+                self.model_name,
+                temperature=0.3,
+                reasoning_effort=self._reasoning_effort,
+            )
             structured_llm = llm.with_structured_output(QueryRewriteOutput)
             prompt = REWRITE_PROMPT.format(question=original_question)
             llm_start = time.time()
@@ -401,6 +416,7 @@ class AgenticRAGGraph:
                 self.config.settings,
                 self.model_name,
                 temperature=self.config.temperature,
+                reasoning_effort=self._reasoning_effort,
             )
             response = await llm.ainvoke(answer_prompt)
             answer = response.content if hasattr(response, "content") else str(response)
@@ -550,7 +566,12 @@ class AgenticRAGGraph:
                 context=context,
                 answer=answer,
             )
-            llm = make_chat_model(self.config.settings, self.model_name, temperature=0.0)
+            llm = make_chat_model(
+                self.config.settings,
+                self.model_name,
+                temperature=0.0,
+                reasoning_effort=self._reasoning_effort,
+            )
             structured_llm = llm.with_structured_output(AnswerJudgement)
             return await structured_llm.ainvoke(judge_prompt)
         except Exception as exc:

@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 from pydantic import BaseModel, Field
 
-from src.config import Settings, get_settings
+from src.config import ReasoningEffort, Settings, get_settings
 from src.platform.graph.config import FaultToleranceConfig
 
 
@@ -37,6 +37,8 @@ class GraphConfig(BaseModel):
     enable_tracing: bool = True
     rerank_enabled: bool = True
     rerank_model: str = "jina-reranker-v2-base-multilingual"
+    # OpenAI thinking / reasoning effort for gpt-5 / o-series models; None = use Settings.reasoning_effort
+    reasoning_effort: ReasoningEffort | None = None
     metadata: Dict[str, Any] = {}
     fault_tolerance: FaultToleranceConfig = Field(default_factory=FaultToleranceConfig)
     settings: Settings = Field(default_factory=get_settings)

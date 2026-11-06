@@ -41,6 +41,7 @@ class GuardrailMiddleware(AgentMiddleware):
             settings=self.config.settings,
             model_name=model_name,
             threshold=self.config.guardrail_threshold,
+            reasoning_effort=self.config.reasoning_effort,
             langfuse_tracer=self.langfuse_tracer,
             trace=trace,
         )

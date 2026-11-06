@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Knowledge graph visualizer</title>
+  <script type="text/javascript" src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #0f1419; color: #e6edf3; }
+    h1 { font-size: 1.15rem; font-weight: 600; margin: 0 0 8px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    label { font-size: 0.85rem; opacity: 0.9; }
+    input[type="text"], input[type="number"] {
+      background: #1c2128; border: 1px solid #30363d; color: #e6edf3; padding: 6px 8px; border-radius: 6px; min-width: 120px;
+    }
+    button {
+      background: #238636; border: none; color: #fff; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 500;
+    }
+    button:hover { background: #2ea043; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #net { width: 100%; height: calc(100vh - 140px); min-height: 400px; border: 1px solid #30363d; border-radius: 8px; background: #161b22; }
+    .hint { font-size: 0.8rem; opacity: 0.75; margin-top: 4px; }
+    .err { color: #f85149; font-size: 0.85rem; margin-top: 6px; }
+    .meta { font-size: 0.8rem; opacity: 0.8; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Knowledge graph</h1>
+  <div class="row">
+    <label>API base</label>
+    <input type="text" id="baseUrl" value="" placeholder="e.g. http://localhost:8000" style="min-width: 220px;" />
+  </div>
+  <div class="row">
+    <label>Ingestion</label>
+    <input type="text" id="ingestion" placeholder="optional (defaults server-side)" style="min-width: 200px;" />
+    <label>arXiv id</label>
+    <input type="text" id="arxiv" placeholder="optional filter" />
+    <label>Max nodes</label>
+    <input type="number" id="maxNodes" value="300" min="1" max="500" />
+    <label>Max edges</label>
+    <input type="number" id="maxEdges" value="1000" min="1" max="5000" />
+    <button type="button" id="loadBtn">Load graph</button>
+  </div>
+  <p class="hint">Serves <code>/api/v1/kg/graph</code>. Same host as this page is used if API base is empty. Hover an edge to see its description; only arrows are drawn by default.</p>
+  <div id="err" class="err" style="display:none;"></div>
+  <div id="meta" class="meta"></div>
+  <div id="net"></div>
+  <script>
+    (function () {
+      var baseInput = document.getElementById("baseUrl");
+      if (!baseInput.value) {
+        baseInput.value = window.location.origin;
+      }
+      var netEl = document.getElementById("net");
+      var errEl = document.getElementById("err");
+      var metaEl = document.getElementById("meta");
+      var network = null;
+
+      function showErr(msg) {
+        errEl.style.display = msg ? "block" : "none";
+        errEl.textContent = msg || "";
+      }
+
+      function typeColor(t) {
+        var s = (t || "UNKNOWN").toUpperCase();
+        var map = {
+          METHOD: "#58a6ff",
+          DATASET: "#a371f7",
+          METRIC: "#d2a8ff",
+          TASK: "#79c0ff",
+          CONCEPT: "#7ee787",
+          MODEL: "#ffa657",
+          UNKNOWN: "#8b949e"
+        };
+        return map[s] || "#8b949e";
+      }
+
+      document.getElementById("loadBtn").addEventListener("click", function () {
+        var base = (baseInput.value || "").replace(/\/$/, "");
+        var origin = base || window.location.origin;
+        var params = new URLSearchParams();
+        var ing = document.getElementById("ingestion").value.trim();
+        var arx = document.getElementById("arxiv").value.trim();
+        var maxN = parseInt(document.getElementById("maxNodes").value, 10);
+        var maxE = parseInt(document.getElementById("maxEdges").value, 10);
+        if (ing) params.set("ingestion_name", ing);
+        if (arx) params.set("arxiv_id", arx);
+        if (!isNaN(maxN)) params.set("max_nodes", String(maxN));
+        if (!isNaN(maxE)) params.set("max_edges", String(maxE));
+        var url = origin + "/api/v1/kg/graph?" + params.toString();
+        showErr("");
+        metaEl.textContent = "Loading…";
+        document.getElementById("loadBtn").disabled = true;
+
+        fetch(url)
+          .then(function (r) {
+            if (!r.ok) {
+              return r.json().then(function (j) {
+                throw new Error(j.detail || r.statusText);
+              }).catch(function () {
+                throw new Error(r.status + " " + r.statusText);
+              });
+            }
+            return r.json();
+          })
+          .then(function (data) {
+            var visNodes = data.nodes.map(function (n) {
+              return {
+                id: n.id,
+                label: n.label,
+                title: (n.entity_type || "") + (n.description ? "\n\n" + n.description : ""),
+                color: typeColor(n.entity_type),
+                font: { color: "#e6edf3" }
+              };
+            });
+            var visEdges = data.edges.map(function (e, i) {
+              var text = (e.label || "").trim();
+              var tip = text || "(no description)";
+              return {
+                id: "e" + i,
+                from: e.source,
+                to: e.target,
+                title: tip,
+                arrows: "to",
+                color: { color: "#30363d", highlight: "#58a6ff", hover: "#8b949e" }
+              };
+            });
+            var visData = { nodes: new vis.DataSet(visNodes), edges: new vis.DataSet(visEdges) };
+            var options = {
+              edges: {
+                font: { size: 0 }
+              },
+              physics: {
+                enabled: true,
+                solver: "forceAtlas2Based",
+                forceAtlas2Based: { gravitationalConstant: -50, springLength: 120, damping: 0.4 }
+              },
+              interaction: { hover: true, tooltipDelay: 100 }
+            };
+            if (network) network.destroy();
+            network = new vis.Network(netEl, visData, options);
+            metaEl.textContent =
+              "Ingestion: " + data.ingestion_name +
+              " — nodes: " + data.nodes.length + (data.truncated_nodes ? " (truncated)" : "") +
+              ", edges: " + data.edges.length + (data.truncated_edges ? " (truncated)" : "");
+          })
+          .catch(function (e) {
+            showErr(String(e.message || e));
+            metaEl.textContent = "";
+          })
+          .finally(function () {
+            document.getElementById("loadBtn").disabled = false;
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

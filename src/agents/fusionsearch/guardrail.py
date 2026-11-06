@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Optional
 
-from src.config import Settings
+from src.config import ReasoningEffort, Settings
 from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.chat_model import make_chat_model
 
@@ -36,6 +36,7 @@ async def evaluate_guardrail(
     model_name: str,
     threshold: int,
     *,
+    reasoning_effort: ReasoningEffort | None = None,
     langfuse_tracer: Optional[LangfuseTracer] = None,
     trace=None,
 ) -> GuardrailScoring:
@@ -57,7 +58,12 @@ async def evaluate_guardrail(
 
     try:
         guardrail_prompt = GUARDRAIL_PROMPT.format(question=query)
-        llm = make_chat_model(settings, model_name, temperature=0.0)
+        llm = make_chat_model(
+            settings,
+            model_name,
+            temperature=0.0,
+            reasoning_effort=reasoning_effort,
+        )
         structured_llm = llm.with_structured_output(GuardrailScoring)
         response = await structured_llm.ainvoke(guardrail_prompt)
         logger.info("Guardrail result - Score: %s, Reason: %s", response.score, response.reason)
