@@ -194,3 +194,5 @@ Important: Before proceed with the plan, create a new file named `.agents/plans/
 **CRITICAL: After you successfully complete each step, you MUST update the `.agent/plans/name-of-the-task.md` file by changing the corresponding checkbox from `- [ ]` to `- [x]`.**
 Only proceed to the *next* unchecked item after confirming the previous one is checked off in the file. Announce which step you are starting.
 
+# Pull requests
+When writing PR descriptions, summarize the current topic of conversation visually. Pick the smallest view that makes the key point clear.

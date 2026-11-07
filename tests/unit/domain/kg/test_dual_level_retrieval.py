@@ -191,3 +191,73 @@ async def test_retrieve_reranks_chunks_before_formatting() -> None:
     assert result.chunks[0].rerank_score == 0.99
     assert result.formatted_context.index("Most relevant chunk.") < result.formatted_context.index("Less relevant chunk.")
     reranker.rerank.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discover_paths_skips_incident_edge_query_when_path_retrieval_disabled() -> None:
+    kg_settings = KGSettings(
+        enabled=True,
+        path_retrieval_enabled=False,
+        max_entity_tokens=500,
+        max_relation_tokens=500,
+        max_total_tokens=2000,
+        chunk_rerank_enabled=False,
+    )
+    extraction = AsyncMock()
+    extraction.extract_keywords.return_value = DualKeywords(
+        high_level_keywords=["theme"],
+        low_level_keywords=["a", "b"],
+    )
+    embeddings = AsyncMock()
+    embeddings.embed_query.return_value = [0.1] * 8
+
+    kg_search = MagicMock()
+    kg_search.search_entities.return_value = [
+        {"entity_id": "e1", "score": 1.0},
+        {"entity_id": "e2", "score": 0.9},
+    ]
+    kg_search.search_relations.return_value = []
+
+    nodes = [
+        KgNode(
+            entity_id="e1",
+            entity_name="E1",
+            entity_type="CONCEPT",
+            description="One",
+            source_chunk_keys=[],
+            arxiv_ids=[],
+            ingestion_name="dev",
+        ),
+        KgNode(
+            entity_id="e2",
+            entity_name="E2",
+            entity_type="CONCEPT",
+            description="Two",
+            source_chunk_keys=[],
+            arxiv_ids=[],
+            ingestion_name="dev",
+        ),
+    ]
+
+    database = MagicMock()
+    database.get_session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+    database.get_session.return_value.__exit__ = MagicMock(return_value=None)
+
+    repo_patch = MagicMock()
+    repo_patch.get_nodes_by_entity_ids.return_value = nodes
+    repo_patch.node_counts.return_value = {"e1": 1, "e2": 1}
+
+    service = _build_service(
+        kg_settings=kg_settings,
+        extraction=extraction,
+        embeddings=embeddings,
+        kg_search=kg_search,
+        database=database,
+        opensearch=MagicMock(get_chunks_by_chunk_keys=MagicMock(return_value=[])),
+    )
+
+    with patch("src.domain.kg.dual_level_retrieval.KgGraphRepository", return_value=repo_patch):
+        result = await service.retrieve("compare e1 and e2")
+
+    assert result.paths == []
+    repo_patch.get_incident_edges_for_entity_ids.assert_not_called()
