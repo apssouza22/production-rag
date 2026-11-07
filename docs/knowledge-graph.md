@@ -547,13 +547,13 @@ flowchart TD
     NAR --> OUT["list[KgPathHit]"]
 ```
 
-1. **Subgraph:** After entity hits, the service loads up to `KG__PATH_SUBGRAPH_MAX_EDGES` edges incident on seed nodes (Postgres, ordered by `weight` desc).
+1. **Subgraph:** After entity hits (only when `KG__PATH_RETRIEVAL_ENABLED`), the service loads up to `KG__PATH_SUBGRAPH_MAX_EDGES` edges incident on seed nodes (Postgres, ordered by `weight` desc), then trims that list so the distinct endpoints do not exceed `KG__PATH_SUBGRAPH_MAX_NODES`.
 2. **Enumerate:** For each ordered pair of distinct seeds, DFS finds simple paths up to `KG__PATH_MAX_HOPS` edges.
 3. **Rank:** PathRAG **edge-flow weighting** (`KG__PATH_WEIGHT_THRESHOLD`, `KG__PATH_WEIGHT_ALPHA`) scores candidate paths; dedupe and cap at `KG__PATH_MAX_PATHS`. If weighting yields nothing, a hop-bucket fallback uses a slice of 1-/2-/3-hop paths (reference behavior).
 4. **Narrate:** Each selected path becomes prose: entity type/description plus `through edge (keywords)` between hops, using stable `entity_id` slugs and merged node text from Postgres.
 5. **Format:** `format_kg_context` includes the path block under `KG__MAX_PATH_TOKENS`; token budget for chunks is computed after entities, flat relations, and paths.
 
-`PathDiscover` is a no-op when `enabled=False` (default), so dual-level behavior and JSON shape stay backward compatible (`paths` defaults to `[]`).
+When path retrieval is off (default), `_discover_paths` returns before any incident-edge query; `paths` stays `[]` and plain `kg` mode avoids extra Postgres work.
 
 #### Example `paths` entry (debug JSON)
 
@@ -814,6 +814,7 @@ All settings use the `KG__` prefix (`KGSettings` in `src/config.py`):
 | `KG__PATH_WEIGHT_THRESHOLD` | `0.3` | PathRAG path-flow threshold |
 | `KG__PATH_WEIGHT_ALPHA` | `0.8` | PathRAG path-flow decay |
 | `KG__PATH_SUBGRAPH_MAX_EDGES` | `500` | Max incident edges loaded around seeds |
+| `KG__PATH_SUBGRAPH_MAX_NODES` | `100` | Cap distinct nodes when trimming incident edges (weight order) |
 | `KG__MAX_PATH_TOKENS` | `4000` | Token budget for path narration block |
 
 See also [onboarding.md](onboarding.md) for operator steps and `.env.example` for copy-paste defaults.

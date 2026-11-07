@@ -91,6 +91,31 @@ class _PathEnumeration:
     three_hop_paths: list[list[str]]
 
 
+def cap_subgraph_edges_by_nodes(
+    edges: list[KgEdge],
+    seed_entity_ids: list[str],
+    max_nodes: int,
+) -> list[KgEdge]:
+    """Keep highest-weight incident edges without growing the node set beyond ``max_nodes``.
+
+    ``edges`` should already be ordered by weight (desc). Seeds are always retained in the
+    allowed node set even when there are more seeds than ``max_nodes`` (no edges are dropped
+    for that case).
+    """
+    if max_nodes <= 0 or not edges:
+        return []
+    allowed = set(seed_entity_ids)
+    kept: list[KgEdge] = []
+    for edge in edges:
+        endpoints = {edge.source_entity_id, edge.target_entity_id}
+        new_nodes = endpoints - allowed
+        if new_nodes and len(allowed) + len(new_nodes) > max_nodes:
+            continue
+        allowed |= endpoints
+        kept.append(edge)
+    return kept
+
+
 class PathDiscover:
     """Finds and narrates ranked multi-hop paths between entity seeds on a subgraph."""
 

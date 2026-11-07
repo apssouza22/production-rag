@@ -12,7 +12,7 @@ from src.domain.kg.context_format import format_kg_context
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.kg_search_client import KgSearchClient
 from src.domain.kg.models import KgEdge, KgNode
-from src.domain.kg.path_retrieval import PathDiscover
+from src.domain.kg.path_retrieval import PathDiscover, cap_subgraph_edges_by_nodes
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import (
     DualLevelKGResult,
@@ -127,7 +127,7 @@ class DualLevelKGRetrievalService:
         )
 
     async def _discover_paths(self, entity_hits: list[KgEntityHit]) -> list[KgPathHit]:
-        if len(entity_hits) < 2:
+        if not self._kg_settings.path_retrieval_enabled or len(entity_hits) < 2:
             return []
 
         seed_ids = [entity.entity_id for entity in entity_hits]
@@ -135,6 +135,11 @@ class DualLevelKGRetrievalService:
             incident_edges = repo.get_incident_edges_for_entity_ids(
                 seed_ids,
                 max_edges=self._kg_settings.path_subgraph_max_edges,
+            )
+            incident_edges = cap_subgraph_edges_by_nodes(
+                incident_edges,
+                seed_ids,
+                self._kg_settings.path_subgraph_max_nodes,
             )
             endpoint_ids = set(seed_ids)
             for edge in incident_edges:
