@@ -27,7 +27,7 @@ from evals.experiments.config import ExperimentRunConfig, get_settings
 from evals.experiments.dataset import ExperimentDataset
 from evals.experiments.ingestion import ensure_ingested
 from evals.experiments.question_gen import QuestionGenerator
-from evals.rag_evals.metrics import build_metrics
+from evals.rag_evals.metrics import build_experiment_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class ExperimentRunner(EvalRunner):
             chat_model=self.chat_model,
             settings=self.settings,
         )
-        self.metrics = metrics if metrics is not None else build_metrics(self.chat_model)
+        self.metrics = metrics if metrics is not None else build_experiment_metrics(self.chat_model)
         self.evaluator = Evaluator(self.metrics, progress_description="Evaluating experiment samples")
         self.report_publisher = report_publisher or make_file_report_publisher(reports_dir=REPORTS_DIR)
         self.report: EvaluationReport | None = None

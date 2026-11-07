@@ -174,7 +174,7 @@ A single command that takes the PDFs in `evals/experiments/arxiv_pdfs/` from raw
 2. Otherwise runs `src.ingest.run_pipeline` with `skip_download=True`, entering the pipeline at the local-PDF loader and continuing through `parse_pdfs_to_markdown` → `persist_papers` → `index_papers_hybrid`.
 3. Generates question/reference pairs from the indexed chunks with the judge model and caches them to `evals/experiments/generated_queries.json`.
 4. For each question, retrieves contexts with `rerank_search_service.search` and generates an answer from those contexts.
-5. Scores every sample with the Ragas metrics from `rag_evals` and writes a unified report.
+5. Scores every sample with retrieval-focused Ragas metrics (`context_relevance`, `context_utilization`, `context_precision`, `context_recall`) and writes a unified report.
 
 Everything is scoped to a dedicated ingestion partition (default `evals-experiments`), which the CLI exports as `OPENSEARCH__INGESTION_NAME` so indexing and retrieval filter on the same value. Experiment chunks therefore stay out of your production or dev partitions.
 
@@ -221,7 +221,7 @@ Environment variables still override individual fields when set:
 
 ```bash
 make experiment-eval         # skips ingestion and reuses cached questions when possible
-make experiment-eval-fresh   # --force-ingest --regenerate-queries
+make experiment-eval-fresh   # --force-ingest only; reuse cached questions (add --regenerate-queries to the uv run command to rebuild them)
 
 uv run python -m evals.experiments.main --ingestion-name my-experiment
 uv run python -m evals.experiments.main --no-report
