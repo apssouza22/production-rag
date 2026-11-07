@@ -137,3 +137,11 @@ def build_metrics(chat_model: BaseChatModel) -> list[Metric]:
         ContextRecallMetric(ragas_llm),
         FactualCorrectnessMetric(ragas_llm),
     ]
+
+
+_EXPERIMENT_EXCLUDED_METRICS = frozenset({"faithfulness", "factual_correctness"})
+
+
+def build_experiment_metrics(chat_model: BaseChatModel) -> list[Metric]:
+    """Ragas metrics for local-PDF experiments (retrieval-focused; no faithfulness or factual_correctness)."""
+    return [metric for metric in build_metrics(chat_model) if metric.name not in _EXPERIMENT_EXCLUDED_METRICS]

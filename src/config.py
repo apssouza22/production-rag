@@ -1,12 +1,14 @@
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).parent.parent
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
+
+ReasoningEffort: TypeAlias = Literal["none", "low", "medium", "high", "xhigh", "max"]
 
 
 class BaseConfigSettings(BaseSettings):
@@ -186,7 +188,7 @@ class Settings(BaseConfigSettings):
     # Comma-separated model fallbacks when the primary model fails (e.g. gpt-5.6-luna,gpt-4o-mini)
     llm_fallback_models: str = "gpt-5.6-luna,gpt-4o-mini"
     agent_model: str = "gpt-5.6-luna"
-    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "low"
+    reasoning_effort: ReasoningEffort = "low"
     llm_request_timeout: int = 300
 
     # Jina AI embeddings configuration

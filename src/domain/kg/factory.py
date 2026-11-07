@@ -8,7 +8,7 @@ from src.domain.jinaai.jina_reranker_client import JinaRerankerClient
 from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.indexing_service import KgIndexingService
-from src.domain.kg.kg_vector_client import KgVectorClient
+from src.domain.kg.kg_search_client import KgSearchClient
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.rrf.factory import make_hybrid_rrf_search
@@ -21,15 +21,15 @@ def resolve_kg_ingestion_name(settings: Settings) -> str:
     return settings.opensearch.ingestion_name
 
 
-def make_kg_vector_client(
+def make_kg_search_client(
     opensearch_client: OpenSearchClient | None = None,
     settings: Settings | None = None,
     ingestion_name: str | None = None,
-) -> KgVectorClient:
+) -> KgSearchClient:
     settings = settings or get_settings()
     client = opensearch_client or make_opensearch_client()
     resolved_ingestion = ingestion_name or resolve_kg_ingestion_name(settings)
-    return KgVectorClient(
+    return KgSearchClient(
         client=client.client,
         settings=settings,
         ingestion_name=resolved_ingestion,
@@ -72,7 +72,7 @@ def make_kg_indexing_service(
     return KgIndexingService(
         database=database,
         paper_rrf_search=paper_rrf_search,
-        kg_vector_client=make_kg_vector_client(opensearch_client, settings, ingestion_name),
+        kg_search_client=make_kg_search_client(opensearch_client, settings, ingestion_name),
         extraction_service=make_kg_extraction_service(settings),
         embeddings_client=make_embeddings_service(),
         ingestion_name=ingestion_name,
@@ -92,7 +92,7 @@ def make_dual_level_kg_retrieval_service(
     return DualLevelKGRetrievalService(
         database=database,
         paper_rrf_search=paper_rrf_search,
-        kg_vector_client=make_kg_vector_client(opensearch_client, settings, ingestion_name),
+        kg_search_client=make_kg_search_client(opensearch_client, settings, ingestion_name),
         extraction_service=make_keyword_extraction_service(settings),
         embeddings_client=make_embeddings_service(),
         kg_settings=settings.kg,

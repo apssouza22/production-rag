@@ -1,14 +1,16 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from src.agents.fusionsearch.factory import make_agentic_rag_service
 from src.agents.knowledgerouter import make_knowledge_router_service
 from src.agents.texttosql import make_text_to_sql_service
-from src.api import agentic_ask, hybrid_search, kg_retrieval, knowledge_router, ping, rerank_search, text_to_sql
+from src.api import agentic_ask, hybrid_search, kg_retrieval, kg_visualization, knowledge_router, ping, rerank_search, text_to_sql
 from src.config import get_settings
 from src.domain.arxiv.factory import make_arxiv_client
 from src.domain.db.factory import make_database
@@ -112,6 +114,11 @@ app.include_router(agentic_ask.router)  # Agentic RAG with intelligent retrieval
 app.include_router(text_to_sql.router)  # Text-to-SQL agent over PostgreSQL
 app.include_router(knowledge_router.router)  # Knowledge router across retrieval agents
 app.include_router(kg_retrieval.router, prefix="/api/v1")  # Dual-level KG debug retrieval
+app.include_router(kg_visualization.router, prefix="/api/v1")  # KG subgraph export for visualization
+
+_KG_VIZ_DIR = Path(__file__).resolve().parent.parent / "static" / "kg-viz"
+if _KG_VIZ_DIR.is_dir():
+    app.mount("/kg-viz", StaticFiles(directory=str(_KG_VIZ_DIR), html=True), name="kg_viz")
 
 
 if __name__ == "__main__":

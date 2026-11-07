@@ -5,7 +5,7 @@ from typing import Any
 from src.domain.db.interfaces.base import BaseDatabase
 from src.domain.jinaai.jina_client import JinaEmbeddingsClient
 from src.domain.kg.extraction import KgExtractionService
-from src.domain.kg.kg_vector_client import KgVectorClient
+from src.domain.kg.kg_search_client import KgSearchClient
 from src.domain.kg.merge import make_chunk_key, normalize_entity_id, relation_vector_id
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import ChunkExtractionResult, ExtractedRelation
@@ -136,21 +136,21 @@ class KgIndexingService:
         self,
         database: BaseDatabase,
         paper_rrf_search: HybridRrfSearch,
-        kg_vector_client: KgVectorClient,
+        kg_search_client: KgSearchClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,
         ingestion_name: str,
     ):
         self.database = database
         self.paper_rrf_search = paper_rrf_search
-        self.kg_vector_client = kg_vector_client
+        self.kg_search_client = kg_search_client
         self.extraction_service = extraction_service
         self.embeddings_client = embeddings_client
         self.ingestion_name = ingestion_name
 
     async def index_arxiv_ids(self, arxiv_ids: list[str], *, replace: bool = False) -> dict[str, Any]:
         stats = KgBatchIndexingStats()
-        self.kg_vector_client.setup_indices()
+        self.kg_search_client.setup_indices()
 
         for raw_id in arxiv_ids:
             arxiv_id = raw_id.strip()
@@ -327,7 +327,7 @@ class KgIndexingService:
             embeddings = await self.embeddings_client.embed_passages(texts, batch_size=32)
             for doc, embedding in zip(entity_docs, embeddings):
                 doc["embedding"] = embedding
-            self.kg_vector_client.bulk_upsert_entities(entity_docs)
+            self.kg_search_client.bulk_upsert_entities(entity_docs)
 
         if relation_docs:
             texts = [
@@ -337,7 +337,7 @@ class KgIndexingService:
             embeddings = await self.embeddings_client.embed_passages(texts, batch_size=32)
             for doc, embedding in zip(relation_docs, embeddings):
                 doc["embedding"] = embedding
-            self.kg_vector_client.bulk_upsert_relations(relation_docs)
+            self.kg_search_client.bulk_upsert_relations(relation_docs)
 
 
 def _chunk_section_title(chunk: dict[str, Any]) -> str:

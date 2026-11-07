@@ -13,6 +13,7 @@ from evals.rag_evals.metrics import (
     ContextUtilizationMetric,
     FactualCorrectnessMetric,
     FaithfulnessMetric,
+    build_experiment_metrics,
     build_metrics,
 )
 
@@ -56,4 +57,25 @@ def test_build_ragas_metrics_returns_concrete_metric_objects() -> None:
         ContextPrecisionMetric,
         ContextRecallMetric,
         FactualCorrectnessMetric,
+    ]
+
+
+def test_build_experiment_metrics_omits_faithfulness_and_factual_correctness() -> None:
+    evaluator = Mock()
+    with (
+        patch("evals.rag_evals.metrics.RagasChatModel", return_value=Mock()),
+        patch("evals.rag_evals.metrics.ContextRelevance", return_value=evaluator),
+        patch("evals.rag_evals.metrics.ContextUtilization", return_value=evaluator),
+        patch("evals.rag_evals.metrics.Faithfulness", return_value=evaluator),
+        patch("evals.rag_evals.metrics.ContextPrecisionWithReference", return_value=evaluator),
+        patch("evals.rag_evals.metrics.ContextRecall", return_value=evaluator),
+        patch("evals.rag_evals.metrics.FactualCorrectness", return_value=evaluator),
+    ):
+        metrics = build_experiment_metrics(Mock())
+
+    assert [metric.name for metric in metrics] == [
+        "context_relevance",
+        "context_utilization",
+        "context_precision",
+        "context_recall",
     ]

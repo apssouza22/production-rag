@@ -86,42 +86,49 @@ class SearchService:
         before_rerank = [_hit_to_document(hit, rank) for rank, hit in enumerate(hits)]
         logger.info("Found %d documents from OpenSearch", len(before_rerank))
 
-        if should_rerank and len(hits) > 1:
-            try:
-                logger.info("Reranking %d candidates with Jina reranker", len(hits))
-                after_rerank = await self._rerank_hits(
-                    query=query,
-                    hits=hits,
-                    top_n=top_k,
-                    model=self.config.rerank_model,
-                )
-                logger.info("Reranking complete, returning top %d documents", len(after_rerank))
-                return DocumentSearchResult(
-                    query=query,
-                    search_mode=search_mode,
-                    rerank_applied=True,
-                    before_rerank=before_rerank,
-                    after_rerank=after_rerank,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Reranking failed, using original search order: query_preview=%r, "
-                    "candidate_count=%d, top_k=%d, model=%s, error_type=%s, error=%s",
-                    query[:100],
-                    len(hits),
-                    top_k,
-                    self.config.rerank_model,
-                    type(e).__name__,
-                    e,
-                )
+        if not should_rerank or len(hits) <= 1:
+            return DocumentSearchResult(
+                query=query,
+                search_mode=search_mode,
+                rerank_applied=False,
+                before_rerank=before_rerank,
+                after_rerank=before_rerank[:top_k],
+            )
 
-        return DocumentSearchResult(
-            query=query,
-            search_mode=search_mode,
-            rerank_applied=False,
-            before_rerank=before_rerank,
-            after_rerank=[],
-        )
+        try:
+            logger.info("Reranking %d candidates with Jina reranker", len(hits))
+            after_rerank = await self._rerank_hits(
+                query=query,
+                hits=hits,
+                top_n=top_k,
+                model=self.config.rerank_model,
+            )
+            logger.info("Reranking complete, returning top %d documents", len(after_rerank))
+            return DocumentSearchResult(
+                query=query,
+                search_mode=search_mode,
+                rerank_applied=True,
+                before_rerank=before_rerank,
+                after_rerank=after_rerank,
+            )
+        except Exception as e:
+            logger.warning(
+                "Reranking failed, using original search order: query_preview=%r, "
+                "candidate_count=%d, top_k=%d, model=%s, error_type=%s, error=%s",
+                query[:100],
+                len(hits),
+                top_k,
+                self.config.rerank_model,
+                type(e).__name__,
+                e,
+            )
+            return DocumentSearchResult(
+                query=query,
+                search_mode=search_mode,
+                rerank_applied=False,
+                before_rerank=before_rerank,
+                after_rerank=before_rerank[:top_k],
+            )
 
     async def dual_search(
         self,

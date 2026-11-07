@@ -4,7 +4,7 @@ import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
-from src.config import Settings
+from src.config import ReasoningEffort, Settings
 from src.platform.llm.exceptions import LLMConnectionError, LLMException, LLMTimeoutError
 from src.platform.llm.fallback import build_fallback_models
 
@@ -36,6 +36,8 @@ def _create_chat_openai(
     top_p: float = 0.9,
     response_format: Optional[Dict[str, Any]] = None,
     api_key: str | None = None,
+    *,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> ChatOpenAI:
     model_kwargs: Dict[str, Any] = {}
     if response_format is not None:
@@ -50,9 +52,12 @@ def _create_chat_openai(
         "timeout": float(settings.llm_request_timeout),
         "model_kwargs": model_kwargs,
     }
+    resolved_reasoning: ReasoningEffort | None = (
+        reasoning_effort if reasoning_effort is not None else settings.reasoning_effort
+    )
     if supports_reasoning_effort(model):
-        chat_kwargs["reasoning_effort"] = settings.reasoning_effort
-        if settings.reasoning_effort == "none":
+        chat_kwargs["reasoning_effort"] = resolved_reasoning
+        if resolved_reasoning == "none":
             chat_kwargs["temperature"] = temperature
             chat_kwargs["top_p"] = top_p
     else:
@@ -68,15 +73,28 @@ def make_chat_model(
     temperature: float = 0.7,
     *,
     api_key: str | None = None,
+    reasoning_effort: ReasoningEffort | None = None,
 ) -> BaseChatModel:
     """Create a LangChain chat model for OpenAI with optional fallback models."""
-    primary = _create_chat_openai(settings, model, temperature=temperature, api_key=api_key)
+    primary = _create_chat_openai(
+        settings,
+        model,
+        temperature=temperature,
+        api_key=api_key,
+        reasoning_effort=reasoning_effort,
+    )
     fallbacks = _build_fallbacks(settings, model)
     if not fallbacks:
         return primary
 
     fallback_models = [
-        _create_chat_openai(settings, fallback, temperature=temperature, api_key=api_key)
+        _create_chat_openai(
+            settings,
+            fallback,
+            temperature=temperature,
+            api_key=api_key,
+            reasoning_effort=reasoning_effort,
+        )
         for fallback in fallbacks
     ]
     return primary.with_fallbacks(fallback_models)

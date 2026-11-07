@@ -32,6 +32,13 @@ def test_make_chat_model_passes_reasoning_effort_for_reasoning_models():
     assert llm.temperature is None
 
 
+def test_make_chat_model_reasoning_effort_override():
+    settings = Settings(reasoning_effort="low")
+    llm = make_chat_model(settings, "gpt-5.6-luna", reasoning_effort="high")
+
+    assert llm.reasoning_effort == "high"
+
+
 def test_make_chat_model_uses_with_fallbacks_when_configured():
     settings = Settings(llm_fallback_models="gpt-4o-mini,gpt-4o")
     primary = MagicMock()

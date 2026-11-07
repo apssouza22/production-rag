@@ -167,6 +167,8 @@ Optional `MetricResultHandler` hooks run **per metric result** — for example `
 
 `evals/reports/evaluation_report_<run_type>_<timestamp>.json`
 
+Local-PDF experiment runs use `evaluation_report_experiment_evaluation_<rrf|kg>_<timestamp>.json` and set `metadata.retrieval.retrieval_mode` from `experiment.retrieval_mode` in settings.
+
 Run types include `trace_evaluation`, `rag_evaluation`, `experiment_evaluation`, and `example_evaluation`. Pass `--no-report` or `make_report_publisher(enabled=False)` to skip disk output.
 
 ### 3.5 Runner contract
@@ -304,13 +306,13 @@ This runner is **self-contained**:
 2. **Conditional ingest** — if OpenSearch already has chunks for that partition, skip; else run `src.ingest.run_pipeline` from local PDFs in `evals/experiments/data/arxiv_pdfs/` (metadata fetched from arXiv by filename stem).
 3. **Question generation** — LLM writes Q/A pairs from indexed chunks; cached to `evals/experiments/data/generated_queries.json`.
 4. **In-process retrieval** — `make_rerank_search_service()` in `src/domain/search/factory.py` (no HTTP).
-5. **Same Ragas metrics** as `rag_evals`.
+5. **Retrieval-focused Ragas metrics** — `context_relevance`, `context_utilization`, `context_precision`, and `context_recall` (no `faithfulness` or `factual_correctness`; see §5).
 
 Settings merge from `evals/experiments/data/settings/experiment-config.json` (chunking, parser, query knobs) with env overrides. Use alternate JSON via `--settings` or `make experiment-eval EXPERIMENT_SETTINGS=...`.
 
 ```bash
 make experiment-eval         # reuse cache when possible
-make experiment-eval-fresh   # --force-ingest --regenerate-queries
+make experiment-eval-fresh   # --force-ingest; cached questions are reused unless missing
 ```
 
 **Caveat:** the same judge model generates questions and answers, so absolute scores skew high. Use this path to **compare configurations across runs**, not as an absolute quality bar.

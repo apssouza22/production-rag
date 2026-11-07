@@ -72,8 +72,8 @@ rag-eval-experiment-no-report: ## Run Langfuse experiment without local JSON rep
 experiment-eval: ## Ingest evals/experiments/arxiv_pdfs (if needed) and run the Ragas experiment
 	uv run python -m evals.experiments.main $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
 
-experiment-eval-fresh: ## Same, but force re-ingestion and regenerate the question dataset
-	uv run python -m evals.experiments.main --force-ingest --regenerate-queries $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
+experiment-eval-fresh: ## Same as experiment-eval, but force re-ingestion (reuse cached questions if present)
+	uv run python -m evals.experiments.main --force-ingest $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
 
 kg-index: ## Build KG for comma-separated ARXIV_IDS (requires KG__ENABLED=true)
 	@test -n "$(ARXIV_IDS)" || (echo "Usage: make kg-index ARXIV_IDS=2611.02200,2611.02208 [REPLACE=1]" && exit 1)

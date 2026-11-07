@@ -29,6 +29,6 @@
     "experiment_questions_per_paper": 4,
     "experiment_chunks_per_paper": 12,
     "experiment_top_k": 5,
-    "retrieval_mode": "rrf"
+    "retrieval_mode": "kg"
   }
 }

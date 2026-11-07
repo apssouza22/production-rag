@@ -51,6 +51,7 @@ async def ask_agentic(
             sources=result.get("sources", []),
             chunks_used=request.top_k,
             search_mode="hybrid" if request.use_hybrid else "bm25",
+            rewritten_query=result.get("rewritten_query"),
             reasoning_steps=result.get("reasoning_steps", []),
             retrieval_attempts=result.get("retrieval_attempts", 0),
             retrieval_confidence=result.get("retrieval_confidence"),

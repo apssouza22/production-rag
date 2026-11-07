@@ -26,6 +26,8 @@ def test_file_report_publisher_writes_json_and_sets_path(tmp_path) -> None:
     assert path == report.report_path
     assert path.startswith(str(tmp_path))
     assert "evaluation_report_unit_test_" in path
+    custom_path = publisher.publish(report, filename_prefix="evaluation_report_experiment_evaluation_kg")
+    assert "evaluation_report_experiment_evaluation_kg_" in custom_path
     with open(path, encoding="utf-8") as handle:
         payload = json.load(handle)
     assert payload["run_type"] == "unit_test"

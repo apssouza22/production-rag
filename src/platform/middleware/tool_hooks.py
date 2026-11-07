@@ -84,6 +84,15 @@ def _build_sync_wrapper(manager: MiddlewareManager) -> ExecuteToolCall:
 def _build_async_wrapper(manager: MiddlewareManager) -> ExecuteToolCall:
     async def awrap_tool_call(request: Any, execute: ExecuteToolCall) -> Any:
         request = await _aapply_before_tool_call(manager, request)
-        return await execute(request)
+        result = await execute(request)
+        ctx = manager.active_ctx
+        if ctx is not None:
+            tool_call = request.tool_call
+            result = await manager.run_after_tool_call(
+                ctx,
+                tool_name=tool_call["name"],
+                tool_result=result,
+            )
+        return result
 
     return awrap_tool_call

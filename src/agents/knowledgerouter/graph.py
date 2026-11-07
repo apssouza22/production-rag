@@ -21,7 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 class ClassificationResult(BaseModel):
-    """Structured output schema for the classifier."""
+    """Structured output for the multi-source router (one row per downstream agent).
+
+    Order is not significant. Each source must appear at most once; use a single row when one path suffices, or one row per distinct source to fan out in parallel.
+    """
 
     classifications: list[ClassificationItem] = Field(
         description="List of agents to invoke with their targeted sub-questions",

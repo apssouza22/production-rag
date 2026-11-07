@@ -55,7 +55,7 @@ def mock_rerank_search_service():
             ],
         )
 
-    service.search = AsyncMock(side_effect=_search)
+    service.search_rrf = AsyncMock(side_effect=_search)
     return service
 
 

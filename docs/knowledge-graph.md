@@ -184,7 +184,7 @@ Entity IDs are stable slugs from display names (`normalize_entity_id` in `src/do
 
 Chunk provenance uses keys `"{arxiv_id}:{chunk_index}"` (`make_chunk_key`), matching how chunks are addressed in OpenSearch.
 
-### 3.2 OpenSearch vector indices (`src/domain/kg/kg_vector_client.py`)
+### 3.2 OpenSearch vector indices (`src/domain/kg/kg_search_client.py`)
 
 Index names: `{OPENSEARCH__INDEX_NAME}-{KG__ENTITY_INDEX_SUFFIX}` and `...-{KG__RELATION_INDEX_SUFFIX}` (defaults `kg-entities`, `kg-relations`).
 
@@ -378,13 +378,13 @@ sequenceDiagram
     par Entity branch
         S->>J: embed(low_level joined)
         J-->>S: vector
-        S->>OS: knn_search_entities
+        S->>OS: search_entities
         OS-->>S: entity_ids
         S->>PG: get_nodes + node_counts
     and Relation branch
         S->>J: embed(high_level joined)
         J-->>S: vector
-        S->>OS: knn_search_relations
+        S->>OS: search_relations
         OS-->>S: source/target pairs
         S->>PG: get_edges_by_pairs
     end
@@ -638,7 +638,7 @@ Query length under 50 characters with empty keyword lists uses the raw query as 
 |---------|--------|
 | `make_kg_indexing_service` | Index pipeline with extract model |
 | `make_dual_level_kg_retrieval_service` | Query pipeline with keyword model + optional `JinaRerankerClient` |
-| `make_kg_vector_client` | OpenSearch KG indices for resolved `ingestion_name` |
+| `make_kg_search_client` | OpenSearch KG indices for resolved `ingestion_name` |
 
 `resolve_kg_ingestion_name()` uses `KG__INGESTION_NAME` when set, otherwise `OPENSEARCH__INGESTION_NAME`.
 
@@ -655,6 +655,13 @@ When disabled, KG factories are not called; tests patch them to `None` in API co
 
 - **`SearchService.dual_search()`** (`src/domain/search/service.py`) delegates to `DualLevelKGRetrievalService.retrieve`. Raises `RuntimeError` if KG was not wired—callers must check `KG__ENABLED`.
 - **`POST /api/v1/kg-retrieval/debug`** (`src/api/kg_retrieval.py`) returns the full `DualLevelKGResult` JSON (keywords, entities, relations, chunks, `formatted_context`) without running the LangGraph agent. Returns **503** when KG is disabled.
+
+### 8.4 Stored graph visualization (read-only)
+
+To **inspect what is already in Postgres** (`kg_nodes`, `kg_edges`), use the export endpoint and the bundled static page:
+
+- **`GET /api/v1/kg/graph`** (`src/api/kg_visualization.py`) — returns a **bounded** subgraph as JSON (`nodes`, `edges`, `ingestion_name`, truncation flags). Query params: optional `ingestion_name` (defaults via `resolve_kg_ingestion_name`), optional `arxiv_id` (keeps only nodes whose `arxiv_ids` array contains that id), `max_nodes` (default 300, cap 500), `max_edges` (default 1000, cap 5000). Does **not** require `KG__ENABLED`; it only reads the table graph.
+- **`GET /kg-viz/`** — when the API is running, open [`http://localhost:8000/kg-viz/`](http://localhost:8000/kg-viz/) for a **vis-network** view that calls the export endpoint (set API base if you open the file from another origin). Large corpora: lower `max_nodes` / `max_edges` if the browser feels sluggish.
 
 The **fusionsearch agent** still uses hybrid `search_unified()` via its retriever tool—it does **not** call `dual_search` yet. The KG path is for experiments, eval ingestion, and debug API inspection until product wiring decides how to fuse graph context with graded chunk retrieval.
 
@@ -717,7 +724,7 @@ Structured outputs are Pydantic models in `src/domain/kg/schemas.py`, consumed v
 ## 11. Testing and observability
 
 - Unit tests mirror domain layout: `tests/unit/domain/kg/` (merge, repository, dual-level retrieval), `tests/unit/domain/search/test_service.py` for `dual_search` delegation.
-- API tests: `tests/api/routers/test_kg_retrieval.py` (503 when disabled, payload when mocked service).
+- API tests: `tests/api/routers/test_kg_retrieval.py` (503 when disabled, payload when mocked service); `tests/api/routers/test_kg_visualization.py` (graph JSON when repository is mocked).
 - Eval pipeline records `kg` stats on `ExperimentIngestionResult` when indexing runs.
 
 There is no dedicated Langfuse span naming convention for KG yet; debug the path via `/kg-retrieval/debug` or by logging inside `DualLevelKGRetrievalService`.

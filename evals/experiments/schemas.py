@@ -6,22 +6,57 @@ from pydantic import BaseModel, ConfigDict, Field
 class ExperimentQuery(BaseModel):
     """One generated question with its reference answer and originating paper."""
 
-    user_input: str = Field(min_length=1, description="Question to evaluate")
-    reference: str = Field(min_length=1, description="Ground-truth answer for reference-based metrics")
-    arxiv_id: str = Field(default="", description="Paper the question was generated from")
+    user_input: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="Evaluation question; must be answerable using only the paired reference and retrieved contexts.",
+    )
+    reference: str = Field(
+        min_length=1,
+        max_length=8000,
+        description=(
+            "Gold answer for metrics; every claim should appear in or follow from the source excerpts "
+            "used when this question was created."
+        ),
+    )
+    arxiv_id: str = Field(
+        default="",
+        max_length=32,
+        description="arXiv id of the paper whose excerpts ground this question-reference pair (may be empty for synthetic sets).",
+    )
 
 
 class GeneratedQuestion(BaseModel):
     """Structured output item returned by the question-generation model."""
 
-    question: str = Field(description="A self-contained question answerable from the excerpts")
-    reference: str = Field(description="The ground-truth answer, grounded in the excerpts")
+    question: str = Field(
+        min_length=1,
+        max_length=2000,
+        description=(
+            "Self-contained question with enough context that someone with only paper excerpts can answer; "
+            "no references to 'the text above' or unseen material."
+        ),
+    )
+    reference: str = Field(
+        min_length=1,
+        max_length=8000,
+        description=(
+            "Short gold answer fully supported by the provided excerpts only; prefer precise wording "
+            "and citations to chunk content where appropriate."
+        ),
+    )
 
 
 class GeneratedQuestions(BaseModel):
     """Structured output wrapper returned by the question-generation model."""
 
-    questions: list[GeneratedQuestion] = Field(default_factory=list)
+    questions: list[GeneratedQuestion] = Field(
+        default_factory=list,
+        description=(
+            "Batch of question-reference pairs, each grounded in the same excerpt bundle passed to the generator; "
+            "omit pairs if the excerpts do not support a clean QA item."
+        ),
+    )
 
 
 class KgIngestionSummary(BaseModel):

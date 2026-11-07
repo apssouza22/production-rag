@@ -204,3 +204,42 @@ class KgGraphRepository:
 
     def commit(self) -> None:
         self.session.commit()
+
+    def get_subgraph_for_visualization(
+        self,
+        *,
+        arxiv_id: str | None = None,
+        max_nodes: int = 300,
+        max_edges: int = 1000,
+    ) -> tuple[list[KgNode], list[KgEdge]]:
+        """Return a bounded set of nodes and only edges whose endpoints are both in that set.
+
+        Ordering prefers recently updated nodes so active extractions surface first.
+
+        :param arxiv_id: When set, keep only nodes whose ``arxiv_ids`` JSONB array contains this id.
+        :param max_nodes: Maximum number of nodes (caller should cap; typically 300–500).
+        :param max_edges: Maximum number of edges after endpoint filtering.
+        """
+        conditions = [KgNode.ingestion_name == self.ingestion_name]
+        if arxiv_id is not None and arxiv_id.strip():
+            conditions.append(KgNode.arxiv_ids.contains([arxiv_id.strip()]))
+
+        stmt = select(KgNode).where(*conditions).order_by(KgNode.updated_at.desc()).limit(max_nodes)
+
+        nodes = list(self.session.scalars(stmt))
+        if not nodes:
+            return [], []
+
+        entity_ids = [n.entity_id for n in nodes]
+        edge_stmt = (
+            select(KgEdge)
+            .where(
+                KgEdge.ingestion_name == self.ingestion_name,
+                KgEdge.source_entity_id.in_(entity_ids),
+                KgEdge.target_entity_id.in_(entity_ids),
+            )
+            .order_by(KgEdge.updated_at.desc())
+            .limit(max_edges)
+        )
+        edges = list(self.session.scalars(edge_stmt))
+        return nodes, edges
