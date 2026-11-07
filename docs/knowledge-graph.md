@@ -4,6 +4,8 @@ This article explains the optional **knowledge graph (KG)** path in the arXiv re
 
 The KG path is **off by default** (`KG__ENABLED=false`). When enabled, it adds a second retrieval mode that does **not** embed the raw user query against chunk vectors. Instead it follows a **dual-level** pattern inspired by [LightRAG](https://arxiv.org/abs/2410.05729): extract themes and entities from the query, search **entity** and **relation** vector stores, hydrate a **table graph** in PostgreSQL, then load **evidence chunks** from the existing hybrid index via provenance keys.
 
+An optional **PathRAG** layer (see **§6.8**) runs on top of the same graph and adds multi-hop path narration between entity seeds when `KG__PATH_RETRIEVAL_ENABLED=true`. Indexing is unchanged; only query-time context grows.
+
 ---
 
 ## 1. Problem the KG path tries to solve
@@ -60,7 +62,10 @@ flowchart TB
         E2 --> KNN_R["kNN relation index"]
         KNN_E --> PG
         KNN_R --> PG
-        PG --> KEYS["Union source_chunk_keys"]
+        KNN_E --> PATH{"KG__PATH_RETRIEVAL_ENABLED?"}
+        PATH -->|yes| PD["PathDiscover<br/>≤3-hop paths among seeds"]
+        PATH -->|no| KEYS["Union source_chunk_keys"]
+        PD --> KEYS
         KEYS --> CH
         CH --> RR{"KG__CHUNK_RERANK_ENABLED<br/>+ Jina configured?"}
         RR -->|yes| RRN["Cross-encoder on<br/>evidence chunk_text"]
@@ -388,6 +393,10 @@ sequenceDiagram
         OS-->>S: source/target pairs
         S->>PG: get_edges_by_pairs
     end
+    opt KG__PATH_RETRIEVAL_ENABLED and >= 2 entity seeds
+        S->>PG: incident edges around seeds (capped)
+        S->>S: PathDiscover.discover → paths[]
+    end
     S->>S: collect source_chunk_keys (entity keys first)
     S->>CH: get_chunks_by_chunk_keys
     CH-->>S: chunk documents
@@ -485,14 +494,99 @@ This is not BM25 and not RRF; it is the same cross-encoder precision stage used 
 
 1. CSV-like **Entities** block (id, name, type, description, rank).
 2. CSV-like **Relations** block (endpoints, description, keywords, weight, rank).
-3. **Evidence chunks** with headers `[arxiv_id chunk N] title — section`.
+3. When PathRAG is enabled and paths were found: **`--- Relations (KG paths) ---`** with CSV-like rows (`hop_count`, narrated multi-hop text).
+4. **Evidence chunks** with headers `[arxiv_id chunk N] title — section`.
 
 Token limits use a rough `len/4` estimator:
 
 - `KG__MAX_ENTITY_TOKENS`, `KG__MAX_RELATION_TOKENS` truncate the first two blocks.
+- `KG__MAX_PATH_TOKENS` applies to the path block (when present).
 - Remaining budget under `KG__MAX_TOTAL_TOKENS` fills chunks in order until exhausted.
 
 Output is returned as `DualLevelKGResult.formatted_context` alongside structured hits for debugging and evals.
+
+### 6.8 PathRAG multi-hop path retrieval
+
+#### What PathRAG adds
+
+[LightRAG-style dual-level retrieval](#6-query-time-dual-level-retrieval) already loads **individual** entity rows and **relation kNN hits**. **PathRAG** (from [BUPT-GAMMA/PathRAG](https://github.com/BUPT-GAMMA/PathRAG/tree/main/PathRAG), `operate._find_most_related_edges_from_entities3`) answers a different question:
+
+> *Given the entity seeds from low-level keyword search, what **connected paths** (1–3 hops) exist between them in the table graph, and how should those paths be narrated for the LLM?*
+
+Paths are **derived at query time** from existing `kg_nodes` / `kg_edges`. There is no extra index or storage backend.
+
+| | Dual-level only | + PathRAG (`KG__PATH_RETRIEVAL_ENABLED`) |
+|--|-----------------|------------------------------------------|
+| Relation signal | Relation **vector** kNN (high-level keywords) | **Plus** multi-hop **paths among entity seeds** |
+| Typical question shape | Thematic / global themes | Multi-hop links between named concepts |
+| `DualLevelKGResult` | `entities`, `relations`, `chunks` | Adds `paths[]` with narratives |
+| `formatted_context` | Entities + relations CSV | Adds `--- Relations (KG paths) ---` |
+
+PathRAG does **not** replace the relation kNN branch; it **augments** the entity (local) branch, matching the reference implementation’s local path step.
+
+#### Code layout
+
+| Piece | Location |
+|-------|----------|
+| Path algorithm + narration | `PathDiscover` in `src/domain/kg/path_retrieval.py` |
+| Factory | `make_path_discover(settings)` in `src/domain/kg/factory.py` |
+| Orchestration | `DualLevelKGRetrievalService` loads a bounded subgraph, calls `path_discover.discover()` |
+| Subgraph load | `KgGraphRepository.get_incident_edges_for_entity_ids` |
+| Schema | `KgPathHit`, `DualLevelKGResult.paths` in `src/domain/kg/schemas.py` |
+
+`make_dual_level_kg_retrieval_service()` wires a `PathDiscover` built from `KGSettings` path knobs. Tests may inject a custom `PathDiscover` into `DualLevelKGRetrievalService(..., path_discover=...)` without changing env.
+
+#### Pipeline (inside `PathDiscover.discover`)
+
+```mermaid
+flowchart TD
+    IN["seed entity_ids from entity kNN<br/>+ incident KgEdge rows (capped)"] --> TOP["_build_topology<br/>undirected adjacency"]
+    TOP --> ENUM["_enumerate_paths<br/>DFS ≤ KG__PATH_MAX_HOPS between seed pairs"]
+    ENUM --> SEL["_select_paths<br/>weighted ranking + hop bucket fallback"]
+    SEL --> NAR["_to_path_hits<br/>hop-by-hop narrative text"]
+    NAR --> OUT["list[KgPathHit]"]
+```
+
+1. **Subgraph:** After entity hits, the service loads up to `KG__PATH_SUBGRAPH_MAX_EDGES` edges incident on seed nodes (Postgres, ordered by `weight` desc).
+2. **Enumerate:** For each ordered pair of distinct seeds, DFS finds simple paths up to `KG__PATH_MAX_HOPS` edges.
+3. **Rank:** PathRAG **edge-flow weighting** (`KG__PATH_WEIGHT_THRESHOLD`, `KG__PATH_WEIGHT_ALPHA`) scores candidate paths; dedupe and cap at `KG__PATH_MAX_PATHS`. If weighting yields nothing, a hop-bucket fallback uses a slice of 1-/2-/3-hop paths (reference behavior).
+4. **Narrate:** Each selected path becomes prose: entity type/description plus `through edge (keywords)` between hops, using stable `entity_id` slugs and merged node text from Postgres.
+5. **Format:** `format_kg_context` includes the path block under `KG__MAX_PATH_TOKENS`; token budget for chunks is computed after entities, flat relations, and paths.
+
+`PathDiscover` is a no-op when `enabled=False` (default), so dual-level behavior and JSON shape stay backward compatible (`paths` defaults to `[]`).
+
+#### Example `paths` entry (debug JSON)
+
+```json
+{
+  "entity_ids": ["transformer", "multi_head_attention", "scaled_dot_product_attention"],
+  "hop_count": 2,
+  "weight": 0.0,
+  "narrative": "The entity Transformer is a MODEL with the description (...) through edge (architecture, component) to connect to Transformer and Multi-Head Attention and The entity Multi-Head Attention is a METHOD with the description (...)"
+}
+```
+
+Inspect via `POST /api/v1/kg-retrieval/debug` with both `KG__ENABLED=true` and `KG__PATH_RETRIEVAL_ENABLED=true`.
+
+#### Evaluations
+
+Experiment settings support `retrieval_mode`:
+
+| Mode | Retrieval | PathRAG |
+|------|-----------|---------|
+| `rrf` | Hybrid chunk search | — |
+| `kg` | `dual_search` (dual-level) | off (`paths` empty unless you enable paths globally) |
+| `pathrag` | Same as `kg` | requires `KG__PATH_RETRIEVAL_ENABLED=true`; metadata includes `path_count` |
+
+Set `KG__INGESTION_NAME` (or rely on `OPENSEARCH__INGESTION_NAME`) for the experiment partition the same as for `kg` mode.
+
+#### Operational notes
+
+- Requires **at least two** entity seeds that share a connected subgraph within hop and edge caps; otherwise `paths` stays empty without error.
+- Large partitions: path search runs on a **bounded** edge set around seeds, not the full corpus graph.
+- The agentic fusionsearch graph does **not** consume PathRAG context yet; use debug API, `dual_search`, or evals.
+
+Unit tests: `tests/unit/domain/kg/test_path_retrieval.py` (fixture graphs, disabled discoverer).
 
 ---
 
@@ -539,6 +633,14 @@ Illustrative payload (scores and text shortened):
       "description": "Encoder-decoder stack using attention instead of RNNs.",
       "rank": 12,
       "source_chunk_keys": ["1706.03762:1", "1706.03762:3"]
+    }
+  ],
+  "paths": [
+    {
+      "entity_ids": ["transformer", "multi_head_attention"],
+      "hop_count": 1,
+      "weight": 0.0,
+      "narrative": "The entity Transformer is a MODEL ... through edge (architecture, component) ..."
     }
   ],
   "relations": [
@@ -637,7 +739,8 @@ Query length under 50 characters with empty keyword lists uses the raw query as 
 | Factory | Builds |
 |---------|--------|
 | `make_kg_indexing_service` | Index pipeline with extract model |
-| `make_dual_level_kg_retrieval_service` | Query pipeline with keyword model + optional `JinaRerankerClient` |
+| `make_dual_level_kg_retrieval_service` | Query pipeline with keyword model, `PathDiscover`, optional `JinaRerankerClient` |
+| `make_path_discover` | PathRAG path finder from `KGSettings` path fields |
 | `make_kg_search_client` | OpenSearch KG indices for resolved `ingestion_name` |
 
 `resolve_kg_ingestion_name()` uses `KG__INGESTION_NAME` when set, otherwise `OPENSEARCH__INGESTION_NAME`.
@@ -654,7 +757,7 @@ When disabled, KG factories are not called; tests patch them to `None` in API co
 ### 8.3 Search API surface
 
 - **`SearchService.dual_search()`** (`src/domain/search/service.py`) delegates to `DualLevelKGRetrievalService.retrieve`. Raises `RuntimeError` if KG was not wired—callers must check `KG__ENABLED`.
-- **`POST /api/v1/kg-retrieval/debug`** (`src/api/kg_retrieval.py`) returns the full `DualLevelKGResult` JSON (keywords, entities, relations, chunks, `formatted_context`) without running the LangGraph agent. Returns **503** when KG is disabled.
+- **`POST /api/v1/kg-retrieval/debug`** (`src/api/kg_retrieval.py`) returns the full `DualLevelKGResult` JSON (keywords, entities, relations, optional `paths`, chunks, `formatted_context`) without running the LangGraph agent. Returns **503** when KG is disabled.
 
 ### 8.4 Stored graph visualization (read-only)
 
@@ -705,6 +808,13 @@ All settings use the `KG__` prefix (`KGSettings` in `src/config.py`):
 | `KG__MAX_TOTAL_TOKENS` | `12000` | Total context budget including chunks |
 | `KG__CHUNK_RERANK_ENABLED` | `true` | Cross-encoder rerank on graph evidence chunks |
 | `KG__CHUNK_RERANK_MODEL` | `jina-reranker-v2-base-multilingual` | Reranker model id passed to Jina |
+| `KG__PATH_RETRIEVAL_ENABLED` | `false` | Enable PathRAG multi-hop path narration on entity seeds |
+| `KG__PATH_MAX_HOPS` | `3` | Maximum hops between seed entities |
+| `KG__PATH_MAX_PATHS` | `15` | Cap on path narratives included in context |
+| `KG__PATH_WEIGHT_THRESHOLD` | `0.3` | PathRAG path-flow threshold |
+| `KG__PATH_WEIGHT_ALPHA` | `0.8` | PathRAG path-flow decay |
+| `KG__PATH_SUBGRAPH_MAX_EDGES` | `500` | Max incident edges loaded around seeds |
+| `KG__MAX_PATH_TOKENS` | `4000` | Token budget for path narration block |
 
 See also [onboarding.md](onboarding.md) for operator steps and `.env.example` for copy-paste defaults.
 
@@ -723,7 +833,7 @@ Structured outputs are Pydantic models in `src/domain/kg/schemas.py`, consumed v
 
 ## 11. Testing and observability
 
-- Unit tests mirror domain layout: `tests/unit/domain/kg/` (merge, repository, dual-level retrieval), `tests/unit/domain/search/test_service.py` for `dual_search` delegation.
+- Unit tests mirror domain layout: `tests/unit/domain/kg/` (merge, repository, dual-level retrieval, `test_path_retrieval.py` for `PathDiscover`), `tests/unit/domain/search/test_service.py` for `dual_search` delegation.
 - API tests: `tests/api/routers/test_kg_retrieval.py` (503 when disabled, payload when mocked service); `tests/api/routers/test_kg_visualization.py` (graph JSON when repository is mocked).
 - Eval pipeline records `kg` stats on `ExperimentIngestionResult` when indexing runs.
 
@@ -752,9 +862,10 @@ Treat this module as an **experimental second retrieval channel**, not a finishe
 | Lexical signal | BM25 + RRF | None (graph kNN only for entities/relations) |
 | Precision on evidence text | Cross-encoder rerank on hybrid candidates | Cross-encoder rerank on provenance chunks (`KG__CHUNK_RERANK_*`, default on) |
 | Structure | Flat ranked chunks | Entities + edges + provenance chunks |
-| Default | On | Off (`KG__ENABLED`) |
+| Multi-hop paths | — | Optional PathRAG narratives (`PathDiscover`, `KG__PATH_RETRIEVAL_ENABLED`) |
+| Default | On | Off (`KG__ENABLED`); paths off unless `KG__PATH_RETRIEVAL_ENABLED`) |
 | Primary code | `src/domain/rrf/` | `src/domain/kg/` |
 
-Use hybrid search for production Q&A today. Use the KG path when exploring graph-augmented context, preparing eval datasets with structured retrieval traces, or comparing LightRAG-style routing against flat chunk recall on the same `ingestion_name` partition.
+Use hybrid search for production Q&A today. Use the KG path when exploring graph-augmented context, preparing eval datasets with structured retrieval traces, or comparing LightRAG-style routing against flat chunk recall on the same `ingestion_name` partition. Enable PathRAG when eval questions require **explicit paths between entities** returned by the low-level branch (`retrieval_mode=pathrag` in local-PDF experiments).
 
 For the narrative placement of this optional layer in the full system architecture, see **§5.1** in [ARTICLE.md](ARTICLE.md).

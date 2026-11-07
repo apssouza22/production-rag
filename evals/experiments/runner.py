@@ -51,9 +51,14 @@ class ExperimentRunner(EvalRunner):
         self.force_ingest = force_ingest
         self.regenerate_queries = regenerate_queries
 
-        if self.settings.retrieval_mode == "kg" and not get_app_settings().kg.enabled:
+        if self.settings.retrieval_mode in ("kg", "pathrag") and not get_app_settings().kg.enabled:
             raise RuntimeError(
-                "experiment retrieval_mode=kg requires KG__ENABLED=true and a indexed KG for the experiment partition"
+                "experiment retrieval_mode=kg or pathrag requires KG__ENABLED=true and a indexed KG "
+                "for the experiment partition"
+            )
+        if self.settings.retrieval_mode == "pathrag" and not get_app_settings().kg.path_retrieval_enabled:
+            raise RuntimeError(
+                "experiment retrieval_mode=pathrag requires KG__PATH_RETRIEVAL_ENABLED=true"
             )
 
         self.chat_model = make_eval_chat_model(
@@ -65,7 +70,7 @@ class ExperimentRunner(EvalRunner):
             ingestion_name=self.settings.experiment_ingestion_name,
         )
         kg_retrieval_service = None
-        if self.settings.retrieval_mode == "kg":
+        if self.settings.retrieval_mode in ("kg", "pathrag"):
             kg_retrieval_service = make_dual_level_kg_retrieval_service(
                 database=make_database(),
                 settings=get_app_settings(),

@@ -176,3 +176,21 @@ Key env vars: `JINA_API_KEY` (required for hybrid search), `OPENAI_API_KEY`, `LA
 | Evals framework | [evals/README.md](evals/README.md) |
 | Evals architecture | [docs/evals.md](docs/evals.md) |
 | Interactive API docs | http://localhost:8000/docs (when stack is running) |
+
+
+# Task execution plan
+Important: Always plan the task step by step before writing code. Ask for permission to proceed with the plan.
+Important: Before proceed with the plan, create a new file named `.agents/plans/name-of-the-task.md`. Based on the approved plan, list all necessary implementation steps as GitHub-style checkboxes (`- [ ] Step Description`). Use sub-bullets for granular details within each main step.
+
+- Plans should be detailed enough to execute without ambiguity
+- Each task in the plan must include at least one validation test to verify it works
+- Assess complexity and single-pass feasibility - can an agent realistically complete this in one go?
+- Ask questions if unsure about anything
+- Include a complexity indicator at the top of each plan:
+  ✅ Simple - Single-pass executable, low risk
+  ⚠️ Medium - May need iteration, some complexity
+  🔴 Complex - Break into sub-plans before executing
+
+**CRITICAL: After you successfully complete each step, you MUST update the `.agent/plans/name-of-the-task.md` file by changing the corresponding checkbox from `- [ ]` to `- [x]`.**
+Only proceed to the *next* unchecked item after confirming the previous one is checked off in the file. Announce which step you are starting.
+

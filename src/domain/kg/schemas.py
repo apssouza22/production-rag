@@ -113,6 +113,15 @@ class KgRelationHit(BaseModel):
     source_chunk_keys: list[str] = Field(default_factory=list)
 
 
+class KgPathHit(BaseModel):
+    """Multi-hop entity path with PathRAG-style narrative relation context."""
+
+    entity_ids: list[str] = Field(default_factory=list)
+    hop_count: int = 0
+    weight: float = 0.0
+    narrative: str = ""
+
+
 class KgChunkHit(BaseModel):
     """Evidence text loaded from the hybrid chunk index via ``source_chunk_keys`` on nodes/edges."""
 
@@ -134,5 +143,6 @@ class DualLevelKGResult(BaseModel):
     low_level_keywords: list[str] = Field(default_factory=list)
     entities: list[KgEntityHit] = Field(default_factory=list)
     relations: list[KgRelationHit] = Field(default_factory=list)
+    paths: list[KgPathHit] = Field(default_factory=list)
     chunks: list[KgChunkHit] = Field(default_factory=list)
     formatted_context: str = ""

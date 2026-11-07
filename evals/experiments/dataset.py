@@ -46,7 +46,7 @@ class ExperimentDataset:
         return samples
 
     async def _build_sample(self, query: ExperimentQuery) -> EvalSample | None:
-        if self.settings.retrieval_mode == "kg":
+        if self.settings.retrieval_mode in ("kg", "pathrag"):
             return await self._build_sample_kg(query)
         return await self._build_sample_rrf(query)
 
@@ -87,11 +87,12 @@ class ExperimentDataset:
             contexts=contexts,
             source_id=query.arxiv_id or None,
             metadata={
-                "retrieval_mode": "kg",
+                "retrieval_mode": self.settings.retrieval_mode,
                 "high_level_keywords": result.high_level_keywords,
                 "low_level_keywords": result.low_level_keywords,
                 "entity_count": len(result.entities),
                 "relation_count": len(result.relations),
+                "path_count": len(result.paths),
                 "retrieved_arxiv_ids": sorted({chunk.arxiv_id for chunk in chunks if chunk.arxiv_id}),
             },
         )

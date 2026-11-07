@@ -178,3 +178,4 @@ test_data/
 # Evals outputs
 evals/reports/*.json
 
+/.specs/

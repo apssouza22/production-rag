@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Iterable
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from src.domain.kg.merge import merge_descriptions, merge_unique_strings, normalize_entity_id
@@ -96,6 +96,30 @@ class KgGraphRepository:
         stmt = select(KgNode).where(
             KgNode.entity_id.in_(ids),
             KgNode.ingestion_name == self.ingestion_name,
+        )
+        return list(self.session.scalars(stmt))
+
+    def get_incident_edges_for_entity_ids(
+        self,
+        entity_ids: Iterable[str],
+        *,
+        max_edges: int,
+    ) -> list[KgEdge]:
+        """Edges with at least one endpoint in ``entity_ids``, capped and ordered by weight."""
+        ids = list(entity_ids)
+        if not ids or max_edges <= 0:
+            return []
+        stmt = (
+            select(KgEdge)
+            .where(
+                KgEdge.ingestion_name == self.ingestion_name,
+                or_(
+                    KgEdge.source_entity_id.in_(ids),
+                    KgEdge.target_entity_id.in_(ids),
+                ),
+            )
+            .order_by(KgEdge.weight.desc())
+            .limit(max_edges)
         )
         return list(self.session.scalars(stmt))
 

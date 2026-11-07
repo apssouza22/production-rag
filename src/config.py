@@ -150,6 +150,14 @@ class KGSettings(BaseConfigSettings):
     keyword_model: str = ""
     chunk_rerank_enabled: bool = True
     chunk_rerank_model: str = "jina-reranker-v2-base-multilingual"
+    path_retrieval_enabled: bool = False
+    path_max_hops: int = 3
+    path_max_paths: int = 15
+    path_weight_threshold: float = 0.3
+    path_weight_alpha: float = 0.8
+    path_subgraph_max_edges: int = 500
+    path_subgraph_max_nodes: int = 100
+    max_path_tokens: int = 4000
 
 
 class LangfuseSettings(BaseConfigSettings):
