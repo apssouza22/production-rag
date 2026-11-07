@@ -47,6 +47,10 @@ def display_summary(report: dict) -> None:
     print(f"{Fore.CYAN}Items:{Style.RESET_ALL} {report['evaluated_items']}/{report['total_items']}")
     print(f"{Fore.CYAN}Duration:{Style.RESET_ALL} {report['duration_seconds']} seconds")
 
+    retrieval = report["metadata"].get("retrieval", {})
+    retrieval_mode = retrieval.get("retrieval_mode", "rrf")
+    print(f"{Fore.CYAN}Retrieval mode:{Style.RESET_ALL} {retrieval_mode}")
+
     ingestion = report["metadata"].get("ingestion", {})
     state = "skipped (already indexed)" if ingestion.get("skipped") else "performed"
     print(f"{Fore.CYAN}Ingestion:{Style.RESET_ALL} {state}, {ingestion.get('chunk_count', 0)} chunks")
@@ -69,6 +73,7 @@ async def run_experiment(args: argparse.Namespace, run_config: ExperimentRunConf
     print_info(f"Settings: {run_config.config_path}")
     print_info(f"PDFs: {settings.experiment_pdfs_dir}")
     print_info(f"Ingestion partition: {settings.experiment_ingestion_name}")
+    print_info(f"Retrieval mode: {settings.retrieval_mode}")
     print_info(f"Judge model: {settings.evaluation_llm}")
 
     try:

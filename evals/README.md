@@ -254,7 +254,7 @@ All execution paths emit the same versioned schema:
 - normalized item previews, metadata, and metric results
 - runner-specific details under `metadata`
 
-Files are written to `evals/reports/evaluation_report_<run_type>_<timestamp>.json` when the runner uses `FileReportPublisher`. Pass `NullReportPublisher` (or `make_report_publisher(enabled=False)`) to skip disk output; CLIs map `--no-report` to the no-op publisher.
+Files are written to `evals/reports/evaluation_report_<run_type>_<timestamp>.json` when the runner uses `FileReportPublisher`. Experiment runs use `evaluation_report_experiment_evaluation_<rrf|kg>_<timestamp>.json` and record `retrieval_mode` under `metadata.retrieval` plus per-item `metadata`. Pass `NullReportPublisher` (or `make_report_publisher(enabled=False)`) to skip disk output; CLIs map `--no-report` to the no-op publisher.
 
 ## Tests
 

@@ -132,7 +132,10 @@ class ExperimentRunner(EvalRunner):
             },
         )
 
-        self.report_publisher.publish(self.report)
+        self.report_publisher.publish(
+            self.report,
+            filename_prefix=f"evaluation_report_experiment_evaluation_{self.settings.retrieval_mode}",
+        )
 
         logger.info(
             "Experiment evaluation completed: samples=%s duration_seconds=%s",

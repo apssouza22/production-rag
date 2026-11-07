@@ -167,6 +167,8 @@ Optional `MetricResultHandler` hooks run **per metric result** — for example `
 
 `evals/reports/evaluation_report_<run_type>_<timestamp>.json`
 
+Local-PDF experiment runs use `evaluation_report_experiment_evaluation_<rrf|kg>_<timestamp>.json` and set `metadata.retrieval.retrieval_mode` from `experiment.retrieval_mode` in settings.
+
 Run types include `trace_evaluation`, `rag_evaluation`, `experiment_evaluation`, and `example_evaluation`. Pass `--no-report` or `make_report_publisher(enabled=False)` to skip disk output.
 
 ### 3.5 Runner contract
