@@ -185,6 +185,7 @@ Important: Before proceed with the plan, create a new file named `.agents/plans/
 - Plans should be detailed enough to execute without ambiguity
 - Each task in the plan must include at least one validation test to verify it works
 - Assess complexity and single-pass feasibility - can an agent realistically complete this in one go?
+- Ask questions if unsure about anything
 - Include a complexity indicator at the top of each plan:
   ✅ Simple - Single-pass executable, low risk
   ⚠️ Medium - May need iteration, some complexity

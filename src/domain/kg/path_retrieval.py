@@ -1,4 +1,58 @@
-"""PathRAG-style multi-hop path discovery over seed entities (reference: PathRAG operate.py)."""
+"""PathRAG-style multi-hop path discovery and narration for the knowledge graph.
+
+This module implements query-time path retrieval inspired by
+`BUPT-GAMMA/PathRAG` (see ``operate._find_most_related_edges_from_entities3``).
+It does not index paths separately: it walks a bounded subgraph already loaded
+from ``kg_nodes`` / ``kg_edges`` and turns selected routes into text the LLM can
+use alongside dual-level entity and relation hits.
+
+Role in the stack
+-----------------
+``DualLevelKGRetrievalService`` (``dual_level_retrieval.py``) obtains seed
+``entity_id`` values from low-level keyword / entity kNN search, loads incident
+edges via ``KgGraphRepository.get_incident_edges_for_entity_ids``, then calls
+``PathDiscover.discover()``. Results are ``KgPathHit`` rows (entity chain, hop
+count, narrative) passed into ``format_kg_context()`` as the
+``--- Relations (KG paths) ---`` block when ``KG__PATH_RETRIEVAL_ENABLED`` is on.
+
+``make_path_discover()`` in ``factory.py`` wires knobs from ``KGSettings``.
+When ``enabled=False`` (default), ``discover()`` returns ``[]`` so dual-level
+behavior stays backward compatible.
+
+End-to-end pipeline (``PathDiscover.discover``)
+-----------------------------------------------
+1. **Topology** — ``_build_topology`` builds an undirected adjacency list
+   (``_UndirectedGraph``) and a bidirectional ``(source, target) -> KgEdge`` map.
+2. **Enumeration** — ``_enumerate_paths`` runs DFS from each ordered pair of
+   distinct seeds, collecting simple paths up to ``max_hops`` (default 3). Paths
+   are grouped by seed pair and by hop bucket (1-, 2-, 3-hop lists).
+3. **Selection** — ``_select_paths`` prefers paths ranked by PathRAG edge-flow
+   weighting (``_score_paths_for_pair``: threshold + alpha propagation along
+   follow sets). If that yields nothing, a hop-bucket fallback takes slices of
+   enumerated paths (reference behavior). Output is capped at ``max_paths``.
+4. **Narration** — ``_to_path_hits`` / ``_render_narrative`` expand each path into
+   prose: entity name/type/description at endpoints and ``through edge (keywords)``
+   between hops, using merged node text from the caller's ``node_map``.
+
+Early exits (empty list, no error): disabled discoverer, fewer than two seeds,
+no edges, or seeds not present in the built graph.
+
+Configurable parameters (constructor / ``KGSettings``)
+------------------------------------------------------
+- ``enabled`` — master switch for path retrieval.
+- ``max_hops`` — maximum edges on a path (DFS depth cap).
+- ``max_paths`` — maximum paths returned after ranking / fallback.
+- ``weight_threshold`` — drop weak edge weights during flow scoring.
+- ``weight_alpha`` — decay factor when propagating weight to the next hop.
+
+Public API
+----------
+- ``PathDiscover`` — stateless discoverer; inject in tests or via factory.
+- ``discover(seed_entity_ids, node_map, edges) -> list[KgPathHit]`` — main entry.
+
+Private helpers (``_UndirectedGraph``, ``_PathEnumeration``) keep graph search and
+DFS bookkeeping local to this file.
+"""
 
 from __future__ import annotations
 
