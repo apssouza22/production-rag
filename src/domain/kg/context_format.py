@@ -1,6 +1,6 @@
 """Format dual-level KG retrieval hits into LLM-ready context strings."""
 
-from src.domain.kg.schemas import KgChunkHit, KgEntityHit, KgRelationHit
+from src.domain.kg.schemas import KgChunkHit, KgEntityHit, KgPathHit, KgRelationHit
 
 
 def estimate_tokens(text: str) -> int:
@@ -27,6 +27,8 @@ def format_kg_context(
     max_entity_tokens: int,
     max_relation_tokens: int,
     max_total_tokens: int,
+    paths: list[KgPathHit] | None = None,
+    max_path_tokens: int | None = None,
 ) -> str:
     """Build LLM-ready context: CSV-like entity/relation blocks plus delimited chunk text."""
     entity_lines = ["id,entity_name,entity_type,description,rank"]
@@ -42,10 +44,19 @@ def format_kg_context(
         )
 
     entities_block = truncate_text_to_tokens("\n".join(entity_lines), max_entity_tokens)
+    paths_block = ""
+    if paths:
+        path_lines = ["id,hop_count,narrative"]
+        for idx, path in enumerate(paths, start=1):
+            escaped = path.narrative.replace(chr(34), chr(39))
+            path_lines.append(f'{idx},{path.hop_count},"{escaped}"')
+        path_budget = max_path_tokens if max_path_tokens is not None else max_relation_tokens
+        paths_block = truncate_text_to_tokens("\n".join(path_lines), path_budget)
+
     relations_block = truncate_text_to_tokens("\n".join(relation_lines), max_relation_tokens)
 
     chunk_parts: list[str] = []
-    used = estimate_tokens(entities_block) + estimate_tokens(relations_block)
+    used = estimate_tokens(entities_block) + estimate_tokens(relations_block) + estimate_tokens(paths_block)
     chunk_budget = max(0, max_total_tokens - used)
     for chunk in chunks:
         header = f"[{chunk.arxiv_id} chunk {chunk.chunk_index}] {chunk.title}"
@@ -61,6 +72,8 @@ def format_kg_context(
         sections.append(f"--- Entities (KG) ---\n{entities_block}")
     if relations_block:
         sections.append(f"--- Relations (KG) ---\n{relations_block}")
+    if paths_block and paths:
+        sections.append(f"--- Relations (KG paths) ---\n{paths_block}")
     if chunk_parts:
         sections.append(f"--- Evidence chunks ---\n".join(chunk_parts))
     return "\n\n".join(sections)

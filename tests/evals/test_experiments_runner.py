@@ -13,6 +13,25 @@ from evals.experiments.schemas import ExperimentQuery
 from src.config import ChunkingSettings, PDFParserSettings
 
 
+def test_runner_rejects_pathrag_when_path_retrieval_disabled() -> None:
+    run_config = ExperimentRunConfig(
+        pdf_parser=PDFParserSettings(),
+        chunking=ChunkingSettings(),
+        query=QuerySettings(),
+        experiment=ExperimentSettings(retrieval_mode="pathrag"),
+        config_path=Path("evals/experiments/data/settings/experiment-config.json"),
+    )
+    app_settings = Mock()
+    app_settings.kg.enabled = True
+    app_settings.kg.path_retrieval_enabled = False
+
+    with (
+        patch("evals.experiments.runner.get_app_settings", return_value=app_settings),
+        pytest.raises(RuntimeError, match="pathrag requires KG__PATH_RETRIEVAL_ENABLED"),
+    ):
+        ExperimentRunner(run_config=run_config, metrics=[])
+
+
 def test_runner_rejects_kg_mode_when_kg_disabled() -> None:
     run_config = ExperimentRunConfig(
         pdf_parser=PDFParserSettings(),

@@ -12,11 +12,13 @@ from src.domain.kg.context_format import format_kg_context
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.kg_search_client import KgSearchClient
 from src.domain.kg.models import KgEdge, KgNode
+from src.domain.kg.path_retrieval import PathDiscover
 from src.domain.kg.repository import KgGraphRepository
 from src.domain.kg.schemas import (
     DualLevelKGResult,
     KgChunkHit,
     KgEntityHit,
+    KgPathHit,
     KgRelationHit,
 )
 from src.domain.rrf import HybridRrfSearch
@@ -65,6 +67,7 @@ class DualLevelKGRetrievalService:
         kg_settings: KGSettings,
         ingestion_name: str,
         reranker_client: JinaRerankerClient | None = None,
+        path_discover: PathDiscover | None = None,
     ) -> None:
         self._database = database
         self._paper_rrf_search = paper_rrf_search
@@ -74,6 +77,7 @@ class DualLevelKGRetrievalService:
         self._kg_settings = kg_settings
         self._ingestion_name = ingestion_name
         self._reranker_client = reranker_client
+        self._path_discover = path_discover or PathDiscover(enabled=kg_settings.path_retrieval_enabled)
 
     async def retrieve(
         self,
@@ -96,6 +100,8 @@ class DualLevelKGRetrievalService:
         entity_hits.sort(key=lambda e: e.rank, reverse=True)
         relation_hits.sort(key=lambda r: r.rank, reverse=True)
 
+        path_hits = await self._discover_paths(entity_hits)
+
         chunk_hits = self._load_chunk_hits(chunk_keys.sorted_keys())
         chunk_hits = await self._rerank_chunk_hits(query, chunk_hits)
         formatted = format_kg_context(
@@ -105,6 +111,8 @@ class DualLevelKGRetrievalService:
             max_entity_tokens=self._kg_settings.max_entity_tokens,
             max_relation_tokens=self._kg_settings.max_relation_tokens,
             max_total_tokens=self._kg_settings.max_total_tokens,
+            paths=path_hits,
+            max_path_tokens=self._kg_settings.max_path_tokens,
         )
 
         return DualLevelKGResult(
@@ -113,9 +121,28 @@ class DualLevelKGRetrievalService:
             low_level_keywords=ll,
             entities=entity_hits,
             relations=relation_hits,
+            paths=path_hits,
             chunks=chunk_hits,
             formatted_context=formatted,
         )
+
+    async def _discover_paths(self, entity_hits: list[KgEntityHit]) -> list[KgPathHit]:
+        if len(entity_hits) < 2:
+            return []
+
+        seed_ids = [entity.entity_id for entity in entity_hits]
+        with self._graph_repository() as repo:
+            incident_edges = repo.get_incident_edges_for_entity_ids(
+                seed_ids,
+                max_edges=self._kg_settings.path_subgraph_max_edges,
+            )
+            endpoint_ids = set(seed_ids)
+            for edge in incident_edges:
+                endpoint_ids.add(edge.source_entity_id)
+                endpoint_ids.add(edge.target_entity_id)
+            nodes = repo.get_nodes_by_entity_ids(endpoint_ids)
+        node_map = {node.entity_id: node for node in nodes}
+        return self._path_discover.discover(seed_ids, node_map, incident_edges)
 
     async def _resolve_query_keywords(self, query: str) -> tuple[list[str], list[str], bool]:
         """Extract dual keywords; third value is ``True`` when retrieval should return without search."""

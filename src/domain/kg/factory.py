@@ -9,6 +9,7 @@ from src.domain.kg.dual_level_retrieval import DualLevelKGRetrievalService
 from src.domain.kg.extraction import KgExtractionService
 from src.domain.kg.indexing_service import KgIndexingService
 from src.domain.kg.kg_search_client import KgSearchClient
+from src.domain.kg.path_retrieval import PathDiscover
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.opensearch.factory import make_opensearch_client
 from src.domain.rrf.factory import make_hybrid_rrf_search
@@ -79,6 +80,18 @@ def make_kg_indexing_service(
     )
 
 
+def make_path_discover(settings: Settings | None = None) -> PathDiscover:
+    settings = settings or get_settings()
+    kg = settings.kg
+    return PathDiscover(
+        enabled=kg.path_retrieval_enabled,
+        max_hops=kg.path_max_hops,
+        max_paths=kg.path_max_paths,
+        weight_threshold=kg.path_weight_threshold,
+        weight_alpha=kg.path_weight_alpha,
+    )
+
+
 def make_dual_level_kg_retrieval_service(
     database: BaseDatabase | None = None,
     settings: Settings | None = None,
@@ -98,4 +111,5 @@ def make_dual_level_kg_retrieval_service(
         kg_settings=settings.kg,
         ingestion_name=ingestion_name,
         reranker_client=reranker_client if reranker_client is not None else make_reranker_client(settings),
+        path_discover=make_path_discover(settings),
     )
