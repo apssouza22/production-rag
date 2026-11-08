@@ -1,6 +1,6 @@
 """SQLAlchemy persistence for the table-graph KG (no AGE/Cypher).
 
-Chunk linkage uses keys ``{arxiv_id}:{chunk_index}`` stored in JSONB on nodes and edges.
+Chunk linkage uses keys ``{document_id}:{chunk_index}`` stored in JSONB on nodes and edges.
 """
 
 import uuid
@@ -15,7 +15,7 @@ from src.domain.db.interfaces.postgresql import Base
 
 
 class KgNode(Base):
-    """Entity node: merged descriptions and provenance across chunks and papers."""
+    """Entity node: merged descriptions and provenance across chunks and source documents."""
 
     __tablename__ = "kg_nodes"
     __table_args__ = (
@@ -29,7 +29,7 @@ class KgNode(Base):
     entity_type: Mapped[str] = mapped_column(String(128), nullable=False, default="UNKNOWN")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source_chunk_keys: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    arxiv_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    document_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     ingestion_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
@@ -76,7 +76,7 @@ class KgChunkExtraction(Base):
     __tablename__ = "kg_chunk_extractions"
 
     chunk_key: Mapped[str] = mapped_column(String(128), primary_key=True)
-    arxiv_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    document_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     ingestion_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")

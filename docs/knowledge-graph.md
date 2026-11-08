@@ -104,7 +104,7 @@ erDiagram
         string entity_type
         text description
         jsonb source_chunk_keys
-        jsonb arxiv_ids
+        jsonb document_ids
         string ingestion_name
     }
     kg_edges {
@@ -151,7 +151,7 @@ erDiagram
   "entity_type": "METHOD",
   "description": "Parallel attention heads over query, key, and value projections. Scaled dot-product attention is applied in each head.",
   "source_chunk_keys": ["1706.03762:3", "1706.03762:4"],
-  "arxiv_ids": ["1706.03762"],
+  "document_ids": ["1706.03762"],
   "ingestion_name": "local-dev"
 }
 ```
@@ -181,13 +181,13 @@ Three tables, all scoped by `ingestion_name`:
 
 | Table | Role |
 |-------|------|
-| `kg_nodes` | Merged **entities**: `entity_id` (slug), display name, type, merged description, `source_chunk_keys[]`, `arxiv_ids[]`. |
+| `kg_nodes` | Merged **entities**: `entity_id` (slug), display name, type, merged description, `source_chunk_keys[]`, `document_ids[]`. |
 | `kg_edges` | **Directed relations** between `entity_id` values: description, thematic `keywords`, `weight`, `source_chunk_keys[]`. |
-| `kg_chunk_extractions` | **Idempotency**: one row per `{arxiv_id}:{chunk_index}` with status `done` / `failed` so CLI runs skip completed chunks. |
+| `kg_chunk_extractions` | **Idempotency**: one row per `{document_id}:{chunk_index}` with status `done` / `failed` so CLI runs skip completed chunks. |
 
 Entity IDs are stable slugs from display names (`normalize_entity_id` in `src/domain/kg/merge.py`)—lowercase, punctuation stripped, whitespace collapsed—similar in spirit to LightRAG entity keys.
 
-Chunk provenance uses keys `"{arxiv_id}:{chunk_index}"` (`make_chunk_key`), matching how chunks are addressed in OpenSearch.
+Chunk provenance uses keys `"{document_id}:{chunk_index}"` (`make_chunk_key`), matching how chunks are addressed in OpenSearch.
 
 ### 3.2 OpenSearch vector indices (`src/domain/kg/kg_search_client.py`)
 
@@ -207,9 +207,9 @@ Mappings live in `src/domain/kg/index_config.py` with `dynamic: strict` so accid
 
 ## 4. Index-time pipeline
 
-Entry point: `KgIndexingService.index_arxiv_ids()` in `src/domain/kg/indexing_service.py`.
+Entry point: `KgIndexingService.index_document_ids()` in `src/domain/kg/indexing_service.py`.
 
-**Prerequisite:** hybrid chunks for each `arxiv_id` must already exist (`HybridRrfSearch.get_chunks_by_paper`). The KG job does not parse PDFs or chunk text.
+**Prerequisite:** hybrid chunks for each `document_id` must already exist (`HybridRrfSearch.get_chunks_by_document`). The KG job does not parse PDFs or chunk text.
 
 ### 4.1 Per-chunk flow (sequence)
 
@@ -223,7 +223,7 @@ sequenceDiagram
     participant KGE as OS kg-entities
     participant KGR as OS kg-relations
 
-    IDX->>OS: get_chunks_by_paper(arxiv_id)
+    IDX->>OS: get_chunks_by_document(document_id)
     loop each chunk
         IDX->>PG: get_chunk_extraction(chunk_key)
         alt status done and not replace
@@ -306,7 +306,7 @@ Relations reference entities by **name** from the LLM. Within a chunk, a `name_t
 
 ### 4.5 Replace / partial delete
 
-`replace=True` (CLI `--replace`, eval `force=True`) calls `delete_graph_for_arxiv`: strip chunk keys from nodes/edges, delete orphaned edges/nodes, remove extraction rows. Vector indices for that paper are updated on the next successful embed pass for the remaining unique entity/relation docs in that run (full vector GC across papers is not implemented—see limitations).
+`replace=True` (CLI `--replace`, eval `force=True`) calls `delete_graph_for_document`: strip chunk keys from nodes/edges, delete orphaned edges/nodes, remove extraction rows. Vector indices for that document are updated on the next successful embed pass for the remaining unique entity/relation docs in that run (full vector GC across documents is not implemented—see limitations).
 
 ### 4.6 How to run indexing
 
@@ -316,11 +316,11 @@ make kg-index ARXIV_IDS=2611.02200,2611.02208
 make kg-index ARXIV_IDS=2611.02200 REPLACE=1   # re-extract
 ```
 
-**Example CLI return value** (`index_arxiv_ids` stats dict):
+**Example CLI return value** (`index_document_ids` stats dict):
 
 ```json
 {
-  "papers": 2,
+  "documents": 2,
   "chunks_processed": 47,
   "chunks_skipped": 3,
   "chunks_failed": 1,
@@ -495,7 +495,7 @@ This is not BM25 and not RRF; it is the same cross-encoder precision stage used 
 1. CSV-like **Entities** block (id, name, type, description, rank).
 2. CSV-like **Relations** block (endpoints, description, keywords, weight, rank).
 3. When PathRAG is enabled and paths were found: **`--- Relations (KG paths) ---`** with CSV-like rows (`hop_count`, narrated multi-hop text).
-4. **Evidence chunks** with headers `[arxiv_id chunk N] title — section`.
+4. **Evidence chunks** with headers `[document_id chunk N] title — section`.
 
 Token limits use a rough `len/4` estimator:
 
@@ -657,7 +657,7 @@ Illustrative payload (scores and text shortened):
   "chunks": [
     {
       "chunk_key": "1706.03762:3",
-      "arxiv_id": "1706.03762",
+      "document_id": "1706.03762",
       "chunk_index": 3,
       "chunk_text": "Instead of performing a single attention function with d_model-dimensional keys, values and queries, we found it beneficial to linearly project the queries, keys and values h times with different, learned linear projections to d_k, d_k and d_v dimensions, respectively.",
       "title": "Attention Is All You Need",
@@ -763,7 +763,7 @@ When disabled, KG factories are not called; tests patch them to `None` in API co
 
 To **inspect what is already in Postgres** (`kg_nodes`, `kg_edges`), use the export endpoint and the bundled static page:
 
-- **`GET /api/v1/kg/graph`** (`src/api/kg_visualization.py`) — returns a **bounded** subgraph as JSON (`nodes`, `edges`, `ingestion_name`, truncation flags). Query params: optional `ingestion_name` (defaults via `resolve_kg_ingestion_name`), optional `arxiv_id` (keeps only nodes whose `arxiv_ids` array contains that id), `max_nodes` (default 300, cap 500), `max_edges` (default 1000, cap 5000). Does **not** require `KG__ENABLED`; it only reads the table graph.
+- **`GET /api/v1/kg/graph`** (`src/api/kg_visualization.py`) — returns a **bounded** subgraph as JSON (`nodes`, `edges`, `ingestion_name`, truncation flags). Query params: optional `ingestion_name` (defaults via `resolve_kg_ingestion_name`), optional `document_id` (keeps only nodes whose `document_ids` array contains that id; `arxiv_id` query param still accepted as alias), `max_nodes` (default 300, cap 500), `max_edges` (default 1000, cap 5000). Does **not** require `KG__ENABLED`; it only reads the table graph.
 - **`GET /kg-viz/`** — when the API is running, open [`http://localhost:8000/kg-viz/`](http://localhost:8000/kg-viz/) for a **vis-network** view that calls the export endpoint (set API base if you open the file from another origin). Large corpora: lower `max_nodes` / `max_edges` if the browser feels sluggish.
 
 The **fusionsearch agent** still uses hybrid `search_unified()` via its retriever tool—it does **not** call `dual_search` yet. The KG path is for experiments, eval ingestion, and debug API inspection until product wiring decides how to fuse graph context with graded chunk retrieval.

@@ -46,7 +46,7 @@ Graph neural networks propagate information along edges; PathRAG retrieves multi
 over a knowledge graph. We build on LightRAG-style dual-level retrieval.
 
 Good extraction:
-- Do not invent papers or datasets not named in the chunk.
+- Do not invent entities or sources not named in the chunk.
 - Link METHOD/MODEL entities only when the text clearly states a dependency or comparison.
 - Prefer precise names (PathRAG, LightRAG) over vague "the method".
 
@@ -57,7 +57,7 @@ _ENTITY_TYPES_LINE = ", ".join(DEFAULT_ENTITY_TYPES)
 
 ENTITY_RELATION_EXTRACTION_PROMPT = (
     """-Goal-
-Given a text chunk from a scientific paper, identify grounded entities and directed relationships
+Given a text chunk from a source document, identify grounded entities and directed relationships
 among them. Output must conform to the tool/response schema (entities and relations arrays).
 
 Use English for names and descriptions unless the chunk is clearly in another language
@@ -152,7 +152,7 @@ Given the query, populate high_level_keywords and low_level_keywords in the stru
 ---Instructions---
 
 - Keep the same language as the query.
-- Prefer terms that would match scientific paper content (methods, benchmarks, architectures).
+- Prefer terms that would match corpus content (methods, benchmarks, architectures, products).
 - Include 2–8 keywords per list when the query supports it; omit noise and duplicate ideas.
 - Do not answer the question—only extract keywords.
 

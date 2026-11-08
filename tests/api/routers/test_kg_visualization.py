@@ -38,7 +38,7 @@ def _node(ingestion: str) -> KgNode:
         entity_type="METHOD",
         description="Scaled dot-product attention.",
         source_chunk_keys=["1706.03762:3"],
-        arxiv_ids=["1706.03762"],
+        document_ids=["1706.03762"],
         ingestion_name=ingestion,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),

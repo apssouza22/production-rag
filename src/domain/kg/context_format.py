@@ -59,7 +59,7 @@ def format_kg_context(
     used = estimate_tokens(entities_block) + estimate_tokens(relations_block) + estimate_tokens(paths_block)
     chunk_budget = max(0, max_total_tokens - used)
     for chunk in chunks:
-        header = f"[{chunk.arxiv_id} chunk {chunk.chunk_index}] {chunk.title}"
+        header = f"[{chunk.document_id} chunk {chunk.chunk_index}] {chunk.title}"
         if chunk.section_name:
             header += f" — {chunk.section_name}"
         body = f"{header}\n{chunk.chunk_text}"

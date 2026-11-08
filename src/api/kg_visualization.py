@@ -68,6 +68,18 @@ def _build_response(
     )
 
 
+def _resolve_document_filter(
+    document_id: str | None,
+    arxiv_id: str | None,
+) -> str | None:
+    """``arxiv_id`` is a deprecated alias for ``document_id`` (arXiv deployments use the same value)."""
+    if document_id is not None and document_id.strip():
+        return document_id.strip()
+    if arxiv_id is not None and arxiv_id.strip():
+        return arxiv_id.strip()
+    return None
+
+
 @router.get("/graph", response_model=KgGraphResponse)
 async def get_kg_graph(
     settings: SettingsDep,
@@ -75,24 +87,29 @@ async def get_kg_graph(
     ingestion_name: Annotated[
         str | None, Query(description="Partition key; defaults to resolved KG/OpenSearch ingestion.")
     ] = None,
-    arxiv_id: Annotated[str | None, Query(description="Keep only nodes mentioning this arXiv id.")] = None,
+    document_id: Annotated[str | None, Query(description="Keep only nodes mentioning this source document id.")] = None,
+    arxiv_id: Annotated[
+        str | None,
+        Query(description="Deprecated alias for document_id (arXiv id).", include_in_schema=False),
+    ] = None,
     max_nodes: Annotated[int, Query(ge=1, le=_CAP_MAX_NODES)] = _DEFAULT_MAX_NODES,
     max_edges: Annotated[int, Query(ge=1, le=_CAP_MAX_EDGES)] = _DEFAULT_MAX_EDGES,
 ) -> KgGraphResponse:
     """Export a bounded subgraph for the web visualizer (does not require ``KG__ENABLED``)."""
     resolved = (ingestion_name or "").strip() or resolve_kg_ingestion_name(settings)
+    doc_filter = _resolve_document_filter(document_id, arxiv_id)
     repo = KgGraphRepository(session, resolved)
     nodes, edges = repo.get_subgraph_for_visualization(
-        arxiv_id=arxiv_id,
+        document_id=doc_filter,
         max_nodes=max_nodes,
         max_edges=max_edges,
     )
     logger.info(
-        "KG graph export: ingestion=%s nodes=%d edges=%d arxiv_filter=%s",
+        "KG graph export: ingestion=%s nodes=%d edges=%d document_filter=%s",
         resolved,
         len(nodes),
         len(edges),
-        arxiv_id,
+        doc_filter,
     )
     return _build_response(
         ingestion_name=resolved,

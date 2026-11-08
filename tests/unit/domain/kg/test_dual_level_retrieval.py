@@ -33,7 +33,7 @@ def _build_service(
 ) -> DualLevelKGRetrievalService:
     return DualLevelKGRetrievalService(
         database=database,
-        paper_rrf_search=opensearch,
+        hybrid_rrf_search=opensearch,
         kg_search_client=kg_search,
         extraction_service=extraction,
         embeddings_client=embeddings,
@@ -64,7 +64,7 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
         entity_type="MODEL",
         description="Attention-based model",
         source_chunk_keys=["1234.5678:0"],
-        arxiv_ids=["1234.5678"],
+        document_ids=["1234.5678"],
         ingestion_name="dev",
     )
 
@@ -81,7 +81,7 @@ async def test_retrieve_builds_context_from_entity_branch(kg_settings: KGSetting
     opensearch.get_chunks_by_chunk_keys.return_value = [
         {
             "chunk_key": "1234.5678:0",
-            "arxiv_id": "1234.5678",
+            "document_id": "1234.5678",
             "chunk_index": 0,
             "chunk_text": "We propose the Transformer.",
             "title": "Attention",
@@ -135,7 +135,7 @@ async def test_retrieve_reranks_chunks_before_formatting() -> None:
         entity_type="CONCEPT",
         description="First entity",
         source_chunk_keys=["1111.1111:0", "2222.2222:0"],
-        arxiv_ids=["1111.1111", "2222.2222"],
+        document_ids=["1111.1111", "2222.2222"],
         ingestion_name="dev",
     )
 
@@ -151,14 +151,14 @@ async def test_retrieve_reranks_chunks_before_formatting() -> None:
     opensearch.get_chunks_by_chunk_keys.return_value = [
         {
             "chunk_key": "1111.1111:0",
-            "arxiv_id": "1111.1111",
+            "document_id": "1111.1111",
             "chunk_index": 0,
             "chunk_text": "Less relevant chunk.",
             "title": "Paper A",
         },
         {
             "chunk_key": "2222.2222:0",
-            "arxiv_id": "2222.2222",
+            "document_id": "2222.2222",
             "chunk_index": 0,
             "chunk_text": "Most relevant chunk.",
             "title": "Paper B",
@@ -187,7 +187,7 @@ async def test_retrieve_reranks_chunks_before_formatting() -> None:
     with patch("src.domain.kg.dual_level_retrieval.KgGraphRepository", return_value=repo_patch):
         result = await service.retrieve("find the relevant evidence")
 
-    assert [chunk.arxiv_id for chunk in result.chunks] == ["2222.2222", "1111.1111"]
+    assert [chunk.document_id for chunk in result.chunks] == ["2222.2222", "1111.1111"]
     assert result.chunks[0].rerank_score == 0.99
     assert result.formatted_context.index("Most relevant chunk.") < result.formatted_context.index("Less relevant chunk.")
     reranker.rerank.assert_awaited_once()
@@ -225,7 +225,7 @@ async def test_discover_paths_skips_incident_edge_query_when_path_retrieval_disa
             entity_type="CONCEPT",
             description="One",
             source_chunk_keys=[],
-            arxiv_ids=[],
+            document_ids=[],
             ingestion_name="dev",
         ),
         KgNode(
@@ -234,7 +234,7 @@ async def test_discover_paths_skips_incident_edge_query_when_path_retrieval_disa
             entity_type="CONCEPT",
             description="Two",
             source_chunk_keys=[],
-            arxiv_ids=[],
+            document_ids=[],
             ingestion_name="dev",
         ),
     ]

@@ -69,10 +69,10 @@ def make_kg_indexing_service(
     database = database or make_database()
     opensearch_client = make_opensearch_client()
     ingestion_name = resolve_kg_ingestion_name(settings)
-    paper_rrf_search = make_hybrid_rrf_search(ingestion_name=ingestion_name)
+    hybrid_rrf_search = make_hybrid_rrf_search(ingestion_name=ingestion_name)
     return KgIndexingService(
         database=database,
-        paper_rrf_search=paper_rrf_search,
+        hybrid_rrf_search=hybrid_rrf_search,
         kg_search_client=make_kg_search_client(opensearch_client, settings, ingestion_name),
         extraction_service=make_kg_extraction_service(settings),
         embeddings_client=make_embeddings_service(),
@@ -101,10 +101,10 @@ def make_dual_level_kg_retrieval_service(
     database = database or make_database()
     opensearch_client = make_opensearch_client()
     ingestion_name = resolve_kg_ingestion_name(settings)
-    paper_rrf_search = make_hybrid_rrf_search(ingestion_name=ingestion_name)
+    hybrid_rrf_search = make_hybrid_rrf_search(ingestion_name=ingestion_name)
     return DualLevelKGRetrievalService(
         database=database,
-        paper_rrf_search=paper_rrf_search,
+        hybrid_rrf_search=hybrid_rrf_search,
         kg_search_client=make_kg_search_client(opensearch_client, settings, ingestion_name),
         extraction_service=make_keyword_extraction_service(settings),
         embeddings_client=make_embeddings_service(),

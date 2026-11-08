@@ -60,9 +60,9 @@ class GeneratedQuestions(BaseModel):
 
 
 class KgIngestionSummary(BaseModel):
-    """Stats returned by ``KgIndexingService.index_arxiv_ids``."""
+    """Stats returned by ``KgIndexingService.index_document_ids``."""
 
-    papers: int = 0
+    documents: int = 0
     chunks_processed: int = 0
     chunks_skipped: int = 0
     chunks_failed: int = 0

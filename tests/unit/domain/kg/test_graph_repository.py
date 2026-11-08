@@ -18,7 +18,7 @@ def test_upsert_node_creates_new(session: MagicMock) -> None:
         entity_type="MODEL",
         description="An architecture.",
         chunk_key="1234.5678:0",
-        arxiv_id="1234.5678",
+        document_id="1234.5678",
     )
     assert entity_id == "transformer"
     session.add.assert_called_once()
