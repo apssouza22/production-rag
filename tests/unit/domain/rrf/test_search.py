@@ -44,6 +44,35 @@ def test_get_chunks_by_chunk_keys_sorts_by_request_order(hybrid_rrf_search: Hybr
     assert [c["chunk_index"] for c in chunks] == [0, 1]
 
 
+def test_search_unified_expand_parent_sections_calls_expansion(hybrid_rrf_search: HybridRrfSearch) -> None:
+    hybrid_rrf_search._search_bm25_only = MagicMock(
+        return_value={
+            "total": 1,
+            "hits": [
+                {
+                    "document_id": "2401.00001",
+                    "chunk_index": 0,
+                    "section_breadcrumb": "Methods > Training",
+                    "chunk_text": "child",
+                }
+            ],
+        }
+    )
+    hybrid_rrf_search._parent_section_expander.expand = MagicMock(
+        return_value=[{"chunk_text": "parent", "parent_expansion_applied": True}]
+    )
+
+    result = hybrid_rrf_search.search_unified(
+        query="test",
+        query_embedding=None,
+        use_hybrid=False,
+        expand_parent_sections=True,
+    )
+
+    hybrid_rrf_search._parent_section_expander.expand.assert_called_once()
+    assert result["hits"][0]["parent_expansion_applied"] is True
+
+
 def test_setup_indices_updates_mapping_when_index_already_exists(hybrid_rrf_search: HybridRrfSearch) -> None:
     hybrid_rrf_search._opensearch.create_index = MagicMock(return_value=False)
     hybrid_rrf_search._opensearch.ensure_index_mapping = MagicMock()

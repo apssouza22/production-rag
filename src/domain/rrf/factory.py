@@ -8,6 +8,8 @@ from src.config import Settings, get_settings
 from src.domain.opensearch.client import OpenSearchClient
 from src.domain.opensearch.factory import make_opensearch_client, make_opensearch_client_fresh
 
+from .indexing import SearchIndexing
+from .parent_expansion import ParentSectionExpander
 from .search import HybridRrfSearch
 
 logger = logging.getLogger(__name__)
@@ -37,7 +39,9 @@ def make_hybrid_rrf_search(ingestion_name: str | None = None) -> HybridRrfSearch
     """Cached HybridRrfSearch wired to OpenSearch; ensures hybrid index and RRF pipeline."""
     settings = get_settings()
     opensearch_client = make_opensearch_client()
-    hybrid_rrf_search = HybridRrfSearch(opensearch_client, settings, ingestion_name=ingestion_name)
+    hybrid_rrf_search = _make_hybrid_rrf_search_wired(
+        opensearch_client, settings, ingestion_name=ingestion_name
+    )
     return _setup_hybrid_rrf_search(hybrid_rrf_search, opensearch_client)
 
 
@@ -51,4 +55,28 @@ def make_hybrid_rrf_search_fresh(
         settings = get_settings()
 
     opensearch_client = make_opensearch_client_fresh(settings, host=host)
-    return HybridRrfSearch(opensearch_client, settings, ingestion_name=ingestion_name)
+    return _make_hybrid_rrf_search_wired(opensearch_client, settings, ingestion_name=ingestion_name)
+
+
+def make_parent_section_expander(
+    indexing: SearchIndexing,
+) -> ParentSectionExpander:
+    """Construct parent-section expander sharing the chunk index with hybrid search."""
+    return ParentSectionExpander(indexing)
+
+
+def _make_hybrid_rrf_search_wired(
+    opensearch_client: OpenSearchClient,
+    settings: Settings,
+    *,
+    ingestion_name: str | None,
+) -> HybridRrfSearch:
+    indexing = SearchIndexing(opensearch_client, settings, ingestion_name=ingestion_name)
+    parent_section_expander = make_parent_section_expander(indexing)
+    return HybridRrfSearch(
+        opensearch_client,
+        settings,
+        ingestion_name=ingestion_name,
+        indexing=indexing,
+        parent_section_expander=parent_section_expander,
+    )

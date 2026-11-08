@@ -14,6 +14,7 @@ from .chunk_index_schema import (
     flatten_hit_metadata,
 )
 from .indexing import SearchIndexing
+from .parent_expansion import ParentSectionExpander
 from .query_builder import QueryBuilder
 
 logger = logging.getLogger(__name__)
@@ -29,11 +30,14 @@ class HybridRrfSearch:
         *,
         profile: ChunkSearchProfile | None = None,
         ingestion_name: str | None = None,
+        indexing: SearchIndexing | None = None,
+        parent_section_expander: ParentSectionExpander | None = None,
     ):
         self._opensearch = opensearch
         self.settings = settings
         self.profile = profile or DEFAULT_CHUNK_PROFILE
-        self._indexing = SearchIndexing(opensearch, settings, ingestion_name=ingestion_name)
+        self._indexing = indexing or SearchIndexing(opensearch, settings, ingestion_name=ingestion_name)
+        self._parent_section_expander = parent_section_expander or ParentSectionExpander(self._indexing)
 
     @property
     def index_name(self) -> str:
@@ -54,6 +58,10 @@ class HybridRrfSearch:
     @property
     def indexing(self) -> SearchIndexing:
         return self._indexing
+
+    @property
+    def parent_section_expander(self) -> ParentSectionExpander:
+        return self._parent_section_expander
 
     @property
     def client(self) -> OpenSearch:
@@ -90,6 +98,10 @@ class HybridRrfSearch:
     def _flatten_results(results: dict[str, Any]) -> dict[str, Any]:
         hits = [flatten_hit_metadata(h) for h in results.get("hits", [])]
         return {**results, "hits": hits}
+
+    def expand_hits_to_parent_sections(self, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Fetch siblings by section_breadcrumb and assemble parent section text for multi-part hits."""
+        return self._parent_section_expander.expand(hits)
 
     def keyword_search(
         self,
@@ -139,25 +151,30 @@ class HybridRrfSearch:
         latest: bool = False,
         use_hybrid: bool = True,
         min_score: float = 0.0,
+        expand_parent_sections: bool = False,
     ) -> dict[str, Any]:
         """Unified search supporting BM25, vector, and RRF hybrid modes."""
         try:
             if not query_embedding or not use_hybrid:
-                return self._search_bm25_only(
+                results = self._search_bm25_only(
                     query=query,
                     size=size,
                     from_=from_,
                     categories=categories,
                     latest=latest,
                 )
+            else:
+                results = self._search_hybrid_native(
+                    query=query,
+                    query_embedding=query_embedding,
+                    size=size,
+                    categories=categories,
+                    min_score=min_score,
+                )
 
-            return self._search_hybrid_native(
-                query=query,
-                query_embedding=query_embedding,
-                size=size,
-                categories=categories,
-                min_score=min_score,
-            )
+            if expand_parent_sections and results.get("hits"):
+                results = {**results, "hits": self.expand_hits_to_parent_sections(results["hits"])}
+            return results
 
         except Exception as e:
             logger.error("Unified search error: %s", e)

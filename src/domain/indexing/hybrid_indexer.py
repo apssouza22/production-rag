@@ -107,6 +107,7 @@ class HybridIndexingService:
                     "chunk_index": chunk.metadata.chunk_index,
                     "chunk_text": chunk.text,
                     "contextualized_text": contextualized_text,
+                    "section_breadcrumb": chunk.metadata.section_breadcrumb,
                     "embedding_model": "jina-embeddings-v3",
                     "ingestion_name": ingestion_name,
                     "categories": paper_data.get("categories", []),
@@ -124,7 +125,6 @@ class HybridIndexingService:
                         "start_char": chunk.metadata.start_char,
                         "end_char": chunk.metadata.end_char,
                         "section_title": chunk.metadata.section_title,
-                        "section_breadcrumb": chunk.metadata.section_breadcrumb,
                     },
                 }
 
@@ -192,20 +192,3 @@ class HybridIndexingService:
         )
 
         return total_stats
-
-    async def _reindex_paper(self, arxiv_id: str, paper_data: Dict, ingestion_name: str = "dev") -> Dict[str, int]:
-        """Reindex a paper by deleting old chunks and creating new ones.
-
-        :param ingestion_name:
-        :param arxiv_id: ArXiv ID of the paper
-        :param paper_data: Updated paper data
-        :returns: Indexing statistics
-        """
-        self.paper_rrf_search.ingestion_name = ingestion_name
-        # Delete existing chunks
-        deleted = self.paper_rrf_search.delete_document_chunks(arxiv_id)
-        if deleted:
-            logger.info(f"Deleted existing chunks for paper {arxiv_id}")
-
-        # Index with new data
-        return await self._index_paper(paper_data, ingestion_name=ingestion_name)

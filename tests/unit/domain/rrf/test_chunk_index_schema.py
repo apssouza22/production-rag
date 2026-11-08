@@ -13,6 +13,7 @@ def test_build_hybrid_chunk_mapping_has_strict_core_and_dynamic_metadata() -> No
     assert mapping["mappings"]["dynamic"] == "strict"
     props = mapping["mappings"]["properties"]
     assert props["document_id"]["type"] == "keyword"
+    assert props["section_breadcrumb"]["type"] == "keyword"
     assert props["categories"]["type"] == "keyword"
     assert props["metadata"]["dynamic"] is True
     assert "title" not in props
@@ -102,3 +103,40 @@ def test_flatten_hit_metadata() -> None:
     assert flat["abstract"] == "A"
     assert flat["arxiv_id"] == "1"
     assert "metadata" not in flat
+
+
+def test_from_index_payload_strips_section_breadcrumb_from_metadata() -> None:
+    doc = ChunkIndexDocument.from_index_payload(
+        {
+            "document_id": "2024.1",
+            "chunk_index": 0,
+            "chunk_text": "body",
+            "contextualized_text": "ctx",
+            "ingestion_name": "dev",
+            "section_breadcrumb": "Methods > Training",
+            "metadata": {
+                "section_breadcrumb": "Stale > Path",
+                "title": "Paper",
+            },
+        }
+    )
+    assert doc.section_breadcrumb == "Methods > Training"
+    assert "section_breadcrumb" not in doc.metadata
+    source = doc.to_opensearch_source()
+    assert "section_breadcrumb" not in source.get("metadata", {})
+
+
+def test_chunk_index_document_round_trip_section_breadcrumb() -> None:
+    doc = ChunkIndexDocument.from_index_payload(
+        {
+            "document_id": "2024.1",
+            "chunk_index": 0,
+            "chunk_text": "body",
+            "contextualized_text": "ctx",
+            "ingestion_name": "dev",
+            "section_breadcrumb": "Methods > Training",
+        }
+    )
+    assert doc.section_breadcrumb == "Methods > Training"
+    source = doc.to_opensearch_source()
+    assert source["section_breadcrumb"] == "Methods > Training"

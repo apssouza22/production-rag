@@ -34,6 +34,7 @@ CORE_CHUNK_PROPERTIES: dict[str, Any] = {
     "chunk_id": {"type": "keyword"},
     "document_id": {"type": "keyword"},
     "chunk_index": {"type": "integer"},
+    "section_breadcrumb": {"type": "keyword"},
     "chunk_text": TEXT_FIELD,
     "contextualized_text": TEXT_FIELD,
     "embedding_model": {"type": "keyword"},
@@ -96,6 +97,7 @@ class ChunkIndexDocument(BaseModel):
     contextualized_text: str
     ingestion_name: str
     categories: list[str] = Field(default_factory=list)
+    section_breadcrumb: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     embedding_model: str | None = None
     created_at: str | None = None
@@ -110,6 +112,9 @@ class ChunkIndexDocument(BaseModel):
         metadata = data.pop("metadata", None)
         if metadata is None:
             metadata = {}
+        else:
+            metadata = dict(metadata)
+            metadata.pop("section_breadcrumb", None)
         return cls.model_validate({**data, "metadata": metadata})
 
     def to_opensearch_source(self, *, embedding: list[float] | None = None) -> dict[str, Any]:
