@@ -34,8 +34,8 @@
   <div class="row">
     <label>Ingestion</label>
     <input type="text" id="ingestion" placeholder="optional (defaults server-side)" style="min-width: 200px;" />
-    <label>arXiv id</label>
-    <input type="text" id="arxiv" placeholder="optional filter" />
+    <label>Document id</label>
+    <input type="text" id="documentId" placeholder="optional filter" />
     <label>Max nodes</label>
     <input type="number" id="maxNodes" value="300" min="1" max="500" />
     <label>Max edges</label>
@@ -81,11 +81,11 @@
         var origin = base || window.location.origin;
         var params = new URLSearchParams();
         var ing = document.getElementById("ingestion").value.trim();
-        var arx = document.getElementById("arxiv").value.trim();
+        var docId = document.getElementById("documentId").value.trim();
         var maxN = parseInt(document.getElementById("maxNodes").value, 10);
         var maxE = parseInt(document.getElementById("maxEdges").value, 10);
         if (ing) params.set("ingestion_name", ing);
-        if (arx) params.set("arxiv_id", arx);
+        if (docId) params.set("document_id", docId);
         if (!isNaN(maxN)) params.set("max_nodes", String(maxN));
         if (!isNaN(maxE)) params.set("max_edges", String(maxE));
         var url = origin + "/api/v1/kg/graph?" + params.toString();

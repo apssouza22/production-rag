@@ -74,19 +74,19 @@ async def test_build_sample_kg_uses_dual_search_and_top_k(sample_query: Experime
             chunks=[
                 KgChunkHit(
                     chunk_key="1234.5678:0",
-                    arxiv_id="1234.5678",
+                    document_id="1234.5678",
                     chunk_index=0,
                     chunk_text="first chunk",
                 ),
                 KgChunkHit(
                     chunk_key="1234.5678:1",
-                    arxiv_id="1234.5678",
+                    document_id="1234.5678",
                     chunk_index=1,
                     chunk_text="second chunk",
                 ),
                 KgChunkHit(
                     chunk_key="1234.5678:2",
-                    arxiv_id="1234.5678",
+                    document_id="1234.5678",
                     chunk_index=2,
                     chunk_text="third chunk",
                 ),

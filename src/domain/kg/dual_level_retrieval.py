@@ -60,7 +60,7 @@ class DualLevelKGRetrievalService:
     def __init__(
         self,
         database: BaseDatabase,
-        paper_rrf_search: HybridRrfSearch,
+        hybrid_rrf_search: HybridRrfSearch,
         kg_search_client: KgSearchClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,
@@ -70,7 +70,7 @@ class DualLevelKGRetrievalService:
         path_discover: PathDiscover | None = None,
     ) -> None:
         self._database = database
-        self._paper_rrf_search = paper_rrf_search
+        self._hybrid_rrf_search = hybrid_rrf_search
         self._kg_search_client = kg_search_client
         self._extraction_service = extraction_service
         self._embeddings_client = embeddings_client
@@ -225,7 +225,7 @@ class DualLevelKGRetrievalService:
         return hits
 
     def _load_chunk_hits(self, chunk_keys: list[str]) -> list[KgChunkHit]:
-        os_chunks = self._paper_rrf_search.get_chunks_by_chunk_keys(chunk_keys)
+        os_chunks = self._hybrid_rrf_search.get_chunks_by_chunk_keys(chunk_keys)
         return [self._chunk_hit_from_opensearch_doc(chunk) for chunk in os_chunks]
 
     def _should_rerank_chunks(self) -> bool:
@@ -297,9 +297,10 @@ class DualLevelKGRetrievalService:
 
     @staticmethod
     def _chunk_hit_from_opensearch_doc(chunk: dict[str, Any]) -> KgChunkHit:
+        document_id = chunk.get("document_id") or chunk.get("arxiv_id", "")
         return KgChunkHit(
-            chunk_key=chunk.get("chunk_key") or f"{chunk.get('document_id')}:{chunk.get('chunk_index')}",
-            arxiv_id=chunk.get("arxiv_id", ""),
+            chunk_key=chunk.get("chunk_key") or f"{document_id}:{chunk.get('chunk_index')}",
+            document_id=document_id,
             chunk_index=int(chunk.get("chunk_index", 0)),
             chunk_text=chunk.get("chunk_text", ""),
             title=chunk.get("title", ""),

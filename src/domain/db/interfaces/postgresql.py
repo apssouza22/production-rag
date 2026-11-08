@@ -55,6 +55,10 @@ class PostgreSQLDatabase(BaseDatabase):
             # Create tables if they don't exist (idempotent operation)
             Base.metadata.create_all(bind=self.engine)
 
+            from src.domain.kg.db_migrations import apply_kg_schema_migrations
+
+            apply_kg_schema_migrations(self.engine)
+
             # Check if any new tables were created
             updated_tables = inspector.get_table_names()
             new_tables = set(updated_tables) - set(existing_tables)

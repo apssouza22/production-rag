@@ -148,7 +148,7 @@ class KgGraphIngestor:
 
         logger.info("Running KG indexing for %s paper(s), replace=%s", len(arxiv_ids), force)
         kg_service = make_kg_indexing_service(settings=self._settings)
-        stats = asyncio.run(kg_service.index_arxiv_ids(arxiv_ids, replace=force))
+        stats = asyncio.run(kg_service.index_document_ids(arxiv_ids, replace=force))
         logger.info("KG indexing complete: %s", stats)
         return KgIngestionSummary.model_validate(stats)
 

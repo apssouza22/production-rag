@@ -26,7 +26,7 @@ class KgGraphRepository:
         entity_type: str,
         description: str,
         chunk_key: str,
-        arxiv_id: str,
+        document_id: str,
     ) -> str:
         entity_id = normalize_entity_id(entity_name)
         stmt = select(KgNode).where(
@@ -41,7 +41,7 @@ class KgGraphRepository:
                 entity_type=entity_type or "UNKNOWN",
                 description=description or "",
                 source_chunk_keys=[chunk_key],
-                arxiv_ids=[arxiv_id],
+                document_ids=[document_id],
                 ingestion_name=self.ingestion_name,
             )
             self.session.add(node)
@@ -50,7 +50,7 @@ class KgGraphRepository:
             node.entity_type = entity_type or node.entity_type
             node.description = merge_descriptions(node.description, description)
             node.source_chunk_keys = merge_unique_strings(list(node.source_chunk_keys or []), [chunk_key])
-            node.arxiv_ids = merge_unique_strings(list(node.arxiv_ids or []), [arxiv_id])
+            node.document_ids = merge_unique_strings(list(node.document_ids or []), [document_id])
             node.updated_at = datetime.now(timezone.utc)
         return entity_id
 
@@ -169,7 +169,7 @@ class KgGraphRepository:
         self,
         *,
         chunk_key: str,
-        arxiv_id: str,
+        document_id: str,
         chunk_index: int,
         status: str,
         error: str | None = None,
@@ -178,7 +178,7 @@ class KgGraphRepository:
         if row is None:
             row = KgChunkExtraction(
                 chunk_key=chunk_key,
-                arxiv_id=arxiv_id,
+                document_id=document_id,
                 chunk_index=chunk_index,
                 ingestion_name=self.ingestion_name,
             )
@@ -190,9 +190,9 @@ class KgGraphRepository:
     def get_chunk_extraction(self, chunk_key: str) -> KgChunkExtraction | None:
         return self.session.get(KgChunkExtraction, chunk_key)
 
-    def delete_graph_for_arxiv(self, arxiv_id: str) -> None:
+    def delete_graph_for_document(self, document_id: str) -> None:
         chunk_keys_stmt = select(KgChunkExtraction.chunk_key).where(
-            KgChunkExtraction.arxiv_id == arxiv_id,
+            KgChunkExtraction.document_id == document_id,
             KgChunkExtraction.ingestion_name == self.ingestion_name,
         )
         chunk_keys = set(self.session.scalars(chunk_keys_stmt))
@@ -201,15 +201,15 @@ class KgGraphRepository:
 
         nodes = self.session.scalars(select(KgNode).where(KgNode.ingestion_name == self.ingestion_name))
         for node in nodes:
-            if arxiv_id not in (node.arxiv_ids or []):
+            if document_id not in (node.document_ids or []):
                 continue
             keys = [k for k in (node.source_chunk_keys or []) if k not in chunk_keys]
-            arxivs = [a for a in (node.arxiv_ids or []) if a != arxiv_id]
-            if not keys and not arxivs:
+            doc_ids = [d for d in (node.document_ids or []) if d != document_id]
+            if not keys and not doc_ids:
                 self.session.delete(node)
             else:
                 node.source_chunk_keys = keys
-                node.arxiv_ids = arxivs
+                node.document_ids = doc_ids
 
         edges = self.session.scalars(select(KgEdge).where(KgEdge.ingestion_name == self.ingestion_name))
         for edge in edges:
@@ -221,7 +221,7 @@ class KgGraphRepository:
 
         self.session.execute(
             delete(KgChunkExtraction).where(
-                KgChunkExtraction.arxiv_id == arxiv_id,
+                KgChunkExtraction.document_id == document_id,
                 KgChunkExtraction.ingestion_name == self.ingestion_name,
             )
         )
@@ -232,7 +232,7 @@ class KgGraphRepository:
     def get_subgraph_for_visualization(
         self,
         *,
-        arxiv_id: str | None = None,
+        document_id: str | None = None,
         max_nodes: int = 300,
         max_edges: int = 1000,
     ) -> tuple[list[KgNode], list[KgEdge]]:
@@ -240,13 +240,13 @@ class KgGraphRepository:
 
         Ordering prefers recently updated nodes so active extractions surface first.
 
-        :param arxiv_id: When set, keep only nodes whose ``arxiv_ids`` JSONB array contains this id.
+        :param document_id: When set, keep only nodes whose ``document_ids`` JSONB array contains this id.
         :param max_nodes: Maximum number of nodes (caller should cap; typically 300–500).
         :param max_edges: Maximum number of edges after endpoint filtering.
         """
         conditions = [KgNode.ingestion_name == self.ingestion_name]
-        if arxiv_id is not None and arxiv_id.strip():
-            conditions.append(KgNode.arxiv_ids.contains([arxiv_id.strip()]))
+        if document_id is not None and document_id.strip():
+            conditions.append(KgNode.document_ids.contains([document_id.strip()]))
 
         stmt = select(KgNode).where(*conditions).order_by(KgNode.updated_at.desc()).limit(max_nodes)
 

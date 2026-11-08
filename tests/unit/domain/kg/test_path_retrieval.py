@@ -14,7 +14,7 @@ def _node(entity_id: str, name: str) -> KgNode:
         entity_type="CONCEPT",
         description=f"Description of {name}",
         source_chunk_keys=[],
-        arxiv_ids=[],
+        document_ids=[],
         ingestion_name="test",
         created_at=now,
         updated_at=now,

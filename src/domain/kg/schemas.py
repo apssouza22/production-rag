@@ -126,7 +126,7 @@ class KgChunkHit(BaseModel):
     """Evidence text loaded from the hybrid chunk index via ``source_chunk_keys`` on nodes/edges."""
 
     chunk_key: str
-    arxiv_id: str
+    document_id: str
     chunk_index: int
     chunk_text: str
     title: str = ""

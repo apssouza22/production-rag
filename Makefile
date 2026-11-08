@@ -75,9 +75,9 @@ experiment-eval: ## Ingest evals/experiments/arxiv_pdfs (if needed) and run the 
 experiment-eval-fresh: ## Same as experiment-eval, but force re-ingestion (reuse cached questions if present)
 	uv run python -m evals.experiments.main --force-ingest $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)
 
-kg-index: ## Build KG for comma-separated ARXIV_IDS (requires KG__ENABLED=true)
-	@test -n "$(ARXIV_IDS)" || (echo "Usage: make kg-index ARXIV_IDS=2611.02200,2611.02208 [REPLACE=1]" && exit 1)
-	uv run python -m src.domain.kg.cli index --arxiv-ids "$(ARXIV_IDS)" $(if $(REPLACE),--replace,)
+kg-index: ## Build KG for comma-separated DOCUMENT_IDS (ARXIV_IDS accepted as env alias; requires KG__ENABLED=true)
+	@test -n "$(DOCUMENT_IDS)$(ARXIV_IDS)" || (echo "Usage: make kg-index DOCUMENT_IDS=id1,id2 [REPLACE=1]  (or ARXIV_IDS=...)" && exit 1)
+	uv run python -m src.domain.kg.cli index --document-ids "$(or $(DOCUMENT_IDS),$(ARXIV_IDS))" $(if $(REPLACE),--replace,)
 
 # Cleanup
 clean: ## Clean up everything

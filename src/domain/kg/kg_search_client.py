@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class KgSearchClient:
-    """OpenSearch client for KG entity and relation indices (parallel to ``arxiv-papers-chunks``).
+    """OpenSearch client for KG entity and relation indices (parallel to the hybrid chunk index).
 
     Document IDs: ``entity_id`` for nodes, ``source->target`` for edges. All queries
     filter on ``ingestion_name`` so dev/staging partitions do not cross-contaminate.
@@ -209,7 +209,7 @@ class KgSearchClient:
             hits.append(source)
         return hits
 
-    def delete_vectors_for_arxiv(self, entity_ids: list[str], relation_ids: list[str]) -> None:
+    def delete_vectors_by_ids(self, entity_ids: list[str], relation_ids: list[str]) -> None:
         for index, ids in ((self.entity_index, entity_ids), (self.relation_index, relation_ids)):
             if not ids:
                 continue

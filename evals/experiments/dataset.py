@@ -93,7 +93,7 @@ class ExperimentDataset:
                 "entity_count": len(result.entities),
                 "relation_count": len(result.relations),
                 "path_count": len(result.paths),
-                "retrieved_arxiv_ids": sorted({chunk.arxiv_id for chunk in chunks if chunk.arxiv_id}),
+                "retrieved_document_ids": sorted({chunk.document_id for chunk in chunks if chunk.document_id}),
             },
         )
 

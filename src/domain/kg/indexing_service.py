@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class KgPaperIndexingStats:
+class KgDocumentIndexingStats:
     chunks_processed: int = 0
     chunks_skipped: int = 0
     chunks_failed: int = 0
@@ -34,23 +34,23 @@ class KgPaperIndexingStats:
 
 @dataclass
 class KgBatchIndexingStats:
-    papers: int = 0
+    documents: int = 0
     chunks_processed: int = 0
     chunks_skipped: int = 0
     chunks_failed: int = 0
     entities_upserted: int = 0
     relations_upserted: int = 0
 
-    def absorb_paper(self, paper_stats: KgPaperIndexingStats) -> None:
-        self.chunks_processed += paper_stats.chunks_processed
-        self.chunks_skipped += paper_stats.chunks_skipped
-        self.chunks_failed += paper_stats.chunks_failed
-        self.entities_upserted += paper_stats.entities_upserted
-        self.relations_upserted += paper_stats.relations_upserted
+    def absorb_document(self, doc_stats: KgDocumentIndexingStats) -> None:
+        self.chunks_processed += doc_stats.chunks_processed
+        self.chunks_skipped += doc_stats.chunks_skipped
+        self.chunks_failed += doc_stats.chunks_failed
+        self.entities_upserted += doc_stats.entities_upserted
+        self.relations_upserted += doc_stats.relations_upserted
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "papers": self.papers,
+            "documents": self.documents,
             "chunks_processed": self.chunks_processed,
             "chunks_skipped": self.chunks_skipped,
             "chunks_failed": self.chunks_failed,
@@ -61,7 +61,7 @@ class KgBatchIndexingStats:
 
 @dataclass
 class _PendingVectorIndex:
-    """Unique entity/relation documents collected during one paper before embedding."""
+    """Unique entity/relation documents collected during one source document before embedding."""
 
     ingestion_name: str
     entity_docs: list[dict[str, Any]] = field(default_factory=list)
@@ -99,13 +99,12 @@ class _PendingVectorIndex:
         keywords: str,
         weight: float,
     ) -> None:
-        rel_id = relation_vector_id(source_entity_id, target_entity_id)
-        if rel_id in self._relation_ids:
+        vector_id = relation_vector_id(source_entity_id, target_entity_id)
+        if vector_id in self._relation_ids:
             return
-        self._relation_ids.add(rel_id)
+        self._relation_ids.add(vector_id)
         self.relation_docs.append(
             {
-                "relation_id": rel_id,
                 "source_entity_id": source_entity_id,
                 "target_entity_id": target_entity_id,
                 "description": description,
@@ -117,10 +116,10 @@ class _PendingVectorIndex:
 
 
 @dataclass
-class _PaperIndexingContext:
-    arxiv_id: str
+class _DocumentIndexingContext:
+    document_id: str
     repo: KgGraphRepository
-    stats: KgPaperIndexingStats
+    stats: KgDocumentIndexingStats
     vectors: _PendingVectorIndex
     name_to_id: dict[str, str] = field(default_factory=dict)
 
@@ -128,45 +127,45 @@ class _PaperIndexingContext:
 class KgIndexingService:
     """Offline pipeline: OpenSearch chunks → LLM extract → Postgres graph → entity/relation vectors.
 
-    Expects hybrid chunks to already exist for each ``arxiv_id``. Writes graph state
+    Expects hybrid chunks to already exist for each ``document_id``. Writes graph state
     in PostgreSQL and embedding rows in separate OpenSearch indices (not the chunk index).
     """
 
     def __init__(
         self,
         database: BaseDatabase,
-        paper_rrf_search: HybridRrfSearch,
+        hybrid_rrf_search: HybridRrfSearch,
         kg_search_client: KgSearchClient,
         extraction_service: KgExtractionService,
         embeddings_client: JinaEmbeddingsClient,
         ingestion_name: str,
     ):
         self.database = database
-        self.paper_rrf_search = paper_rrf_search
+        self.hybrid_rrf_search = hybrid_rrf_search
         self.kg_search_client = kg_search_client
         self.extraction_service = extraction_service
         self.embeddings_client = embeddings_client
         self.ingestion_name = ingestion_name
 
-    async def index_arxiv_ids(self, arxiv_ids: list[str], *, replace: bool = False) -> dict[str, Any]:
+    async def index_document_ids(self, document_ids: list[str], *, replace: bool = False) -> dict[str, Any]:
         stats = KgBatchIndexingStats()
         self.kg_search_client.setup_indices()
 
-        for raw_id in arxiv_ids:
-            arxiv_id = raw_id.strip()
-            if not arxiv_id:
+        for raw_id in document_ids:
+            document_id = raw_id.strip()
+            if not document_id:
                 continue
-            stats.papers += 1
-            paper_stats = await self._index_paper(arxiv_id, replace=replace)
-            stats.absorb_paper(paper_stats)
+            stats.documents += 1
+            doc_stats = await self._index_document(document_id, replace=replace)
+            stats.absorb_document(doc_stats)
 
         return stats.as_dict()
 
-    async def _index_paper(self, arxiv_id: str, *, replace: bool) -> KgPaperIndexingStats:
-        stats = KgPaperIndexingStats()
-        chunks = self.paper_rrf_search.get_chunks_by_paper(arxiv_id)
+    async def _index_document(self, document_id: str, *, replace: bool) -> KgDocumentIndexingStats:
+        stats = KgDocumentIndexingStats()
+        chunks = self.hybrid_rrf_search.get_chunks_by_document(document_id)
         if not chunks:
-            logger.warning("No chunks in OpenSearch for %s", arxiv_id)
+            logger.warning("No chunks in OpenSearch for %s", document_id)
             return stats
 
         vectors = _PendingVectorIndex(ingestion_name=self.ingestion_name)
@@ -174,11 +173,11 @@ class KgIndexingService:
         with self.database.get_session() as session:
             repo = KgGraphRepository(session, self.ingestion_name)
             if replace:
-                repo.delete_graph_for_arxiv(arxiv_id)
+                repo.delete_graph_for_document(document_id)
                 repo.commit()
 
-            ctx = _PaperIndexingContext(
-                arxiv_id=arxiv_id,
+            ctx = _DocumentIndexingContext(
+                document_id=document_id,
                 repo=repo,
                 stats=stats,
                 vectors=vectors,
@@ -194,13 +193,14 @@ class KgIndexingService:
 
     async def _process_chunk(
         self,
-        ctx: _PaperIndexingContext,
+        ctx: _DocumentIndexingContext,
         chunk: dict[str, Any],
         *,
         replace: bool,
     ) -> None:
         chunk_index = int(chunk.get("chunk_index", 0))
-        chunk_key = make_chunk_key(ctx.arxiv_id, chunk_index)
+        doc_id = chunk.get("document_id") or ctx.document_id
+        chunk_key = make_chunk_key(doc_id, chunk_index)
 
         if self._should_skip_chunk(ctx.repo, chunk_key, replace=replace):
             ctx.stats.chunks_skipped += 1
@@ -225,7 +225,7 @@ class KgIndexingService:
             logger.exception("KG extraction failed for %s: %s", chunk_key, exc)
             ctx.repo.mark_chunk_extraction(
                 chunk_key=chunk_key,
-                arxiv_id=ctx.arxiv_id,
+                document_id=ctx.document_id,
                 chunk_index=chunk_index,
                 status="failed",
                 error=str(exc),
@@ -236,17 +236,17 @@ class KgIndexingService:
         existing = repo.get_chunk_extraction(chunk_key)
         return bool(existing and existing.status == "done" and not replace)
 
-    def _mark_chunk_done(self, ctx: _PaperIndexingContext, chunk_key: str, chunk_index: int) -> None:
+    def _mark_chunk_done(self, ctx: _DocumentIndexingContext, chunk_key: str, chunk_index: int) -> None:
         ctx.repo.mark_chunk_extraction(
             chunk_key=chunk_key,
-            arxiv_id=ctx.arxiv_id,
+            document_id=ctx.document_id,
             chunk_index=chunk_index,
             status="done",
         )
 
     def _persist_entities(
         self,
-        ctx: _PaperIndexingContext,
+        ctx: _DocumentIndexingContext,
         chunk_key: str,
         extraction: ChunkExtractionResult,
     ) -> None:
@@ -256,7 +256,7 @@ class KgIndexingService:
                 entity_type=entity.entity_type,
                 description=entity.description,
                 chunk_key=chunk_key,
-                arxiv_id=ctx.arxiv_id,
+                document_id=ctx.document_id,
             )
             ctx.name_to_id[entity.entity_name] = entity_id
             ctx.name_to_id[normalize_entity_id(entity.entity_name)] = entity_id
@@ -270,7 +270,7 @@ class KgIndexingService:
 
     def _persist_relations(
         self,
-        ctx: _PaperIndexingContext,
+        ctx: _DocumentIndexingContext,
         chunk_key: str,
         relations: list[ExtractedRelation],
     ) -> None:
@@ -300,7 +300,7 @@ class KgIndexingService:
 
     def _ensure_relation_endpoint_nodes(
         self,
-        ctx: _PaperIndexingContext,
+        ctx: _DocumentIndexingContext,
         chunk_key: str,
         relation: ExtractedRelation,
     ) -> None:
@@ -310,7 +310,7 @@ class KgIndexingService:
                 entity_type="UNKNOWN",
                 description="",
                 chunk_key=chunk_key,
-                arxiv_id=ctx.arxiv_id,
+                document_id=ctx.document_id,
             )
 
     @staticmethod
@@ -344,4 +344,4 @@ def _chunk_section_title(chunk: dict[str, Any]) -> str:
     return chunk.get("section_title") or chunk.get("section_name") or ""
 
 
-__all__ = ["KgIndexingService", "KgBatchIndexingStats", "KgPaperIndexingStats"]
+__all__ = ["KgIndexingService", "KgBatchIndexingStats", "KgDocumentIndexingStats"]
