@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .chunk_index_schema import flatten_hit_metadata
-from .indexing import SearchIndexing
+from .indexing import MAX_CHUNKS_PER_DOCUMENT_QUERY, SearchIndexing
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ class ParentSectionExpander:
 
         search_body = {
             "query": {"bool": {"must": must_clauses}},
-            "size": 100,
+            "size": MAX_CHUNKS_PER_DOCUMENT_QUERY,
             "sort": [{"chunk_index": "asc"}],
             "_source": {"excludes": ["embedding"]},
         }

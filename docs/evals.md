@@ -303,7 +303,7 @@ Configure `RAG_EVAL_EXPERIMENT_NAME`, `RAG_EVAL_MAX_CONCURRENCY`, etc. (see `eva
 This runner is **self-contained**:
 
 1. **Ingestion partition** — default `evals-experiments`, set via `OPENSEARCH__INGESTION_NAME` so experiment chunks never mix with dev/production partitions.
-2. **Conditional ingest** — if OpenSearch already has chunks for that partition, skip; else run `src.ingest.run_pipeline` from local PDFs in `evals/experiments/data/arxiv_pdfs/` (metadata fetched from arXiv by filename stem).
+2. **Conditional ingest** — if OpenSearch already has chunks for that partition, skip; else `ExperimentIngestor` in `evals/experiments/ingestion.py` ingests local PDFs under `evals/experiments/data/arxiv_pdfs/` (metadata from arXiv by filename stem) through parse → Postgres → `index_papers_hybrid`. `make experiment-eval-fresh` forces re-indexing.
 3. **Question generation** — LLM writes Q/A pairs from indexed chunks; cached to `evals/experiments/data/generated_queries.json`.
 4. **In-process retrieval** — `make_rerank_search_service()` in `src/domain/search/factory.py` (no HTTP).
 5. **Retrieval-focused Ragas metrics** — `context_relevance`, `context_utilization`, `context_precision`, and `context_recall` (no `faithfulness` or `factual_correctness`; see §5).

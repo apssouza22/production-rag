@@ -13,6 +13,9 @@ from .pipeline import hybrid_rrf_pipeline_body
 
 logger = logging.getLogger(__name__)
 
+# Upper bound for OpenSearch chunk list queries (per document or section).
+MAX_CHUNKS_PER_DOCUMENT_QUERY = 1000
+
 
 class SearchIndexing:
     """Hybrid chunk index lifecycle: mapping, pipeline, bulk writes, and chunk fetches."""
@@ -84,7 +87,7 @@ class SearchIndexing:
 
         search_body = {
             "query": {"bool": {"must": must_clauses}},
-            "size": 1000,
+            "size": MAX_CHUNKS_PER_DOCUMENT_QUERY,
             "sort": [{"chunk_index": "asc"}],
             "_source": {"excludes": ["embedding"]},
         }

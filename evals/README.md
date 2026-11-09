@@ -168,10 +168,10 @@ Local summaries use the unified report schema. When using a hosted dataset, Lang
 
 ## Local-PDF Experiment (`experiments`)
 
-A single command that takes the PDFs in `evals/experiments/arxiv_pdfs/` from raw files to Ragas scores. Unlike `rag_evals`, it does not need the API running — it builds the retrieval stack in-process and brings its own corpus and question set.
+A single command that takes the PDFs in `evals/experiments/data/arxiv_pdfs/` from raw files to Ragas scores. Unlike `rag_evals`, it does not need the API running — it builds the retrieval stack in-process and brings its own corpus and question set.
 
 1. Counts chunks in OpenSearch for the experiment's ingestion partition. If any exist, ingestion is skipped.
-2. Otherwise runs `src.ingest.run_pipeline` with `skip_download=True`, entering the pipeline at the local-PDF loader and continuing through `parse_pdfs_to_markdown` → `persist_papers` → `index_papers_hybrid`.
+2. Otherwise `ExperimentIngestor` (`evals/experiments/ingestion.py`) loads metadata for local PDFs via `ArxivIngestionService`, then runs `parse_pdfs_to_markdown` → `persist_papers` → `index_papers_hybrid` for the experiment `ingestion_name`. Use `make experiment-eval-fresh` (or `--force-ingest`) to re-index when chunks already exist.
 3. Generates question/reference pairs from the indexed chunks with the judge model and caches them to `evals/experiments/generated_queries.json`.
 4. For each question, retrieves contexts with `rerank_search_service.search` and generates an answer from those contexts.
 5. Scores every sample with retrieval-focused Ragas metrics (`context_relevance`, `context_utilization`, `context_precision`, `context_recall`) and writes a unified report.

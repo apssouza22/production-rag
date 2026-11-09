@@ -312,8 +312,9 @@ Relations reference entities by **name** from the LLM. Within a chunk, a `name_t
 
 ```bash
 # .env: KG__ENABLED=true, hybrid index populated for the papers
-make kg-index ARXIV_IDS=2611.02200,2611.02208
-make kg-index ARXIV_IDS=2611.02200 REPLACE=1   # re-extract
+make kg-index DOCUMENT_IDS=2611.02200,2611.02208
+make kg-index DOCUMENT_IDS=2611.02200 REPLACE=1   # re-extract
+# ARXIV_IDS=... is accepted as an alias for DOCUMENT_IDS
 ```
 
 **Example CLI return value** (`index_document_ids` stats dict):
