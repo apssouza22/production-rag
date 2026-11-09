@@ -403,7 +403,7 @@ LightRAG-style entity/relation graph stored in PostgreSQL (`kg_nodes`, `kg_edges
 
 1. Set `KG__ENABLED=true` in `.env` (uses the same `OPENSEARCH__INGESTION_NAME` partition unless `KG__INGESTION_NAME` is set).
 2. Ensure papers are already hybrid-indexed in OpenSearch.
-3. Build the graph for a slice: `make kg-index ARXIV_IDS=2611.02200,2611.02208` (add `REPLACE=1` to re-extract).
+3. Build the graph for a slice: `make kg-index DOCUMENT_IDS=2611.02200,2611.02208` (add `REPLACE=1` to re-extract; `ARXIV_IDS=` is a Makefile alias).
 4. Debug retrieval: `POST /api/v1/kg-retrieval/debug` with `{"query": "..."}` — returns keywords, graph rows, chunks (with optional `rerank_score`), and `formatted_context`.
 5. Optional: `KG__CHUNK_RERANK_ENABLED=false` to keep graph discovery order for evidence chunks; requires `JINA_API_KEY` when enabled (default).
 
