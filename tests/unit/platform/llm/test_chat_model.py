@@ -62,4 +62,3 @@ def test_make_chat_model_returns_primary_when_no_fallbacks():
 
     assert result is primary
     create_chat.assert_called_once()
-

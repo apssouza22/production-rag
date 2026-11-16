@@ -23,10 +23,7 @@ def supports_reasoning_effort(model: str) -> bool:
 
 
 def _build_fallbacks(settings: Settings, model: str) -> List[str]:
-    return [
-        normalize_model(fallback)
-        for fallback in build_fallback_models(model, settings.llm_fallback_models, normalize_model)
-    ]
+    return [normalize_model(fallback) for fallback in build_fallback_models(model, settings.llm_fallback_models, normalize_model)]
 
 
 def _create_chat_openai(
@@ -52,9 +49,7 @@ def _create_chat_openai(
         "timeout": float(settings.llm_request_timeout),
         "model_kwargs": model_kwargs,
     }
-    resolved_reasoning: ReasoningEffort | None = (
-        reasoning_effort if reasoning_effort is not None else settings.reasoning_effort
-    )
+    resolved_reasoning: ReasoningEffort | None = reasoning_effort if reasoning_effort is not None else settings.reasoning_effort
     if supports_reasoning_effort(model):
         chat_kwargs["reasoning_effort"] = resolved_reasoning
         if resolved_reasoning == "none":

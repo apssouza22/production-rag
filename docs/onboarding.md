@@ -320,7 +320,7 @@ Optional: `OPENAI_BASE_URL` to point at an OpenAI-compatible proxy (default `htt
 
 | Module | Role |
 |--------|------|
-| `src/platform/llm/` | `make_chat_model()` — builds LangChain `ChatOpenAI` with fallbacks |
+| `src/platform/llm/` | `make_chat_model()` — LangChain `ChatOpenAI` with fallbacks; `make_openai_decisions()` — OpenAI Decisions API (`langchain-openai>=1.7.0`) |
 
 **Health check:** `/api/v1/health` reports OpenAI status under the `openai` service key.
 
