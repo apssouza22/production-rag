@@ -65,8 +65,4 @@ def filter_confident_documents(
         return []
 
     normalized_scores = normalize_document_scores(documents, rerank_applied=rerank_applied)
-    return [
-        document
-        for document, score in zip(documents, normalized_scores, strict=True)
-        if score >= min_document_score
-    ]
+    return [document for document, score in zip(documents, normalized_scores, strict=True) if score >= min_document_score]

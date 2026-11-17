@@ -196,6 +196,8 @@ class Settings(BaseConfigSettings):
     # Comma-separated model fallbacks when the primary model fails (e.g. gpt-5.6-luna,gpt-4o-mini)
     llm_fallback_models: str = "gpt-5.6-luna,gpt-4o-mini"
     agent_model: str = "gpt-5.6-luna"
+    # Empty uses agent_model. OpenAI Decisions models may differ from chat models.
+    decisions_model: str = ""
     reasoning_effort: ReasoningEffort = "low"
     llm_request_timeout: int = 300
 

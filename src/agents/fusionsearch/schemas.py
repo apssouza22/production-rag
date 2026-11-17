@@ -125,7 +125,7 @@ class AgenticAskResponse(AskResponse):
                         "models": [],
                         "errors": [],
                     },
-                    "steps": ["node:retrieve", "tool:retrieve_papers({\"query\": \"transformers\"})"],
+                    "steps": ["node:retrieve", 'tool:retrieve_papers({"query": "transformers"})'],
                 },
             }
         }

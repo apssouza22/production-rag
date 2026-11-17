@@ -6,10 +6,9 @@ from typing import Optional
 
 from src.config import ReasoningEffort, Settings
 from src.platform.langfuse.client import LangfuseTracer
-from src.platform.llm.chat_model import make_chat_model
 
+from .guardrail_decisions import decide_guardrail_scoring
 from .models import GuardrailScoring
-from .prompts import GUARDRAIL_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +56,12 @@ async def evaluate_guardrail(
             logger.warning("Failed to create guardrail span: %s", exc)
 
     try:
-        guardrail_prompt = GUARDRAIL_PROMPT.format(question=query)
-        llm = make_chat_model(
+        response = await decide_guardrail_scoring(
+            query,
             settings,
             model_name,
-            temperature=0.0,
             reasoning_effort=reasoning_effort,
         )
-        structured_llm = llm.with_structured_output(GuardrailScoring)
-        response = await structured_llm.ainvoke(guardrail_prompt)
         logger.info("Guardrail result - Score: %s, Reason: %s", response.score, response.reason)
 
         if span:

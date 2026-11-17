@@ -57,38 +57,40 @@ class TestRetrieveNode:
 class TestGradeDocumentsNode:
     @pytest.mark.asyncio
     async def test_grade_documents_relevant(self, graph, sample_human_message, sample_tool_message):
-        mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(
-            return_value=GradeDocuments(
-                binary_score="yes",
-                reasoning="Document discusses transformers which is relevant",
-            )
-        )
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
 
-        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+        with patch(
+            "src.agents.fusionsearch.graph.decide_grade_documents",
+            new=AsyncMock(
+                return_value=GradeDocuments(
+                    binary_score="yes",
+                    reasoning="Document discusses transformers which is relevant",
+                )
+            ),
+        ):
             result = await graph.grade_documents(state)
 
         assert "grading_results" in result
 
     @pytest.mark.asyncio
     async def test_grade_documents_not_relevant(self, graph, sample_human_message, sample_tool_message):
-        mock_llm = Mock()
-        mock_llm.ainvoke = AsyncMock(
-            return_value=GradeDocuments(
-                binary_score="no",
-                reasoning="Document is not relevant to the query",
-            )
-        )
         state: AgentState = {
             "messages": [sample_human_message, sample_tool_message],
             "retrieval_attempts": 1,
         }
 
-        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+        with patch(
+            "src.agents.fusionsearch.graph.decide_grade_documents",
+            new=AsyncMock(
+                return_value=GradeDocuments(
+                    binary_score="no",
+                    reasoning="Document is not relevant to the query",
+                )
+            ),
+        ):
             result = await graph.grade_documents(state)
 
         assert "grading_results" in result
@@ -214,16 +216,6 @@ class TestValidateAnswerNode:
                 relevance_score=0.9,
             )
         ]
-        mock_structured_llm = Mock()
-        mock_structured_llm.ainvoke = AsyncMock(
-            return_value=AnswerJudgement(
-                verdict="supported",
-                confidence=0.92,
-                reasoning="Answer is grounded in the retrieved context",
-            )
-        )
-        mock_llm = Mock()
-        mock_llm.with_structured_output = Mock(return_value=mock_structured_llm)
         state: AgentState = {
             "messages": [
                 sample_human_message,
@@ -232,7 +224,16 @@ class TestValidateAnswerNode:
             "relevant_sources": sources,
         }
 
-        with patch("src.agents.fusionsearch.graph.make_chat_model", return_value=mock_llm):
+        with patch(
+            "src.agents.fusionsearch.graph.decide_answer_judgement",
+            new=AsyncMock(
+                return_value=AnswerJudgement(
+                    verdict="supported",
+                    confidence=0.92,
+                    reasoning="Answer is grounded in the retrieved context",
+                )
+            ),
+        ):
             result = await graph.validate_answer(state)
 
         assert result["abstained"] is False
