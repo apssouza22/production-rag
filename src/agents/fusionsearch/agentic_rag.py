@@ -106,9 +106,7 @@ class AgenticRAGService:
 
         if top_k is not None:
             self.graph_config.top_k = top_k
-        self.rerank_search_service.config.use_hybrid = (
-            use_hybrid if use_hybrid is not None else self.graph_config.use_hybrid
-        )
+        self.rerank_search_service.config.use_hybrid = use_hybrid if use_hybrid is not None else self.graph_config.use_hybrid
         self.rerank_search_service.config.rerank_enabled = (
             rerank_enabled if rerank_enabled is not None else self.graph_config.rerank_enabled
         )
@@ -390,9 +388,7 @@ class AgenticRAGService:
         if answer_judgement is not None:
             verdict = answer_judgement.verdict if hasattr(answer_judgement, "verdict") else answer_judgement.get("verdict")
             confidence = (
-                answer_judgement.confidence
-                if hasattr(answer_judgement, "confidence")
-                else answer_judgement.get("confidence")
+                answer_judgement.confidence if hasattr(answer_judgement, "confidence") else answer_judgement.get("confidence")
             )
             steps.append(f"Answer judge: {verdict} (confidence {confidence:.2f})")
 

@@ -1,7 +1,6 @@
 import logging
 
 from langchain_core.language_models import BaseChatModel
-from pydantic import BaseModel, Field
 
 from src.agents.fusionsearch.agentic_rag import AgenticRAGService
 from src.agents.knowledgerouter.handlers import knowledge_router_error_handler
@@ -12,23 +11,12 @@ from src.platform.graph.policies import (
     build_retry_policy,
 )
 
+from .classify_decisions import classify_knowledge_sources
 from .config import KnowledgeRouterConfig
-from .prompts import CLASSIFY_SYSTEM_PROMPT, SYNTHESIZE_SYSTEM_PROMPT
-from .schemas import ClassificationItem
+from .prompts import SYNTHESIZE_SYSTEM_PROMPT
 from .state import AgentInput, RouterState
 
 logger = logging.getLogger(__name__)
-
-
-class ClassificationResult(BaseModel):
-    """Structured output for the multi-source router (one row per downstream agent).
-
-    Order is not significant. Each source must appear at most once; use a single row when one path suffices, or one row per distinct source to fan out in parallel.
-    """
-
-    classifications: list[ClassificationItem] = Field(
-        description="List of agents to invoke with their targeted sub-questions",
-    )
 
 
 class KnowledgeRouterGraph:
@@ -50,19 +38,12 @@ class KnowledgeRouterGraph:
 
     async def classify_query(self, state: RouterState) -> dict:
         """Classify query and determine which agents to invoke."""
-        structured_llm = self.router_model.with_structured_output(ClassificationResult)
-
-        result = await structured_llm.ainvoke(
-            [
-                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-                {"role": "user", "content": state["query"]},
-            ]
+        classifications = await classify_knowledge_sources(
+            state["query"],
+            self.config.settings,
+            self.config.router_model,
+            router_chat_model=self.router_model,
         )
-
-        classifications = [
-            {"source": item.source, "query": item.query}
-            for item in result.classifications
-        ]
         if not classifications:
             logger.info("No classifications returned, defaulting to documents source")
             classifications = [{"source": "documents", "query": state["query"]}]

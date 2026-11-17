@@ -92,8 +92,7 @@ def format_documents_for_context(documents: list[SearchDocument]) -> str:
         return ""
 
     return "\n\n---\n\n".join(
-        format_document_for_context(document, index=index)
-        for index, document in enumerate(documents, start=1)
+        format_document_for_context(document, index=index) for index, document in enumerate(documents, start=1)
     )
 
 

@@ -14,6 +14,17 @@ class ClassificationItem(BaseModel):
     query: str = Field(..., description="Targeted sub-question for that source")
 
 
+class ClassificationResult(BaseModel):
+    """Structured output for the multi-source router (one row per downstream agent).
+
+    Order is not significant. Each source must appear at most once.
+    """
+
+    classifications: list[ClassificationItem] = Field(
+        description="List of agents to invoke with their targeted sub-questions",
+    )
+
+
 class AgentResultItem(BaseModel):
     """Result returned by a single sub-agent."""
 

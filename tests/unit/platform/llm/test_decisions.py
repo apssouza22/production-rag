@@ -2,7 +2,7 @@ import importlib.metadata
 
 from langchain_openai.decisions import OpenAIDecisions
 from src.config import Settings
-from src.platform.llm.decisions import make_openai_decisions, resolve_decisions_model
+from src.platform.decisions import make_openai_decisions, resolve_decisions_model
 
 
 def test_langchain_openai_version_supports_decisions() -> None:

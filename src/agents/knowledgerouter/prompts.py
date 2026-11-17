@@ -44,6 +44,18 @@ Examples:
 - "Explain how diffusion models work based on the papers" -> documents only
 - "Show the top 10 cited papers and explain their main contributions" -> both database and documents"""
 
+ROUTER_DOCUMENTS_INSTRUCTIONS = (
+    "The query should be answered using research paper content from arXiv CS papers "
+    "(concepts, methods, findings, explanations)."
+)
+
+ROUTER_DATABASE_INSTRUCTIONS = (
+    "The query should be answered using structured paper metadata in PostgreSQL "
+    "(counts, listings, filters, dates, authors, titles)."
+)
+
+ROUTER_SOURCE_THRESHOLD = 0.5
+
 SYNTHESIZE_SYSTEM_PROMPT = """Synthesize these search results to answer the original question: "{query}"
 
 - Combine information from multiple sources without redundancy

@@ -13,6 +13,13 @@ Also provide brief reasoning for your decision.
 Output must use the exact structured fields expected by the API (e.g. binary_score, reasoning) with no extra keys.
 Respond in JSON format with 'binary_score' (yes/no) and 'reasoning' fields."""
 
+GRADE_RELEVANCE_INSTRUCTIONS = (
+    "The retrieved document excerpts are relevant to answering the user's question "
+    "(they contain related keywords or semantic meaning)."
+)
+
+GRADE_RELEVANCE_THRESHOLD = 0.5
+
 # Rewrite query for better retrieval
 REWRITE_PROMPT = """You are a question re-writer that converts an input question to a better version that is optimized for retrieving relevant documents.
 
@@ -100,6 +107,11 @@ Provide:
 Output must use the exact structured fields expected by the API (score, reason) with no extra keys.
 Respond in JSON format with 'score' (integer 0-100) and 'reason' (string) fields."""
 
+GUARDRAIL_IN_SCOPE_INSTRUCTIONS = (
+    "The user's question is about academic research from arXiv in Computer Science, "
+    "Artificial Intelligence, or Machine Learning, and is appropriate for a research-paper assistant."
+)
+
 # Answer generation prompt (used in generate_answer_node)
 GENERATE_ANSWER_PROMPT = """You are an AI research assistant specializing in academic papers from arXiv in Computer Science, AI, and Machine Learning.
 
@@ -135,6 +147,14 @@ Question: {question}
 Context: {context}
 Answer: {answer}"""
 
+ABSTENTION_VERDICT_INSTRUCTIONS = "How well is the generated answer supported by the retrieved context?"
+
+ABSTENTION_VERDICT_CHOICES: dict[str, str] = {
+    "supported": "The answer is fully grounded in the retrieved context.",
+    "partial": "The answer is only partly supported or mixes supported and unsupported claims.",
+    "unsupported": "The answer is not supported by the retrieved context.",
+}
+
 # Abstention response messages
 ABSTENTION_RETRIEVAL_MESSAGE = (
     "I don't have enough information in the knowledge base to answer this question confidently. "
@@ -159,6 +179,5 @@ ABSTENTION_MAX_ATTEMPTS_MESSAGE = (
 )
 
 PARTIAL_ANSWER_NOTE = (
-    "\n\nNote: This answer may be incomplete. "
-    "Some aspects of your question were not fully covered in the available papers."
+    "\n\nNote: This answer may be incomplete. Some aspects of your question were not fully covered in the available papers."
 )

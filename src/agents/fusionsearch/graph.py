@@ -11,11 +11,9 @@ from src.agents.fusionsearch.models import AnswerJudgement, GradeDocuments, Grad
 from src.agents.fusionsearch.prompts import (
     ABSTENTION_CITATION_MESSAGE,
     ABSTENTION_JUDGE_MESSAGE,
-    ABSTENTION_JUDGE_PROMPT,
     ABSTENTION_MAX_ATTEMPTS_MESSAGE,
     ABSTENTION_RETRIEVAL_MESSAGE,
     GENERATE_ANSWER_PROMPT,
-    GRADE_DOCUMENTS_PROMPT,
     PARTIAL_ANSWER_NOTE,
     REWRITE_PROMPT,
 )
@@ -33,8 +31,10 @@ from src.platform.langfuse.client import LangfuseTracer
 from src.platform.llm.chat_model import make_chat_model
 from src.platform.middleware import MiddlewareManager
 
+from .abstention_decisions import decide_answer_judgement
 from .config import GraphConfig
 from .context import Context
+from .grading_decisions import decide_grade_documents
 from .state import AgentState
 from .tools import create_retriever_tool
 
@@ -44,12 +44,8 @@ logger = logging.getLogger(__name__)
 class QueryRewriteOutput(BaseModel):
     """Structured output for query rewriting."""
 
-    rewritten_query: str = Field(
-        description="The improved query optimized for document retrieval"
-    )
-    reasoning: str = Field(
-        description="Brief explanation of how the query was improved"
-    )
+    rewritten_query: str = Field(description="The improved query optimized for document retrieval")
+    reasoning: str = Field(description="Brief explanation of how the query was improved")
 
 
 class AgenticRAGGraph:
@@ -78,11 +74,7 @@ class AgenticRAGGraph:
 
     @property
     def tracing_enabled(self) -> bool:
-        return (
-            self._trace is not None
-            and self.langfuse_tracer is not None
-            and self.langfuse_tracer.client is not None
-        )
+        return self._trace is not None and self.langfuse_tracer is not None and self.langfuse_tracer.client is not None
 
     @property
     def _reasoning_effort(self) -> ReasoningEffort | None:
@@ -218,15 +210,13 @@ class AgenticRAGGraph:
             return {"routing_decision": "rewrite_query", "grading_results": []}
 
         try:
-            grading_prompt = GRADE_DOCUMENTS_PROMPT.format(context=context, question=question)
-            llm = make_chat_model(
+            grading_response = await decide_grade_documents(
+                question,
+                context,
                 self.config.settings,
                 self.model_name,
-                temperature=0.0,
                 reasoning_effort=self._reasoning_effort,
             )
-            structured_llm = llm.with_structured_output(GradeDocuments)
-            grading_response = await structured_llm.ainvoke(grading_prompt)
 
             is_relevant = grading_response.binary_score == "yes"
             score = 1.0 if is_relevant else 0.0
@@ -243,10 +233,7 @@ class AgenticRAGGraph:
                 document_id="retrieved_docs",
                 is_relevant=is_relevant,
                 score=1.0 if is_relevant else 0.0,
-                reasoning=(
-                    f"Fallback heuristic (LLM failed): "
-                    f"{'sufficient content' if is_relevant else 'insufficient content'}"
-                ),
+                reasoning=(f"Fallback heuristic (LLM failed): {'sufficient content' if is_relevant else 'insufficient content'}"),
             )
 
         route = "generate_answer" if is_relevant else "rewrite_query"
@@ -275,9 +262,7 @@ class AgenticRAGGraph:
         retrieval_confidence = float(payload.get("retrieval_confidence", 0.0))
         document_count = int(payload.get("document_count", 0))
         raw_sources = payload.get("sources", [])
-        relevant_sources = [
-            SourceItem(**source) if isinstance(source, dict) else source for source in raw_sources
-        ]
+        relevant_sources = [SourceItem(**source) if isinstance(source, dict) else source for source in raw_sources]
 
         span = self._create_node_span(
             "retrieval_confidence_assessment",
@@ -289,10 +274,7 @@ class AgenticRAGGraph:
             {"node": "assess_retrieval"},
         )
 
-        below_threshold = (
-            document_count == 0
-            or retrieval_confidence < self.config.retrieval_confidence_threshold
-        )
+        below_threshold = document_count == 0 or retrieval_confidence < self.config.retrieval_confidence_threshold
         route = "abstain" if below_threshold else "grade_documents"
 
         if span:
@@ -561,19 +543,14 @@ class AgenticRAGGraph:
     async def _judge_answer(self, question: str, context: str, answer: str) -> AnswerJudgement:
         """Run the LLM abstention judge on a generated answer."""
         try:
-            judge_prompt = ABSTENTION_JUDGE_PROMPT.format(
-                question=question,
-                context=context,
-                answer=answer,
-            )
-            llm = make_chat_model(
+            return await decide_answer_judgement(
+                question,
+                context,
+                answer,
                 self.config.settings,
                 self.model_name,
-                temperature=0.0,
                 reasoning_effort=self._reasoning_effort,
             )
-            structured_llm = llm.with_structured_output(AnswerJudgement)
-            return await structured_llm.ainvoke(judge_prompt)
         except Exception as exc:
             logger.error("Answer judge failed: %s, defaulting to partial/low-confidence", exc)
             return AnswerJudgement(
@@ -641,8 +618,7 @@ class AgenticRAGGraph:
         no_fault_tolerance, fault_tolerance = self._configure_fault_tolerance(workflow)
 
         (
-            workflow
-            .add_node("retrieve", self.retrieve)
+            workflow.add_node("retrieve", self.retrieve)
             .add_tool_node("tool_retrieve", [retriever_tool])
             .add_node("check_retrieval_score", self.check_retrieval_score)
             .add_node("grade_documents", self.grade_documents)
@@ -687,4 +663,3 @@ class AgenticRAGGraph:
         compiled_graph = workflow.compile()
         logger.info("Graph compilation successful")
         return compiled_graph
-
