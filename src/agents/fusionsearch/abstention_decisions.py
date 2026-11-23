@@ -3,7 +3,7 @@
 from langchain_core.decisions import Choice
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+from src.platform.decisions import DecisionsClient, DecisionEvaluator
 
 from .models import AnswerJudgement
 from .prompts import (
@@ -13,7 +13,7 @@ from .prompts import (
 )
 
 
-class AbstentionJudgeEvaluator(StructuredDecisionEvaluator[AnswerJudgement]):
+class GroundingAnswerEvaluator(DecisionEvaluator[AnswerJudgement]):
     def __init__(
         self,
         question: str,
@@ -74,11 +74,11 @@ async def decide_answer_judgement(
     reasoning_effort: ReasoningEffort | None = None,
 ) -> AnswerJudgement:
     """Judge answer grounding via Decisions, falling back to structured chat output."""
-    return await AbstentionJudgeEvaluator(
+    return await GroundingAnswerEvaluator(
         question,
         context,
         answer,
         settings,
         model_name,
         reasoning_effort=reasoning_effort,
-    ).run()
+    ).run_decision()

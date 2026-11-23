@@ -3,13 +3,13 @@
 from langchain_core.decisions import Noul
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+from src.platform.decisions import DecisionsClient, DecisionEvaluator
 
 from .models import GradeDocuments
 from .prompts import GRADE_DOCUMENTS_PROMPT, GRADE_RELEVANCE_INSTRUCTIONS, GRADE_RELEVANCE_THRESHOLD
 
 
-class DocumentGradingEvaluator(StructuredDecisionEvaluator[GradeDocuments]):
+class DocumentGradingEvaluator(DecisionEvaluator[GradeDocuments]):
     def __init__(
         self,
         question: str,
@@ -63,4 +63,4 @@ async def decide_grade_documents(
         settings,
         model_name,
         reasoning_effort=reasoning_effort,
-    ).run()
+    ).run_decision()

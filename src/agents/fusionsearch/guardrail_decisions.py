@@ -3,13 +3,13 @@
 from langchain_core.decisions import Noul
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+from src.platform.decisions import DecisionsClient, DecisionEvaluator
 
 from .models import GuardrailScoring
 from .prompts import GUARDRAIL_IN_SCOPE_INSTRUCTIONS, GUARDRAIL_PROMPT
 
 
-class GuardrailEvaluator(StructuredDecisionEvaluator[GuardrailScoring]):
+class GuardrailEvaluator(DecisionEvaluator[GuardrailScoring]):
     def __init__(
         self,
         query: str,
@@ -55,4 +55,4 @@ async def decide_guardrail_scoring(
         settings,
         model_name,
         reasoning_effort=reasoning_effort,
-    ).run()
+    ).run_decision()

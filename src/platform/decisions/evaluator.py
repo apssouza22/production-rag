@@ -12,7 +12,7 @@ from .client import DecisionsClient
 TResult = TypeVar("TResult")
 
 
-class StructuredDecisionEvaluator(ABC, Generic[TResult]):
+class DecisionEvaluator(ABC, Generic[TResult]):
     """Try the configured decision backend first; on failure use structured chat output.
 
     Subclasses implement provider-specific mapping in
@@ -39,7 +39,7 @@ class StructuredDecisionEvaluator(ABC, Generic[TResult]):
     def component_name(self) -> str:
         """Short label for log lines (e.g. ``'Guardrail'``)."""
 
-    async def run(self) -> TResult:
+    async def run_decision(self) -> TResult:
         """Run the decisions path, falling back to structured chat on any error."""
         try:
             return await self.evaluate_with_decisions()
