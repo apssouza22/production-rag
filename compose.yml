@@ -87,8 +87,9 @@ services:
       # Airflow-specific environment setup
       - AIRFLOW_HOME=/opt/airflow
       - PYTHONPATH=/opt/airflow
-      # Container hostnames for Airflow
+      # RAG app DB (ingestion DAGs); Airflow metadata uses airflow_db
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://rag_user:rag_password@postgres:5432/airflow_db
       - OPENSEARCH_HOST=http://opensearch:9200
       - OPENSEARCH__HOST=http://opensearch:9200
       # Persist downloaded PDFs to host ./data/arxiv_pdfs (mounted at /opt/airflow/data)
@@ -112,7 +113,7 @@ services:
       - rag-network
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: rag-postgres
     environment:
       - POSTGRES_DB=rag_db
@@ -124,6 +125,7 @@ services:
       - "5412:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rag_user -d rag_db"]
       interval: 5s

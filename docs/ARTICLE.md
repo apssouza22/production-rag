@@ -42,7 +42,7 @@ flowchart LR
     end
 
     subgraph data["Stateful services"]
-        PG[("PostgreSQL 16<br/>paper metadata + text")]
+        PG[("PostgreSQL 17<br/>paper metadata + text")]
         OS[("OpenSearch 2.19<br/>arxiv-papers-chunks")]
         RD[("Redis Stack<br/>exact + semantic cache")]
     end

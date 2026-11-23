@@ -102,7 +102,22 @@ Papers are persisted in three layers: **PostgreSQL** (metadata + parsed text), *
 
 #### PostgreSQL
 
-Primary store for paper metadata and parsed PDF content (`papers` table — see `src/domain/paper/model.py`).
+One Postgres instance, two logical databases:
+
+| Database | Used by | Purpose |
+|----------|---------|---------|
+| `rag_db` | API, ingestion code (`POSTGRES_DATABASE_URL`) | Paper metadata and parsed content (`papers` table — see `src/domain/paper/model.py`) |
+| `airflow_db` | Airflow only (`AIRFLOW__DATABASE__SQL_ALCHEMY_CONN`) | Scheduler metadata, DAG runs, Airflow users |
+
+Fresh `docker compose up` creates `airflow_db` via `docker/postgres/init/01-create-airflow-db.sql`. If you already have a `postgres_data` volume from before that script existed, create the database once:
+
+```bash
+docker exec -it rag-postgres psql -U rag_user -d postgres -c "CREATE DATABASE airflow_db OWNER rag_user;"
+```
+
+Then set `AIRFLOW__DATABASE__SQL_ALCHEMY_CONN` to `.../airflow_db`, restart the Airflow container, and let `airflow db init` run against the new database. Re-enable and trigger ingestion DAGs as needed. Legacy Airflow tables left in `rag_db` are safe to drop only if you no longer need that old metadata.
+
+**RAG app connection** (local API / GUI tools):
 
 | Setting | Value |
 |---------|-------|
@@ -195,7 +210,7 @@ GET arxiv-papers-chunks/_search
 
 #### Airflow
 
-Orchestrates the ingestion DAG (`arxiv_paper_ingestion`) that fetches papers, parses PDFs, writes to PostgreSQL, and indexes chunks in OpenSearch.
+Orchestrates the ingestion DAG (`arxiv_paper_ingestion`) that fetches papers, parses PDFs, writes to **`rag_db`**, and indexes chunks in OpenSearch. Airflow’s own tables live in **`airflow_db`** (not mixed with `papers`).
 
 | Setting | Value |
 |---------|-------|

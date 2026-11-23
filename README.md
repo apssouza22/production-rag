@@ -87,7 +87,7 @@ cp .env.example .env
 | Service | Purpose | Status |
 |---------|---------|--------|
 | **FastAPI** | REST API with automatic docs | ✅ Ready |
-| **PostgreSQL 16** | Paper metadata and content storage | ✅ Ready |
+| **PostgreSQL 17** | Paper metadata and content storage | ✅ Ready |
 | **OpenSearch 2.19** | Hybrid search engine (BM25 + Vector) | ✅ Ready |
 | **Apache Airflow 3.0** | Workflow automation | ✅ Ready |
 | **Jina AI** | Embedding generation and reranking | ✅ Ready |
