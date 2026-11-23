@@ -1,9 +1,10 @@
-"""Abstention judge via OpenAI Decisions API."""
+"""Abstention judge via the configured decisions backend."""
 
-from langchain_openai.decisions import Choice
+from langchain_core.decisions import Choice
 
 from src.config import ReasoningEffort, Settings
 from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+
 from .models import AnswerJudgement
 from .prompts import (
     ABSTENTION_JUDGE_PROMPT,
@@ -42,7 +43,7 @@ class AbstentionJudgeEvaluator(StructuredDecisionEvaluator[AnswerJudgement]):
             {
                 "verdict": Choice(
                     instructions=ABSTENTION_VERDICT_INSTRUCTIONS,
-                    choices=ABSTENTION_VERDICT_CHOICES,
+                    criteria=ABSTENTION_VERDICT_CHOICES,
                 )
             },
         )

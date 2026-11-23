@@ -29,10 +29,7 @@ async def knowledge_router_error_handler(state: "RouterState", error: NodeError)
                 "results": [
                     {
                         "source": error.node,
-                        "result": (
-                            "This knowledge source is temporarily unavailable. "
-                            "Please try again in a few moments."
-                        ),
+                        "result": ("This knowledge source is temporarily unavailable. Please try again in a few moments."),
                         "metadata": fault,
                     }
                 ],
@@ -41,10 +38,7 @@ async def knowledge_router_error_handler(state: "RouterState", error: NodeError)
         )
 
     if error.node == "synthesize":
-        partial = "\n\n".join(
-            f"**From {item['source'].title()}:**\n{item['result']}"
-            for item in state.get("results", [])
-        )
+        partial = "\n\n".join(f"**From {item['source'].title()}:**\n{item['result']}" for item in state.get("results", []))
         answer = partial or "Unable to generate an answer due to a temporary service error."
         return Command(update={"final_answer": answer}, goto=END)
 

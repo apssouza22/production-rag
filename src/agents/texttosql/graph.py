@@ -84,15 +84,13 @@ class TextToSQLGraph:
             return END
         return "check_query"
 
-
     def compile(self, middleware_manager: MiddlewareManager | None = None):
         builder = GraphBuilder(MessagesState)
         if middleware_manager is not None:
             builder.set_middleware_manager(middleware_manager)
 
         (
-            builder
-            .add_node("list_tables", self.list_tables)
+            builder.add_node("list_tables", self.list_tables)
             .add_node("call_get_schema", self.call_get_schema)
             .add_tool_node("get_schema", [self._get_schema_tool])
             .add_node("generate_query", self.generate_query)

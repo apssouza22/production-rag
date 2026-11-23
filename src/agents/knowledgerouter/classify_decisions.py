@@ -1,9 +1,9 @@
-"""Knowledge-source routing via OpenAI Decisions, with structured-output fallback."""
+"""Knowledge-source routing via decisions API, with structured-output fallback."""
 
 import logging
 
+from langchain_core.decisions import Noul
 from langchain_core.language_models import BaseChatModel
-from langchain_openai.decisions import Predicate
 
 from src.config import Settings
 from src.platform.decisions import DecisionsClient
@@ -52,17 +52,17 @@ class KnowledgeSourceClassifier:
         response = await self._decisions.invoke(
             self._query,
             {
-                "documents": Predicate(instructions=ROUTER_DOCUMENTS_INSTRUCTIONS),
-                "database": Predicate(instructions=ROUTER_DATABASE_INSTRUCTIONS),
+                "documents": Noul(instructions=ROUTER_DOCUMENTS_INSTRUCTIONS),
+                "database": Noul(instructions=ROUTER_DATABASE_INSTRUCTIONS),
             },
         )
         classifications: list[dict[str, str]] = []
         for source in _KNOWLEDGE_SOURCES:
             if source in DecisionsClient.refusal_names(response):
                 continue
-            if source not in response.predicates:
+            if source not in response.nouls:
                 continue
-            if response.predicates[source].probability >= ROUTER_SOURCE_THRESHOLD:
+            if response.nouls[source] >= ROUTER_SOURCE_THRESHOLD:
                 classifications.append({"source": source, "query": self._query})
         if not classifications:
             raise ValueError("No knowledge sources exceeded the decisions threshold")

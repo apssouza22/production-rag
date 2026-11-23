@@ -1904,6 +1904,19 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-typesafe"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "langchain-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3b/ec/cd0b5d5f961131251cb3a79b330a5a21750067a1f6bf0aa0a184d798f85c/langchain_typesafe-0.1.0.tar.gz", hash = "sha256:3abe72190913903a7ea07491a65577ac0057b752fcc3f386179a07cedb120b9a", size = 172635, upload-time = "2026-11-11T16:14:11.468Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/bd/f56733b4b3c9f7e59d6f2c8bc8403483ae907b31b090568285cb7deed758/langchain_typesafe-0.1.0-py3-none-any.whl", hash = "sha256:fa9fcf166cac3c04e0ab0583f2bcb421fc2b31e497411222b4d9add900a213a6", size = 20847, upload-time = "2026-11-11T16:14:10.58Z" },
+]
+
+[[package]]
 name = "langcodes"
 version = "3.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3163,6 +3176,9 @@ evals = [
     { name = "ragas" },
     { name = "tqdm" },
 ]
+typesafe = [
+    { name = "langchain-typesafe" },
+]
 viz = [
     { name = "grandalf" },
 ]
@@ -3215,6 +3231,7 @@ evals = [
     { name = "ragas", specifier = ">=0.4.3" },
     { name = "tqdm", specifier = ">=4.66.0" },
 ]
+typesafe = [{ name = "langchain-typesafe", specifier = ">=0.1.0" }]
 viz = [{ name = "grandalf", specifier = ">=0.8" }]
 
 [[package]]

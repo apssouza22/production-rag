@@ -45,8 +45,7 @@ Examples:
 - "Show the top 10 cited papers and explain their main contributions" -> both database and documents"""
 
 ROUTER_DOCUMENTS_INSTRUCTIONS = (
-    "The query should be answered using research paper content from arXiv CS papers "
-    "(concepts, methods, findings, explanations)."
+    "The query should be answered using research paper content from arXiv CS papers (concepts, methods, findings, explanations)."
 )
 
 ROUTER_DATABASE_INSTRUCTIONS = (

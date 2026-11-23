@@ -321,7 +321,7 @@ Optional: `OPENAI_BASE_URL` to point at an OpenAI-compatible proxy (default `htt
 | Module | Role |
 |--------|------|
 | `src/platform/llm/` | `make_chat_model()` — LangChain `ChatOpenAI` with fallbacks |
-| `src/platform/decisions/` | `DecisionsClient`, `StructuredDecisionEvaluator`, `make_openai_decisions()` — OpenAI Decisions API (`langchain-openai>=1.7.0`) |
+| `src/platform/decisions/` | `DecisionsClient`, `make_decision_backend()` — OpenAI (default) or TypeSafe/Jev (`DECISIONS_PROVIDER`; optional `uv sync --group typesafe`) |
 
 **Health check:** `/api/v1/health` reports OpenAI status under the `openai` service key.
 

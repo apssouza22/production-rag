@@ -98,9 +98,7 @@ class KnowledgeRouterService:
     def _build_trace_output(self, ctx: AgentContext, result: list) -> dict:
         execution_time = time.time() - ctx.metadata.get("_trace_start_time", time.time())
         graph_result = ctx.metadata.get("graph_result", {})
-        classifications = [
-            classification_to_schema(item) for item in graph_result.get("classifications", [])
-        ]
+        classifications = [classification_to_schema(item) for item in graph_result.get("classifications", [])]
         agent_results = self._build_agent_results(graph_result.get("results", []))
         reasoning_steps = self._extract_reasoning_steps(classifications, agent_results)
         return {
@@ -135,9 +133,7 @@ class KnowledgeRouterService:
 
         execution_time = time.time() - start_time
         graph_result = ctx.metadata.get("graph_result") or {}
-        classifications = [
-            classification_to_schema(item) for item in graph_result.get("classifications", [])
-        ]
+        classifications = [classification_to_schema(item) for item in graph_result.get("classifications", [])]
         agent_results = self._build_agent_results(graph_result.get("results", []))
         reasoning_steps = self._extract_reasoning_steps(classifications, agent_results)
 
