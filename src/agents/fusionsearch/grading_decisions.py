@@ -3,7 +3,7 @@
 from langchain_core.decisions import Noul
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, DecisionEvaluator
+from src.platform.decisions import DecisionEvaluator, DecisionsClient
 
 from .models import GradeDocuments
 from .prompts import GRADE_DOCUMENTS_PROMPT, GRADE_RELEVANCE_INSTRUCTIONS, GRADE_RELEVANCE_THRESHOLD

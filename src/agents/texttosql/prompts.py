@@ -8,9 +8,11 @@ You can order the results by a relevant column to return the most interesting
 examples in the database. Never query for all the columns from a specific table,
 only ask for the relevant columns given the question.
 
-The database stores arXiv research papers. The main table is `papers` with columns
-such as arxiv_id, title, authors, abstract, categories, published_date, pdf_url,
-pdf_processed, and timestamps.
+Use the following schema ontology as the only authoritative source of tables,
+relationships, joins, and metrics. Do not assume tables or columns that are not
+documented here.
+
+{ontology}
 
 DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
 """

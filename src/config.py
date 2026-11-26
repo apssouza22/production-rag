@@ -160,6 +160,26 @@ class KGSettings(BaseConfigSettings):
     max_path_tokens: int = 4000
 
 
+class TextToSQLSettings(BaseConfigSettings):
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="TEXT_TO_SQL__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    database_url: str = "postgresql://rag_user:rag_password@localhost:5412/pagila"
+    ontology_path: str = ""
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        if not (v.startswith("postgresql://") or v.startswith("postgresql+psycopg2://")):
+            raise ValueError("Database URL must start with 'postgresql://' or 'postgresql+psycopg2://'")
+        return v
+
+
 class LangfuseSettings(BaseConfigSettings):
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
@@ -213,6 +233,7 @@ class Settings(BaseConfigSettings):
     opensearch: OpenSearchSettings = Field(default_factory=OpenSearchSettings)
     kg: KGSettings = Field(default_factory=KGSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
+    text_to_sql: TextToSQLSettings = Field(default_factory=TextToSQLSettings)
 
     @field_validator("postgres_database_url")
     @classmethod

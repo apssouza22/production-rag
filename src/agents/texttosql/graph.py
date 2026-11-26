@@ -34,6 +34,7 @@ class TextToSQLGraph:
         self._generate_query_system_prompt = GENERATE_QUERY_SYSTEM_PROMPT.format(
             dialect=config.dialect,
             top_k=config.top_k,
+            ontology=config.ontology_prompt,
         )
         self._check_query_system_prompt = CHECK_QUERY_SYSTEM_PROMPT.format(
             dialect=config.dialect,

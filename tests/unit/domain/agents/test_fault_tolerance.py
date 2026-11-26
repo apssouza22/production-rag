@@ -177,7 +177,10 @@ class TestTextToSqlGraphCompilation:
         graph = build_text_to_sql_graph(
             model=model,
             tools=[sql_db_list_tables, sql_db_schema, sql_db_query],
-            config=TextToSQLConfig(),
+            config=TextToSQLConfig(
+                include_tables=["film"],
+                ontology_prompt="### table: `film`",
+            ),
         )
 
         assert graph is not None
