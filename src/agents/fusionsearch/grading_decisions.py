@@ -1,14 +1,15 @@
-"""Document grading via OpenAI Decisions API."""
+"""Document grading via the configured decisions backend."""
 
-from langchain_openai.decisions import Predicate
+from langchain_core.decisions import Noul
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+from src.platform.decisions import DecisionsClient, DecisionEvaluator
+
 from .models import GradeDocuments
 from .prompts import GRADE_DOCUMENTS_PROMPT, GRADE_RELEVANCE_INSTRUCTIONS, GRADE_RELEVANCE_THRESHOLD
 
 
-class DocumentGradingEvaluator(StructuredDecisionEvaluator[GradeDocuments]):
+class DocumentGradingEvaluator(DecisionEvaluator[GradeDocuments]):
     def __init__(
         self,
         question: str,
@@ -32,9 +33,9 @@ class DocumentGradingEvaluator(StructuredDecisionEvaluator[GradeDocuments]):
     async def evaluate_with_decisions(self) -> GradeDocuments:
         response = await self._decisions.invoke(
             self._decision_input(),
-            {"relevant": Predicate(instructions=GRADE_RELEVANCE_INSTRUCTIONS)},
+            {"relevant": Noul(instructions=GRADE_RELEVANCE_INSTRUCTIONS)},
         )
-        probability = DecisionsClient.require_predicate(response, "relevant")
+        probability = DecisionsClient.require_noul(response, "relevant")
         binary_score = "yes" if probability >= GRADE_RELEVANCE_THRESHOLD else "no"
         return GradeDocuments(
             binary_score=binary_score,
@@ -62,4 +63,4 @@ async def decide_grade_documents(
         settings,
         model_name,
         reasoning_effort=reasoning_effort,
-    ).run()
+    ).run_decision()

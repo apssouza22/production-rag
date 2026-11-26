@@ -106,6 +106,19 @@ The `api/` layer should stay thin: validate input, call a service, map the respo
 - Typical files: `graph.py`, `state.py`, `config.py`, `factory.py`, `schemas.py`, `prompts.py`, `nodes/`.
 - Fault-tolerance policies come from `src/domain/agent_fault_tolerance/`.
 
+### Object-oriented design
+
+Apply OO best practices consistently — the codebase favors clear types, protocols, and small cohesive units over loose modules of functions.
+
+- **Single responsibility** — each class or service owns one capability (e.g. transport client vs. search orchestration).
+- **Encapsulation** — keep internal state and helpers private; expose behavior through a narrow public API.
+- **Depend on abstractions** — use protocols, abstract classes and interfaces (`LLMClient`, injected clients) instead of concrete SDKs at call sites.
+- **Composition over inheritance** — wire behavior via constructor injection and delegation; avoid deep class hierarchies unless the domain truly requires them.
+- **Cohesion** — colocate data and the operations that use it in the same domain type or service; do not scatter related logic across unrelated modules.
+- **Open/closed in practice** — extend behavior with new implementations behind existing protocols or factories, not by editing many call sites.
+
+When adding features, prefer a well-named class or protocol-backed service over growing a file of unrelated helpers.
+
 ---
 
 ## Code Style
@@ -160,8 +173,9 @@ Key env vars: `JINA_API_KEY` (required for hybrid search), `OPENAI_API_KEY`, `LA
 3. Follow the `make_*` factory + FastAPI DI pattern.
 4. Keep `api/` handlers thin.
 5. Use `LLMClient` protocol for any new LLM usage.
-6. Run `make lint` and `make test` before finishing.
-7. Update tests in the mirrored path under `tests/`.
+6. Apply object-oriented design: cohesive types, abstractions, and composition — see **Object-oriented design** above.
+7. Run `make lint` and `make test` before finishing.
+8. Update tests in the mirrored path under `tests/`.
 
 ---
 

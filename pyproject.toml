@@ -55,6 +55,9 @@ evals = [
 viz = [
     "grandalf>=0.8",
 ]
+typesafe = [
+    "langchain-typesafe>=0.1.0",
+]
 
 [tool.uv]
 default-groups = ["dev", "evals"]

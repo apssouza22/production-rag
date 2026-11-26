@@ -1,4 +1,4 @@
-"""Template for evaluators that prefer OpenAI Decisions with structured chat fallback."""
+"""Template for evaluators that prefer typed decisions with structured chat fallback."""
 
 import logging
 from abc import ABC, abstractmethod
@@ -12,8 +12,13 @@ from .client import DecisionsClient
 TResult = TypeVar("TResult")
 
 
-class StructuredDecisionEvaluator(ABC, Generic[TResult]):
-    """Try OpenAI Decisions first; on failure use ``with_structured_output``."""
+class DecisionEvaluator(ABC, Generic[TResult]):
+    """Try the configured decision backend first; on failure use structured chat output.
+
+    Subclasses implement provider-specific mapping in
+    :meth:`evaluate_with_decisions` using portable
+    :mod:`langchain_core.decisions` questions via :class:`DecisionsClient`.
+    """
 
     def __init__(
         self,
@@ -22,6 +27,7 @@ class StructuredDecisionEvaluator(ABC, Generic[TResult]):
         *,
         reasoning_effort: ReasoningEffort | None = None,
     ) -> None:
+        """Wire settings, optional reasoning effort, and a decisions client."""
         self._settings = settings
         self._model_name = model_name
         self._reasoning_effort = reasoning_effort
@@ -31,9 +37,10 @@ class StructuredDecisionEvaluator(ABC, Generic[TResult]):
     @property
     @abstractmethod
     def component_name(self) -> str:
-        """Short label for log lines (e.g. 'Guardrail')."""
+        """Short label for log lines (e.g. ``'Guardrail'``)."""
 
-    async def run(self) -> TResult:
+    async def run_decision(self) -> TResult:
+        """Run the decisions path, falling back to structured chat on any error."""
         try:
             return await self.evaluate_with_decisions()
         except Exception as exc:
@@ -46,7 +53,7 @@ class StructuredDecisionEvaluator(ABC, Generic[TResult]):
 
     @abstractmethod
     async def evaluate_with_decisions(self) -> TResult:
-        """Map a Decisions API response to the domain result type."""
+        """Map a normalized decisions response to the domain result type."""
 
     @abstractmethod
     async def evaluate_with_structured_output(self) -> TResult:

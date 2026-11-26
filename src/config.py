@@ -198,6 +198,9 @@ class Settings(BaseConfigSettings):
     agent_model: str = "gpt-5.6-luna"
     # Empty uses agent_model. OpenAI Decisions models may differ from chat models.
     decisions_model: str = ""
+    decisions_provider: Literal["openai", "typesafe"] = "openai"
+    typesafe_api_key: str = ""
+    typesafe_base_url: str | None = None
     reasoning_effort: ReasoningEffort = "low"
     llm_request_timeout: int = 300
 

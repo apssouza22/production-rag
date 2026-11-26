@@ -15,10 +15,7 @@ async def text_to_sql_error_handler(state: MessagesState, error: NodeError) -> C
         update={
             "messages": [
                 AIMessage(
-                    content=(
-                        "I was unable to query the database due to a temporary error. "
-                        "Please try again in a few moments."
-                    )
+                    content=("I was unable to query the database due to a temporary error. Please try again in a few moments.")
                 )
             ],
         },

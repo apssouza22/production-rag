@@ -1,15 +1,15 @@
-"""Guardrail scoring via OpenAI Decisions API."""
+"""Guardrail scoring via the configured decisions backend."""
 
-from langchain_openai.decisions import Predicate
+from langchain_core.decisions import Noul
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+from src.platform.decisions import DecisionsClient, DecisionEvaluator
 
 from .models import GuardrailScoring
 from .prompts import GUARDRAIL_IN_SCOPE_INSTRUCTIONS, GUARDRAIL_PROMPT
 
 
-class GuardrailEvaluator(StructuredDecisionEvaluator[GuardrailScoring]):
+class GuardrailEvaluator(DecisionEvaluator[GuardrailScoring]):
     def __init__(
         self,
         query: str,
@@ -28,9 +28,9 @@ class GuardrailEvaluator(StructuredDecisionEvaluator[GuardrailScoring]):
     async def evaluate_with_decisions(self) -> GuardrailScoring:
         response = await self._decisions.invoke(
             self._query,
-            {"in_scope": Predicate(instructions=GUARDRAIL_IN_SCOPE_INSTRUCTIONS)},
+            {"in_scope": Noul(instructions=GUARDRAIL_IN_SCOPE_INSTRUCTIONS)},
         )
-        probability = DecisionsClient.require_predicate(response, "in_scope")
+        probability = DecisionsClient.require_noul(response, "in_scope")
         score = max(0, min(100, round(probability * 100)))
         return GuardrailScoring(
             score=score,
@@ -55,4 +55,4 @@ async def decide_guardrail_scoring(
         settings,
         model_name,
         reasoning_effort=reasoning_effort,
-    ).run()
+    ).run_decision()

@@ -57,20 +57,14 @@ class KnowledgeRouterGraph:
 
     def route_to_agents(self, state: RouterState) -> list[Send]:
         """Fan out to agents based on classifications."""
-        return [
-            Send(item["source"], {"query": item["query"]})
-            for item in state["classifications"]
-        ]
+        return [Send(item["source"], {"query": item["query"]}) for item in state["classifications"]]
 
     async def query_documents(self, state: AgentInput) -> dict:
         """Query the agentic RAG service for paper content."""
         logger.info("Querying documents agent: %s", state["query"][:100])
         result = await self.agentic_rag_service.ask(query=state["query"])
         sources = result.get("sources", [])
-        source_urls = [
-            source.get("url", source) if isinstance(source, dict) else str(source)
-            for source in sources
-        ]
+        source_urls = [source.get("url", source) if isinstance(source, dict) else str(source) for source in sources]
         return {
             "results": [
                 {
@@ -110,10 +104,7 @@ class KnowledgeRouterGraph:
         if len(state["results"]) == 1:
             return {"final_answer": state["results"][0]["result"]}
 
-        formatted = [
-            f"**From {item['source'].title()}:**\n{item['result']}"
-            for item in state["results"]
-        ]
+        formatted = [f"**From {item['source'].title()}:**\n{item['result']}" for item in state["results"]]
 
         synthesis_response = await self.synthesis_model.ainvoke(
             [
@@ -125,11 +116,7 @@ class KnowledgeRouterGraph:
             ]
         )
 
-        content = (
-            synthesis_response.content
-            if hasattr(synthesis_response, "content")
-            else str(synthesis_response)
-        )
+        content = synthesis_response.content if hasattr(synthesis_response, "content") else str(synthesis_response)
         return {"final_answer": content}
 
     def _configure_fault_tolerance(self, workflow: GraphBuilder) -> None:
@@ -146,8 +133,7 @@ class KnowledgeRouterGraph:
         self._configure_fault_tolerance(workflow)
 
         (
-            workflow
-            .add_node("classify", self.classify_query)
+            workflow.add_node("classify", self.classify_query)
             .add_node("documents", self.query_documents)
             .add_node("database", self.query_database)
             .add_node("synthesize", self.synthesize_results)

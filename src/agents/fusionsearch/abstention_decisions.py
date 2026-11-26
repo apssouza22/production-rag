@@ -1,9 +1,10 @@
-"""Abstention judge via OpenAI Decisions API."""
+"""Abstention judge via the configured decisions backend."""
 
-from langchain_openai.decisions import Choice
+from langchain_core.decisions import Choice
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, StructuredDecisionEvaluator
+from src.platform.decisions import DecisionsClient, DecisionEvaluator
+
 from .models import AnswerJudgement
 from .prompts import (
     ABSTENTION_JUDGE_PROMPT,
@@ -12,7 +13,7 @@ from .prompts import (
 )
 
 
-class AbstentionJudgeEvaluator(StructuredDecisionEvaluator[AnswerJudgement]):
+class GroundingAnswerEvaluator(DecisionEvaluator[AnswerJudgement]):
     def __init__(
         self,
         question: str,
@@ -42,7 +43,7 @@ class AbstentionJudgeEvaluator(StructuredDecisionEvaluator[AnswerJudgement]):
             {
                 "verdict": Choice(
                     instructions=ABSTENTION_VERDICT_INSTRUCTIONS,
-                    choices=ABSTENTION_VERDICT_CHOICES,
+                    criteria=ABSTENTION_VERDICT_CHOICES,
                 )
             },
         )
@@ -73,11 +74,11 @@ async def decide_answer_judgement(
     reasoning_effort: ReasoningEffort | None = None,
 ) -> AnswerJudgement:
     """Judge answer grounding via Decisions, falling back to structured chat output."""
-    return await AbstentionJudgeEvaluator(
+    return await GroundingAnswerEvaluator(
         question,
         context,
         answer,
         settings,
         model_name,
         reasoning_effort=reasoning_effort,
-    ).run()
+    ).run_decision()
