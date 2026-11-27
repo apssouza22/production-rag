@@ -631,7 +631,59 @@ flowchart LR
     RQ --> GQ
 ```
 
-Schema is discovered at runtime rather than hardcoded in a prompt, so the agent cannot drift out of sync with migrations. Every generated statement passes through a dedicated review node before execution. Results loop back to the generator, so the agent can correct itself after an empty or malformed result.
+The graph still introspects the live database on every run: `list_tables` and `get_schema` pull current table names, column types, and a few sample rows through LangChain's SQL toolkit. That keeps the agent aligned with migrations. Ontology and introspection are complementary, not either/or — see below.
+
+Every generated statement passes through a dedicated review node before execution. Results loop back to the generator, so the agent can correct itself after an empty or malformed result. `max_query_loops` (default 5) caps how many times that cycle can run.
+
+### Schema ontology: semantics the catalog does not give you
+
+Raw DDL is a poor prompt ingredient. `INFORMATION_SCHEMA` tells you column names and types; it does not tell you that `film_actor` is the join table between `film` and `actor`, how outstanding customer balance is defined, or which multi-table pattern answers "top renters by revenue." Production text-to-SQL needs a **curated schema ontology** — a version-controlled layer that sits above live introspection and constrains what the model is allowed to assume.
+
+This project implements that layer for the Pagila DVD rental demo database (`postgresql://…/pagila` in local stack). The RAG corpus (arXiv papers in PostgreSQL + OpenSearch) is unrelated; ontology applies only to the SQL branch the knowledge router sends to `TextToSQLService`.
+
+```mermaid
+flowchart LR
+    YAML["pagila-ontology.yaml<br/>nodes, edges, metrics"] --> LOAD["load_schema_ontology()<br/>SchemaOntology"]
+    LOAD --> FMT["format_for_prompt()"]
+    FMT --> PROMPT["GENERATE_QUERY_SYSTEM_PROMPT<br/>{ontology}"]
+    ENV["TEXT_TO_SQL__ONTOLOGY_PATH<br/>optional override"] --> LOAD
+    FACTORY["make_text_to_sql_service()"] --> LOAD
+    FACTORY --> TOOLS["sql tools<br/>include_tables = node ids"]
+    TOOLS --> GRAPH["LangGraph<br/>list_tables → get_schema → generate → check → run"]
+    PROMPT --> GRAPH
+```
+
+**Three document types in one YAML file** (`src/agents/texttosql/pagila-ontology.yaml`, validated by Pydantic in `src/agents/texttosql/ontology.py`):
+
+| Kind | Ontology field | What it carries |
+|---|---|---|
+| **Nodes** | `nodes[]` | One table each: human description, optional example row JSON, optional sample `SELECT` |
+| **Edges** | `edges[]` | Named relationship, `source_id` → `target_id`, prose join semantics, optional `JOIN` SQL pattern |
+| **Metrics** | `metrics[]` | Named analytic definitions tied to a `node_id`, full SQL (e.g. balance, counts), `embeddable` flag for future semantic use |
+
+At factory time, `make_text_to_sql_service()` loads the YAML, calls `ontology.format_for_prompt()`, and injects the result into the generate step. The system prompt (`src/agents/texttosql/prompts.py`) is explicit: the ontology is the **only authoritative source** of tables, relationships, joins, and metrics — the model must not invent columns or tables that are not documented there.
+
+Table allowlisting is driven from the same file: `include_tables` defaults to `ontology.table_names()` (15 base tables in Pagila), which also configures LangChain's `SQLDatabase` so the agent cannot query outside the curated surface.
+
+**Why keep `list_tables` / `get_schema` if the ontology already describes the schema?**
+
+Because they answer different questions. Ontology carries *meaning* (join paths, business metrics, examples). Runtime introspection carries *truth* (exact column names after a migration, types, sample cell values). The generate node sees both: enriched system instructions plus the conversation history that already contains live schema tool output. If someone adds a column and forgets to update the YAML, introspection still works; if someone relies only on introspection, joins and metrics drift into one-off hallucinated SQL.
+
+**Configuration**
+
+- Default file: `src/agents/texttosql/pagila-ontology.yaml`
+- Override: `TEXT_TO_SQL__ONTOLOGY_PATH` in `.env` (see `.env.example`)
+- Factory override: `make_text_to_sql_service(ontology_path=…)` for tests and evals (`tests/fixtures/texttosql/mini-ontology.yaml` exercises a two-table slice)
+
+**Safety unchanged**
+
+Ontology does not bypass guards. `sql_db_query` still rejects DML/DDL via regex, and the check-query node still runs before execution.
+
+**Measuring it**
+
+`evals/texttosql_evals/` runs execution-accuracy evals against Pagila with golden queries in `queries.json` — the same ontology and graph you ship in `src/agents/texttosql/`. Use it when you extend edges or metrics and need to know whether join quality improved, not just whether answers sound right.
+
+**Practical takeaway:** treat ontology YAML like an API contract for the SQL agent. Change the database → update nodes; add a join-heavy question type → add or refine edges with a working join pattern; encode recurring analytics once under `metrics` instead of hoping the model invents the same CTE every time. Introspection keeps you honest about columns; ontology keeps you honest about semantics.
 
 ---
 
@@ -957,5 +1009,6 @@ The dual-level knowledge graph can be indexed and queried via `dual_search` and 
 - **Caching:** semantic caching needs a confidence floor and parameter partitioning, or it will serve confidently wrong answers.
 - **Observability:** trace per stage, score production traffic with `live_req_evals` and retrieval quality with `rag_evals`, and put human and model judgements in the same place.
 - **Trajectory:** register graph execution via LangChain callbacks, return `steps` and `events` on the agentic API response, and use them for troubleshooting and structural evals alongside Langfuse traces.
+- **Text-to-SQL ontology:** version YAML for tables, join edges, and metrics; inject it as the authoritative prompt layer, still introspect live DDL for column truth, and eval execution accuracy on Pagila (`evals/texttosql_evals/`).
 
 The uncomfortable summary is that the retrieval and generation logic, the part everyone writes tutorials about, is maybe a quarter of the code. The rest is ingestion that survives bad PDFs, fallbacks for every external call, a cache that doesn't lie, and enough instrumentation to answer "why did it say that?" three days later. That ratio is not a sign something went wrong. It is what production means.

@@ -8,11 +8,16 @@ You can order the results by a relevant column to return the most interesting
 examples in the database. Never query for all the columns from a specific table,
 only ask for the relevant columns given the question.
 
-The database stores arXiv research papers. The main table is `papers` with columns
-such as arxiv_id, title, authors, abstract, categories, published_date, pdf_url,
-pdf_processed, and timestamps.
+Use the following schema ontology as the only authoritative source of tables,
+relationships, joins, and metrics. Do not assume tables or columns that are not
+documented here.
+
+{ontology}
 
 DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
+
+Always populate `thought` with concise reasoning before choosing SQL or a final answer.
+When you need database results, set `query` only. When you can answer from prior tool results, set `final_answer` only.
 """
 
 CHECK_QUERY_SYSTEM_PROMPT = """You are a SQL expert with a strong attention to detail.
@@ -29,5 +34,5 @@ Double check the {dialect} query for common mistakes, including:
 If there are any of the above mistakes, rewrite the query. If there are no mistakes,
 just reproduce the original query.
 
-You will call the appropriate tool to execute the query after running this check.
+Return structured output with your review in `thought` and the SQL to run in `query`.
 """

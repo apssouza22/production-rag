@@ -14,6 +14,14 @@ def test_settings_initialization():
     assert settings.service_name == "rag-api"
 
 
+def test_settings_text_to_sql_defaults():
+    """Test text-to-SQL agent database and ontology defaults."""
+    settings = Settings()
+
+    assert "pagila" in settings.text_to_sql.database_url
+    assert settings.text_to_sql.ontology_path == ""
+
+
 def test_settings_postgres_defaults():
     """Test PostgreSQL default configuration."""
     settings = Settings()

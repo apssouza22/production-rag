@@ -1,6 +1,6 @@
-.PHONY: help start stop restart status logs health setup format lint test test-cov clean \
-	eval eval-quick eval-no-report rag-eval rag-eval-no-report experiment-eval experiment-eval-fresh \
-	kg-index
+.PHONY: help start stop restart status logs health setup format lint test test-cov clean pagila-db \
+	eval eval-quick eval-no-report rag-eval rag-eval-no-report texttosql-eval texttosql-eval-no-report \
+	experiment-eval experiment-eval-fresh kg-index
 
 # Default target
 help: ## Show this help message
@@ -29,6 +29,11 @@ health: ## Check all services health
 	@curl -s http://localhost:8000/health | jq . || echo "API not responding"
 	@curl -s http://localhost:9200/_cluster/health | jq . || echo "OpenSearch not responding"
 	@curl -s http://localhost:7771/health || echo "Airflow not responding"
+
+pagila-db: ## Create and load Pagila into running Postgres (for volumes created before compose init)
+	@docker exec rag-postgres psql -U rag_user -d rag_db -tc "SELECT 1 FROM pg_database WHERE datname = 'pagila'" | grep -q 1 \
+		|| docker exec rag-postgres psql -U rag_user -d rag_db -c "CREATE DATABASE pagila;"
+	docker exec -i rag-postgres psql -U rag_user -d pagila < src/agents/texttosql/pagila.sql
 
 # Development
 setup: ## Install Python dependencies
@@ -68,6 +73,12 @@ rag-eval-experiment: ## Run Ragas eval as a Langfuse experiment
 
 rag-eval-experiment-no-report: ## Run Langfuse experiment without local JSON report
 	uv run python -m evals.rag_evals.main --langfuse-experiment --quick --no-report
+
+texttosql-eval: ## Run text-to-SQL execution-accuracy evaluation (Pagila + OpenAI)
+	uv run python -m evals.texttosql_evals.main --quick
+
+texttosql-eval-no-report: ## Run text-to-SQL eval without JSON report
+	uv run python -m evals.texttosql_evals.main --quick --no-report
 
 experiment-eval: ## Ingest evals/experiments/arxiv_pdfs (if needed) and run the Ragas experiment
 	uv run python -m evals.experiments.main $(if $(EXPERIMENT_SETTINGS),--settings $(EXPERIMENT_SETTINGS),)

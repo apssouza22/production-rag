@@ -15,6 +15,7 @@ This codebase treats evaluation as **infrastructure**, not a one-off script:
 - **Production traffic** (`live_req_evals`) — score real Langfuse traces so you notice drift in what users actually ask.
 - **Golden retrieval** (`rag_evals`) — score a fixed dataset against the same `/api/v1/rerank-search` path the stack uses in production, decomposing retrieval vs generation with [Ragas](https://docs.ragas.io/).
 - **Isolated experiments** (`evals/experiments`) — ingest a small PDF corpus into a dedicated OpenSearch partition, auto-generate questions, and compare retrieval configs without touching production data.
+- **Text-to-SQL golden set** (`texttosql_evals`) — execution accuracy of `TextToSQLService` against Pagila reference SQL.
 - **Teaching hook** (`example_eval`) — same core loop with no API keys.
 
 All paths share one **metric execution loop**, one **normalized sample shape**, and one **versioned JSON report schema**. That keeps CI, notebooks, and Langfuse experiments comparable.
@@ -319,7 +320,29 @@ make experiment-eval-fresh   # --force-ingest; cached questions are reused unles
 
 ---
 
-## 8. Minimal example (`example_eval`)
+## 8. Text-to-SQL execution accuracy (`texttosql_evals`)
+
+**Question answered:** “Does the text-to-SQL agent return the right rows on Pagila?”
+
+Pipeline per question:
+
+1. Load `user_input` + `reference_sql` from JSON.
+2. `TextToSQLEvaluationRunner` constructs `TextToSQLService` via `make_text_to_sql_service(langfuse_tracer=None)`.
+3. `DatasetBuilder` calls `ask()`, takes the **last** entry in `sql_queries`, and executes both gold and agent SQL read-only through `SqlResultExecutor`.
+4. `execution_accuracy` scores `1.0` when normalized result strings match.
+
+Unlike `rag_evals`, this runner does **not** call the HTTP API; it shares the same PostgreSQL URL as production text-to-SQL (`TEXT_TO_SQL__DATABASE_URL`).
+
+```bash
+make texttosql-eval
+uv run python -m evals.texttosql_evals.main --quick
+```
+
+Requires Pagila, agent LLM credentials, and a dataset at `TEXT_TO_SQL_EVAL_DATASET_PATH` (default `evals/texttosql_evals/queries.json`).
+
+---
+
+## 9. Minimal example (`example_eval`)
 
 ```bash
 uv run python -m evals.example_eval.main
@@ -335,9 +358,9 @@ No Langfuse, Ragas, or network. Useful when extending the core or teaching the r
 
 ---
 
-## 9. How evals connect to the rest of the system
+## 10. How evals connect to the rest of the system
 
-### 9.1 Trajectory and structural assertions
+### 10.1 Trajectory and structural assertions
 
 Agentic responses include a **trajectory** (`steps`, `events`, `summary`) — see [§7.2 in ARTICLE.md](ARTICLE.md). Langfuse traces capture spans; trajectory captures **graph shape** in the HTTP payload.
 
@@ -345,17 +368,17 @@ Use trajectory for cheap structural tests (`tool:retrieve_papers` present, retri
 
 Confidence-aware fields (`response_status`, `retrieval_confidence`, `abstention_reason`) support fixtures that assert **refusal behaviour**, not just answer prose — see [§11.3 in ARTICLE.md](ARTICLE.md).
 
-### 9.2 Quality ladder
+### 10.2 Quality ladder
 
 [§14 of ARTICLE.md](ARTICLE.md#14-the-quality-ladder-every-lever-and-what-it-costs) lists index-time and query-time levers in pipeline order. **`rag_evals` is the feedback loop for that table’s retrieval rows** — especially `context_recall` before enabling expensive index-time contextual retrieval.
 
-### 9.3 What is still missing
+### 10.3 What is still missing
 
 Scores are computed and stored, but **nothing fails CI or blocks deploy** on regression yet. The architecture article calls that out explicitly. Wiring `make rag-eval` (or a subset) into CI with thresholds on `metrics_summary` is the natural next step.
 
 ---
 
-## 10. Extending the framework
+## 11. Extending the framework
 
 ### Add a trace metric
 
@@ -385,7 +408,7 @@ uv run pytest tests/evals/ -q
 
 ---
 
-## 11. Configuration quick reference
+## 12. Configuration quick reference
 
 | Concern | Primary env vars / files |
 |--------|---------------------------|
@@ -393,12 +416,13 @@ uv run pytest tests/evals/ -q
 | Langfuse | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` |
 | RAG API eval | `RAG_API_BASE_URL`, `RAG_EVAL_DATASET_PATH`, `RAG_EVAL_TOP_K`, `RAG_EVAL_USE_HYBRID`, `RAG_EVAL_RERANK_ENABLED` |
 | Experiments | `experiment-config.json`, `EXPERIMENT_INGESTION_NAME`, `EXPERIMENT_PDFS_DIR`, … |
+| Text-to-SQL eval | `TEXT_TO_SQL_EVAL_DATASET_PATH`, `TEXT_TO_SQL__DATABASE_URL`, `OPENAI_API_KEY` |
 
 Full tables: [`evals/README.md`](../evals/README.md) and `.env.example`.
 
 ---
 
-## 12. Mental model
+## 13. Mental model
 
 - **Traces** tell you *what happened*; **evals** tell you *whether it was good*.
 - **Two loops** because imagined queries (`queries.json`) and real queries (Langfuse) diverge — you need both.

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "longest_film_title",
+    "user_input": "What is the title of the longest film? Return title and length.",
+    "reference_sql": "SELECT title, length FROM film ORDER BY length DESC, film_id ASC LIMIT 1"
+  },
+  {
+    "id": "actor_most_films",
+    "user_input": "Which actor appears in the most films? Return first name, last name, and film count.",
+    "reference_sql": "SELECT a.first_name, a.last_name, COUNT(*) AS film_count FROM actor a JOIN film_actor fa ON fa.actor_id = a.actor_id GROUP BY a.actor_id, a.first_name, a.last_name ORDER BY film_count DESC, a.actor_id ASC LIMIT 1"
+  },
+  {
+    "id": "comedy_film_count",
+    "user_input": "How many films are in the Comedy category?",
+    "reference_sql": "SELECT COUNT(*) FROM film f JOIN film_category fc ON f.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id WHERE c.name = 'Comedy'"
+  },
+  {
+    "id": "active_rentals_count",
+    "user_input": "How many rentals have not been returned yet (still active)?",
+    "reference_sql": "SELECT COUNT(*) FROM rental WHERE return_date IS NULL"
+  },
+  {
+    "id": "customer_top_payments",
+    "user_input": "Which customer has paid the most in total? Return customer_id and total amount.",
+    "reference_sql": "SELECT customer_id, SUM(amount) AS total_paid FROM payment GROUP BY customer_id ORDER BY total_paid DESC, customer_id ASC LIMIT 1"
+  },
+  {
+    "id": "films_never_rented",
+    "user_input": "How many films have never been rented?",
+    "reference_sql": "SELECT COUNT(*) FROM film f WHERE NOT EXISTS ( SELECT 1 FROM inventory i JOIN rental r ON r.inventory_id = i.inventory_id WHERE i.film_id = f.film_id )"
+  },
+  {
+    "id": "rentals_2005",
+    "user_input": "How many rentals took place in calendar year 2022?",
+    "reference_sql": "SELECT COUNT(*) FROM rental WHERE rental_date >= '2022-01-01' AND rental_date < '2023-01-01'"
+  },
+  {
+    "id": "store1_total_sales",
+    "user_input": "What is the total payment revenue for store 1?",
+    "reference_sql": "SELECT COALESCE(SUM(p.amount), 0) AS total_sales FROM payment p JOIN rental r ON p.rental_id = r.rental_id JOIN inventory i ON r.inventory_id = i.inventory_id WHERE i.store_id = 1"
+  },
+  {
+    "id": "customers_high_rental_count",
+    "user_input": "How many customers have rented more than 5 times?",
+    "reference_sql": "SELECT COUNT(*) FROM ( SELECT customer_id FROM rental GROUP BY customer_id HAVING COUNT(*) > 5 ) sub"
+  },
+  {
+    "id": "pg_rated_longest_title",
+    "user_input": "Among PG-rated films, what is the title of the longest one?",
+    "reference_sql": "SELECT title FROM film WHERE rating = 'PG' ORDER BY length DESC, film_id ASC LIMIT 1"
+  },
+  {
+    "id": "city_most_customers",
+    "user_input": "Which city has the most customers? Return city name and customer count.",
+    "reference_sql": "SELECT ci.city, COUNT(*) AS customer_count FROM customer cu JOIN address a ON cu.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id GROUP BY ci.city_id, ci.city ORDER BY customer_count DESC, ci.city ASC LIMIT 1"
+  },
+  {
+    "id": "staff_rental_count_store2",
+    "user_input": "How many rentals were processed by staff members working at store 2?",
+    "reference_sql": "SELECT COUNT(*) FROM rental r JOIN staff s ON r.staff_id = s.staff_id WHERE s.store_id = 2"
+  },
+  {
+    "id": "average_film_length",
+    "user_input": "What is the average length of all films in minutes?",
+    "reference_sql": "SELECT ROUND(AVG(length)::numeric, 2) FROM film"
+  },
+  {
+    "id": "films_above_avg_rental_rate",
+    "user_input": "How many films have a rental rate above the average rental rate?",
+    "reference_sql": "SELECT COUNT(*) FROM film WHERE rental_rate > (SELECT AVG(rental_rate) FROM film)"
+  },
+  {
+    "id": "top_category_by_film_count",
+    "user_input": "Which category has the most films? Return category name and count.",
+    "reference_sql": "SELECT c.name, COUNT(*) AS film_count FROM category c JOIN film_category fc ON c.category_id = fc.category_id GROUP BY c.category_id, c.name ORDER BY film_count DESC, c.name ASC LIMIT 1"
+  },
+  {
+    "id": "payment_total_august_2005",
+    "user_input": "What was the total amount of payments made in August 2005?",
+    "reference_sql": "SELECT COALESCE(SUM(amount), 0) FROM payment WHERE payment_date >= '2005-08-01' AND payment_date < '2005-09-01'"
+  }
+]

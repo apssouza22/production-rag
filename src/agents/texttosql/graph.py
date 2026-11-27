@@ -5,11 +5,13 @@ from typing import Literal
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
-from src.platform.graph import END, START, GraphBuilder, MessagesState
+from src.platform.graph import END, START, GraphBuilder
 from src.platform.middleware import MiddlewareManager
 
 from .config import TextToSQLConfig
+from .models import SqlCheckOutput, SqlGenerationOutput
 from .prompts import CHECK_QUERY_SYSTEM_PROMPT, GENERATE_QUERY_SYSTEM_PROMPT
+from .state import TextToSQLState
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +36,28 @@ class TextToSQLGraph:
         self._generate_query_system_prompt = GENERATE_QUERY_SYSTEM_PROMPT.format(
             dialect=config.dialect,
             top_k=config.top_k,
+            ontology=config.ontology_prompt,
         )
         self._check_query_system_prompt = CHECK_QUERY_SYSTEM_PROMPT.format(
             dialect=config.dialect,
         )
+        self._generate_query_llm = model.with_structured_output(SqlGenerationOutput)
+        self._check_query_llm = model.with_structured_output(SqlCheckOutput)
 
-    async def list_tables(self, state: MessagesState) -> dict:
+    @staticmethod
+    def _build_sql_tool_message(thought: str, query: str, *, message_id: str | None = None) -> AIMessage:
+        tool_call = {
+            "name": "sql_db_query",
+            "args": {"query": query},
+            "id": f"sql_query_{uuid.uuid4().hex[:8]}",
+            "type": "tool_call",
+        }
+        message = AIMessage(content=thought, tool_calls=[tool_call])
+        if message_id is not None:
+            message.id = message_id
+        return message
+
+    async def list_tables(self, state: TextToSQLState) -> dict:
         tool_call = {
             "name": "sql_db_list_tables",
             "args": {},
@@ -52,40 +70,61 @@ class TextToSQLGraph:
 
         return {"messages": [tool_call_message, tool_message, response]}
 
-    async def call_get_schema(self, state: MessagesState) -> dict:
+    async def call_get_schema(self, state: TextToSQLState) -> dict:
         llm_with_tools = self.model.bind_tools([self._get_schema_tool], tool_choice="any")
         response = await llm_with_tools.ainvoke(state["messages"])
         return {"messages": [response]}
 
-    async def generate_query(self, state: MessagesState) -> dict:
+    async def generate_query(self, state: TextToSQLState) -> dict:
         system_message = {
             "role": "system",
             "content": self._generate_query_system_prompt,
         }
-        llm_with_tools = self.model.bind_tools([self._run_query_tool])
-        response = await llm_with_tools.ainvoke([system_message] + state["messages"])
+        result: SqlGenerationOutput = await self._generate_query_llm.ainvoke([system_message] + state["messages"])
+        if result.query:
+            response = self._build_sql_tool_message(result.thought, result.query)
+            logger.info("Thought: %s, Query: %s", result.thought, result.query)
+        else:
+            response = AIMessage(content=result.final_answer or result.thought)
+            logger.info("Final answer: %s", result.final_answer)
         return {"messages": [response]}
 
-    async def check_query(self, state: MessagesState) -> dict:
+    async def check_query(self, state: TextToSQLState) -> dict:
         system_message = {
             "role": "system",
             "content": self._check_query_system_prompt,
         }
-        tool_call = state["messages"][-1].tool_calls[0]
-        user_message = {"role": "user", "content": tool_call["args"]["query"]}
-        llm_with_tools = self.model.bind_tools([self._run_query_tool], tool_choice="any")
-        response = await llm_with_tools.ainvoke([system_message, user_message])
-        response.id = state["messages"][-1].id
-        return {"messages": [response]}
+        prior_message = state["messages"][-1]
+        tool_call = prior_message.tool_calls[0]
+        thought = prior_message.content if isinstance(prior_message.content, str) else ""
+        user_message = {
+            "role": "user",
+            "content": f"Thought: {thought}\nQuery: {tool_call['args']['query']}",
+        }
+        result: SqlCheckOutput = await self._check_query_llm.ainvoke([system_message, user_message])
+        response = self._build_sql_tool_message(
+            result.thought,
+            result.query,
+            message_id=state["messages"][-1].id,
+        )
+        query_loop_count = state.get("query_loop_count", 0) + 1
+        return {"messages": [response], "query_loop_count": query_loop_count}
 
-    def should_continue(self, state: MessagesState) -> Literal["check_query", END]:
+    def should_continue(self, state: TextToSQLState) -> Literal["check_query", END]:
         last_message = state["messages"][-1]
         if not last_message.tool_calls:
+            return END
+        query_loop_count = state.get("query_loop_count", 0)
+        if query_loop_count >= self.config.max_query_loops:
+            logger.warning(
+                "Max query loops (%s) reached; ending SQL retry cycle",
+                self.config.max_query_loops,
+            )
             return END
         return "check_query"
 
     def compile(self, middleware_manager: MiddlewareManager | None = None):
-        builder = GraphBuilder(MessagesState)
+        builder = GraphBuilder(TextToSQLState)
         if middleware_manager is not None:
             builder.set_middleware_manager(middleware_manager)
 

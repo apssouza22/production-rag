@@ -1,0 +1,634 @@
+# Pagila DVD rental schema ontology for text-to-SQL / semantic retrieval.
+# Database: postgresql://rag_user:***@localhost:5412/pagila
+# Scope: 15 base tables; metrics are SQL-only (no stored functions or views).
+
+nodes:
+- id: actor
+  description: Cast member who performs in films.
+  example: '{"actor_id": 1, "first_name": "PENELOPE", "last_name": "GUINESS", "last_update": "2022-02-15T09:34:33+00:00"}'
+  query: SELECT actor_id, first_name, last_name FROM actor ORDER BY actor_id LIMIT 5
+- id: address
+  description: Postal address for customers, staff, and stores.
+  example: '{"address_id": 1, "address": "47 MySakila Drive", "address2": null, "district": "Alberta", "city_id": 300, "postal_code":
+    "", "phone": "", "last_update": "2022-02-15T09:45:30+00:00"}'
+  query: SELECT address_id, address, city_id, phone FROM address ORDER BY address_id LIMIT 5
+- id: category
+  description: Film genre or classification (e.g. Action, Comedy).
+  example: '{"category_id": 1, "name": "Action", "last_update": "2022-02-15T09:46:27+00:00"}'
+  query: SELECT category_id, name FROM category ORDER BY category_id LIMIT 5
+- id: city
+  description: City within a country; linked to addresses.
+  example: '{"city_id": 1, "city": "A Corua (La Corua)", "country_id": 87, "last_update": "2022-02-15T09:45:25+00:00"}'
+  query: SELECT city_id, city, country_id FROM city ORDER BY city_id LIMIT 5
+- id: country
+  description: Country for geographic address hierarchy.
+  example: '{"country_id": 1, "country": "Afghanistan", "last_update": "2022-02-15T09:44:00+00:00"}'
+  query: SELECT country_id, country FROM country ORDER BY country_id LIMIT 5
+- id: customer
+  description: Rental store customer account and contact profile.
+  example: '{"customer_id": 1, "store_id": 1, "first_name": "MARY", "last_name": "SMITH", "email": "MARY.SMITH@sakilacustomer.org",
+    "address_id": 5, "activebool": true, "create_date": "2022-02-14", "last_update": "2022-02-15T09:57:20+00:00", "active": 1}'
+  query: SELECT customer_id, first_name, last_name, email, store_id FROM customer ORDER BY customer_id LIMIT 5
+- id: film
+  description: DVD catalog title with metadata, pricing, and rating.
+  example: '{"film_id": 1, "title": "ACADEMY DINOSAUR", "description": "A Epic Drama of a Feminist And a Mad Scientist who must Battle
+    a Teacher in The Canadian Rockies", "release_year": 2006, "language_id": 1, "original_language_id": null, "rental_duration": 6,
+    "rental_rate": 0.99, "length": 86, "replacement_cost": 20.99, "rating": "PG", "last_update": "2022-09-10T16:46:03.905795+00:00",
+    "special_features": ["Deleted Scenes", "Behind the Scenes"], "fulltext": "''academi'':1 ''battl'':15 ''canadian'':20 ''dinosaur'':2
+    ''drama'':5 ''epic'':4 ''feminist'':8 ''mad'':11 ''must'':14 ''rocki'':21 ''scientist'':12 ''teacher'':17"}'
+  query: SELECT film_id, title, release_year, rental_rate, rating FROM film ORDER BY film_id LIMIT 5
+- id: film_actor
+  description: Many-to-many link between films and actors.
+  example: '{"actor_id": 1, "film_id": 1, "last_update": "2022-02-15T10:05:03+00:00"}'
+  query: SELECT actor_id, film_id FROM film_actor ORDER BY actor_id LIMIT 5
+- id: film_category
+  description: Many-to-many link between films and categories.
+  example: '{"film_id": 1, "category_id": 6, "last_update": "2022-02-15T10:07:09+00:00"}'
+  query: SELECT film_id, category_id FROM film_category ORDER BY film_id LIMIT 5
+- id: inventory
+  description: Physical DVD copy of a film at a specific store.
+  example: '{"inventory_id": 1, "film_id": 1, "store_id": 1, "last_update": "2022-02-15T10:09:17+00:00"}'
+  query: SELECT inventory_id, film_id, store_id FROM inventory ORDER BY inventory_id LIMIT 5
+- id: language
+  description: Spoken language for a film (original or dubbed).
+  example: '{"language_id": 1, "name": "English             ", "last_update": "2022-02-15T10:02:19+00:00"}'
+  query: SELECT language_id, name FROM language ORDER BY language_id LIMIT 5
+- id: payment
+  description: Payment transaction for a rental (partitioned by payment_date).
+  example: '{"payment_id": 16051, "customer_id": 269, "staff_id": 1, "rental_id": 98, "amount": 0.99, "payment_date": "2022-01-29T01:58:52.222594+00:00"}'
+  query: SELECT payment_id, customer_id, amount, payment_date FROM payment ORDER BY payment_id LIMIT 5
+- id: rental
+  description: Rental checkout and return of an inventory item.
+  example: '{"rental_id": 2, "rental_date": "2022-05-24T21:54:33+00:00", "inventory_id": 1525, "customer_id": 459, "return_date": "2022-05-28T18:40:33+00:00",
+    "staff_id": 1, "last_update": "2022-02-16T02:30:53+00:00"}'
+  query: SELECT rental_id, inventory_id, customer_id, rental_date FROM rental ORDER BY rental_id LIMIT 5
+- id: staff
+  description: Store employee who processes rentals and payments.
+  example: '{"staff_id": 1, "first_name": "Mike", "last_name": "Hillyer", "address_id": 3, "email": "Mike.Hillyer@sakilastaff.com",
+    "store_id": 1, "active": true, "username": "Mike", "password": "8cb2237d0679ca88db6464eac60da96345513964", "last_update": "2022-05-16T15:13:11.79328+00:00",
+    "picture": "\\x89504e470d0a5a0a"}'
+  query: SELECT staff_id, first_name, last_name, store_id FROM staff ORDER BY staff_id LIMIT 5
+- id: store
+  description: Retail rental location with address.
+  example: '{"store_id": 1, "manager_staff_id": 1, "address_id": 1, "last_update": "2022-02-15T09:57:12+00:00"}'
+  query: SELECT store_id, address_id FROM store ORDER BY store_id LIMIT 5
+edges:
+- relation: address_located_in_city
+  source_id: address
+  target_id: city
+  description: Each address is located in one city.
+  query: SELECT src.city_id, tgt.city_id FROM address src JOIN city tgt ON src.city_id = tgt.city_id LIMIT 5
+- relation: city_belongs_country
+  source_id: city
+  target_id: country
+  description: Each city belongs to one country.
+  query: SELECT src.country_id, tgt.country_id FROM city src JOIN country tgt ON src.country_id = tgt.country_id LIMIT 5
+- relation: customer_has_address
+  source_id: customer
+  target_id: address
+  description: Customer billing or contact address.
+  query: SELECT src.address_id, tgt.address_id FROM customer src JOIN address tgt ON src.address_id = tgt.address_id LIMIT 5
+- relation: customer_belongs_store
+  source_id: customer
+  target_id: store
+  description: Home store for the customer account.
+  query: SELECT src.store_id, tgt.store_id FROM customer src JOIN store tgt ON src.store_id = tgt.store_id LIMIT 5
+- relation: film_spoken_in_language
+  source_id: film
+  target_id: language
+  description: Film primary language.
+  query: SELECT src.language_id, tgt.language_id FROM film src JOIN language tgt ON src.language_id = tgt.language_id LIMIT 5
+- relation: film_has_original_language
+  source_id: film
+  target_id: language
+  description: Optional original spoken language before dubbing (nullable; may return no rows in sample data).
+  query: SELECT src.original_language_id, tgt.language_id FROM film src JOIN language tgt ON src.original_language_id = tgt.language_id
+    WHERE src.original_language_id IS NOT NULL LIMIT 5
+- relation: cast_includes_actor
+  source_id: film_actor
+  target_id: actor
+  description: Actor appearing in the linked film.
+  query: SELECT src.actor_id, tgt.actor_id FROM film_actor src JOIN actor tgt ON src.actor_id = tgt.actor_id LIMIT 5
+- relation: actor_appears_film
+  source_id: film_actor
+  target_id: film
+  description: Film featuring the linked actor.
+  query: SELECT src.film_id, tgt.film_id FROM film_actor src JOIN film tgt ON src.film_id = tgt.film_id LIMIT 5
+- relation: film_in_category
+  source_id: film_category
+  target_id: category
+  description: Category assigned to the film.
+  query: SELECT src.category_id, tgt.category_id FROM film_category src JOIN category tgt ON src.category_id = tgt.category_id LIMIT
+    5
+- relation: category_includes_film
+  source_id: film_category
+  target_id: film
+  description: Film tagged with the category.
+  query: SELECT src.film_id, tgt.film_id FROM film_category src JOIN film tgt ON src.film_id = tgt.film_id LIMIT 5
+- relation: inventory_copy_of_film
+  source_id: inventory
+  target_id: film
+  description: Inventory item is a copy of this film.
+  query: SELECT src.film_id, tgt.film_id FROM inventory src JOIN film tgt ON src.film_id = tgt.film_id LIMIT 5
+- relation: inventory_held_at_store
+  source_id: inventory
+  target_id: store
+  description: Store that holds this inventory copy.
+  query: SELECT src.store_id, tgt.store_id FROM inventory src JOIN store tgt ON src.store_id = tgt.store_id LIMIT 5
+- relation: payment_made_by_customer
+  source_id: payment
+  target_id: customer
+  description: Customer who made the payment.
+  query: SELECT src.customer_id, tgt.customer_id FROM payment src JOIN customer tgt ON src.customer_id = tgt.customer_id LIMIT 5
+- relation: payment_for_rental
+  source_id: payment
+  target_id: rental
+  description: Rental transaction being paid.
+  query: SELECT src.rental_id, tgt.rental_id FROM payment src JOIN rental tgt ON src.rental_id = tgt.rental_id LIMIT 5
+- relation: payment_processed_by_staff
+  source_id: payment
+  target_id: staff
+  description: Staff who processed the payment.
+  query: SELECT src.staff_id, tgt.staff_id FROM payment src JOIN staff tgt ON src.staff_id = tgt.staff_id LIMIT 5
+- relation: rental_by_customer
+  source_id: rental
+  target_id: customer
+  description: Customer who rented the item.
+  query: SELECT src.customer_id, tgt.customer_id FROM rental src JOIN customer tgt ON src.customer_id = tgt.customer_id LIMIT 5
+- relation: rental_of_inventory
+  source_id: rental
+  target_id: inventory
+  description: Physical copy that was rented.
+  query: SELECT src.inventory_id, tgt.inventory_id FROM rental src JOIN inventory tgt ON src.inventory_id = tgt.inventory_id LIMIT 5
+- relation: rental_processed_by_staff
+  source_id: rental
+  target_id: staff
+  description: Staff member who processed the rental.
+  query: SELECT src.staff_id, tgt.staff_id FROM rental src JOIN staff tgt ON src.staff_id = tgt.staff_id LIMIT 5
+- relation: staff_has_address
+  source_id: staff
+  target_id: address
+  description: Staff member address.
+  query: SELECT src.address_id, tgt.address_id FROM staff src JOIN address tgt ON src.address_id = tgt.address_id LIMIT 5
+- relation: staff_works_for_store
+  source_id: staff
+  target_id: store
+  description: Store where the staff member works.
+  query: SELECT src.store_id, tgt.store_id FROM staff src JOIN store tgt ON src.store_id = tgt.store_id LIMIT 5
+- relation: store_located_at_address
+  source_id: store
+  target_id: address
+  description: Physical address of the store.
+  query: SELECT src.address_id, tgt.address_id FROM store src JOIN address tgt ON src.address_id = tgt.address_id LIMIT 5
+metrics:
+- id: customer_balance
+  node_id: customer
+  kind: sql
+  description: 'Outstanding amount owed as of now: sum of rental rates plus overdue day charges from returned rentals minus total payments
+    on or before the effective date.'
+  query: WITH as_of AS (   SELECT NOW()::timestamptz AS effective_date ), rental_fees AS (   SELECT r.customer_id, COALESCE(SUM(f.rental_rate),
+    0) AS amount   FROM rental r   JOIN inventory i ON i.inventory_id = r.inventory_id   JOIN film f ON f.film_id = i.film_id   CROSS
+    JOIN as_of a   WHERE r.rental_date <= a.effective_date   GROUP BY r.customer_id ), late_fees AS (   SELECT r.customer_id,     COALESCE(SUM(       CASE         WHEN
+    r.return_date IS NOT NULL           AND (r.return_date - r.rental_date) > (f.rental_duration * INTERVAL '1 day')         THEN EXTRACT(EPOCH
+    FROM ((r.return_date - r.rental_date) - (f.rental_duration * INTERVAL '1 day'))) / 86400         ELSE 0       END     ), 0) AS amount   FROM
+    rental r   JOIN inventory i ON i.inventory_id = r.inventory_id   JOIN film f ON f.film_id = i.film_id   CROSS JOIN as_of a   WHERE
+    r.rental_date <= a.effective_date   GROUP BY r.customer_id ), payments AS (   SELECT p.customer_id, COALESCE(SUM(p.amount), 0) AS
+    amount   FROM payment p   CROSS JOIN as_of a   WHERE p.payment_date <= a.effective_date   GROUP BY p.customer_id ) SELECT c.customer_id,   COALESCE(rf.amount,
+    0) + COALESCE(lf.amount, 0) - COALESCE(pay.amount, 0) AS customer_balance FROM customer c LEFT JOIN rental_fees rf ON rf.customer_id
+    = c.customer_id LEFT JOIN late_fees lf ON lf.customer_id = c.customer_id LEFT JOIN payments pay ON pay.customer_id = c.customer_id
+    ORDER BY c.customer_id LIMIT 5
+  embeddable: false
+- id: customer_total_payments
+  node_id: customer
+  kind: sql
+  description: Total payment amount recorded per customer across all rentals.
+  query: SELECT customer_id, SUM(amount) AS customer_total_payments FROM payment GROUP BY customer_id ORDER BY customer_total_payments
+    DESC LIMIT 5
+  embeddable: false
+- id: customer_active_rental_count
+  node_id: customer
+  kind: sql
+  description: Number of rentals not yet returned (return_date IS NULL) per customer.
+  query: SELECT customer_id, COUNT(*) AS customer_active_rental_count FROM rental WHERE return_date IS NULL GROUP BY customer_id ORDER
+    BY customer_active_rental_count DESC LIMIT 5
+  embeddable: false
+- id: customer_rewards_report
+  node_id: customer
+  kind: sql
+  description: Customers with more than 2 payments and over $20 total in the month that started three months before the current date
+    (Pagila rewards_report rules).
+  query: WITH month_window AS ( SELECT date_trunc('month', CURRENT_DATE - INTERVAL '3 months')::date AS month_start, (date_trunc('month',
+    CURRENT_DATE - INTERVAL '3 months') + INTERVAL '1 month' - INTERVAL '1 day')::date AS month_end ), qualifying AS ( SELECT p.customer_id
+    FROM payment p CROSS JOIN month_window w WHERE p.payment_date::date BETWEEN w.month_start AND w.month_end GROUP BY p.customer_id
+    HAVING SUM(p.amount) > 20.00 AND COUNT(*) > 2 ) SELECT c.customer_id, c.first_name, c.last_name FROM customer c JOIN qualifying
+    q ON q.customer_id = c.customer_id LIMIT 5
+  embeddable: false
+- id: inventory_in_stock
+  node_id: inventory
+  kind: sql
+  description: Whether a physical copy is available (no active rental with NULL return_date).
+  query: SELECT i.inventory_id, NOT EXISTS ( SELECT 1 FROM rental r WHERE r.inventory_id = i.inventory_id AND r.return_date IS NULL
+    ) AS inventory_in_stock FROM inventory i ORDER BY i.inventory_id LIMIT 5
+  embeddable: false
+- id: inventory_held_by_customer
+  node_id: inventory
+  kind: sql
+  description: Customer holding the item on the latest active (unreturned) rental, if any.
+  query: SELECT i.inventory_id, ( SELECT r.customer_id FROM rental r WHERE r.inventory_id = i.inventory_id AND r.return_date IS NULL
+    ORDER BY r.rental_date DESC LIMIT 1 ) AS inventory_held_by_customer FROM inventory i ORDER BY i.inventory_id LIMIT 5
+  embeddable: false
+- id: film_in_stock
+  node_id: film
+  kind: sql
+  description: Available inventory rows for each film at each store (not currently rented out).
+  query: SELECT i.film_id, i.store_id, i.inventory_id FROM inventory i WHERE NOT EXISTS ( SELECT 1 FROM rental r WHERE r.inventory_id
+    = i.inventory_id AND r.return_date IS NULL ) ORDER BY i.film_id, i.store_id, i.inventory_id LIMIT 5
+  embeddable: false
+- id: film_not_in_stock
+  node_id: film
+  kind: sql
+  description: Inventory rows for each film at each store that are currently rented out.
+  query: SELECT i.film_id, i.store_id, i.inventory_id FROM inventory i WHERE EXISTS ( SELECT 1 FROM rental r WHERE r.inventory_id =
+    i.inventory_id AND r.return_date IS NULL ) ORDER BY i.film_id, i.store_id, i.inventory_id LIMIT 5
+  embeddable: false
+- id: film_rental_count
+  node_id: film
+  kind: sql
+  description: Total number of rental transactions per film (via inventory).
+  query: SELECT f.film_id, f.title, COUNT(r.rental_id) AS film_rental_count FROM film f JOIN inventory i ON i.film_id = f.film_id JOIN
+    rental r ON r.inventory_id = i.inventory_id GROUP BY f.film_id, f.title ORDER BY film_rental_count DESC LIMIT 5
+  embeddable: false
+- id: category_total_sales
+  node_id: category
+  kind: sql
+  description: Sum of payment amounts grouped by film category.
+  query: SELECT c.name AS category, SUM(p.amount) AS category_total_sales FROM payment p JOIN rental r ON p.rental_id = r.rental_id
+    JOIN inventory i ON r.inventory_id = i.inventory_id JOIN film f ON i.film_id = f.film_id JOIN film_category fc ON f.film_id = fc.film_id
+    JOIN category c ON fc.category_id = c.category_id GROUP BY c.name ORDER BY category_total_sales DESC LIMIT 5
+  embeddable: false
+- id: store_total_sales
+  node_id: store
+  kind: sql
+  description: Sum of payment amounts by store location and manager.
+  query: SELECT (ci.city || ',' || cy.country) AS store, (m.first_name || ' ' || m.last_name) AS manager, SUM(p.amount) AS store_total_sales
+    FROM payment p JOIN rental r ON p.rental_id = r.rental_id JOIN inventory i ON r.inventory_id = i.inventory_id JOIN store s ON i.store_id
+    = s.store_id JOIN address a ON s.address_id = a.address_id JOIN city ci ON a.city_id = ci.city_id JOIN country cy ON ci.country_id
+    = cy.country_id JOIN staff m ON s.manager_staff_id = m.staff_id GROUP BY cy.country, ci.city, s.store_id, m.first_name, m.last_name
+    ORDER BY store_total_sales DESC LIMIT 5
+  embeddable: false
+- id: store_rental_count
+  node_id: store
+  kind: sql
+  description: Total rental transactions processed at each store (via inventory).
+  query: SELECT s.store_id, COUNT(r.rental_id) AS store_rental_count FROM store s JOIN inventory i ON i.store_id = s.store_id JOIN rental
+    r ON r.inventory_id = i.inventory_id GROUP BY s.store_id ORDER BY store_rental_count DESC LIMIT 5
+  embeddable: false
+attributes:
+- node_id: actor
+  attribute: actor_id
+  description: Foreign key to actor.
+  embeddable: false
+- node_id: actor
+  attribute: first_name
+  description: First name; Text value.
+  embeddable: true
+- node_id: actor
+  attribute: last_name
+  description: Last name; Text value.
+  embeddable: true
+- node_id: actor
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: address
+  attribute: address_id
+  description: Foreign key to address.
+  embeddable: false
+- node_id: address
+  attribute: address
+  description: Address; Text value.
+  embeddable: true
+- node_id: address
+  attribute: address2
+  description: Address2; Text value.
+  embeddable: true
+- node_id: address
+  attribute: district
+  description: District; Text value.
+  embeddable: true
+- node_id: address
+  attribute: city_id
+  description: Foreign key to city.
+  embeddable: false
+- node_id: address
+  attribute: postal_code
+  description: Postal code; Text value.
+  embeddable: true
+- node_id: address
+  attribute: phone
+  description: Phone; Text value.
+  embeddable: true
+- node_id: address
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: category
+  attribute: category_id
+  description: Foreign key to category.
+  embeddable: false
+- node_id: category
+  attribute: name
+  description: Name; Text value.
+  embeddable: true
+- node_id: category
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: city
+  attribute: city_id
+  description: Foreign key to city.
+  embeddable: false
+- node_id: city
+  attribute: city
+  description: City; Text value.
+  embeddable: true
+- node_id: city
+  attribute: country_id
+  description: Foreign key to country.
+  embeddable: false
+- node_id: city
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: country
+  attribute: country_id
+  description: Foreign key to country.
+  embeddable: false
+- node_id: country
+  attribute: country
+  description: Country; Text value.
+  embeddable: true
+- node_id: country
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: customer
+  attribute: customer_id
+  description: Foreign key to customer.
+  embeddable: false
+- node_id: customer
+  attribute: store_id
+  description: Foreign key to store.
+  embeddable: false
+- node_id: customer
+  attribute: first_name
+  description: First name; Text value.
+  embeddable: true
+- node_id: customer
+  attribute: last_name
+  description: Last name; Text value.
+  embeddable: true
+- node_id: customer
+  attribute: email
+  description: Email; Text value.
+  embeddable: true
+- node_id: customer
+  attribute: address_id
+  description: Foreign key to address.
+  embeddable: false
+- node_id: customer
+  attribute: activebool
+  description: Activebool; Boolean flag.
+  embeddable: false
+- node_id: customer
+  attribute: create_date
+  description: Create date; Calendar date.
+  embeddable: false
+- node_id: customer
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: customer
+  attribute: active
+  description: Active; Integer value.
+  embeddable: false
+- node_id: film
+  attribute: film_id
+  description: Foreign key to film.
+  embeddable: false
+- node_id: film
+  attribute: title
+  description: Title; Text value.
+  embeddable: true
+- node_id: film
+  attribute: description
+  description: Description; Text value.
+  embeddable: true
+- node_id: film
+  attribute: release_year
+  description: Release year; Integer value.
+  embeddable: false
+- node_id: film
+  attribute: language_id
+  description: Foreign key to language.
+  embeddable: false
+- node_id: film
+  attribute: original_language_id
+  description: Foreign key to original language.
+  embeddable: false
+- node_id: film
+  attribute: rental_duration
+  description: Rental duration; Small integer.
+  embeddable: false
+- node_id: film
+  attribute: rental_rate
+  description: Rental rate; Decimal amount.
+  embeddable: false
+- node_id: film
+  attribute: length
+  description: Length; Small integer.
+  embeddable: false
+- node_id: film
+  attribute: replacement_cost
+  description: Replacement cost; Decimal amount.
+  embeddable: false
+- node_id: film
+  attribute: rating
+  description: MPAA content rating (G, PG, PG-13, R, NC-17).
+  embeddable: true
+- node_id: film
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: film
+  attribute: special_features
+  description: Special features; Array value.
+  embeddable: true
+- node_id: film
+  attribute: fulltext
+  description: Fulltext; Full-text search vector.
+  embeddable: true
+- node_id: film_actor
+  attribute: actor_id
+  description: Foreign key to actor.
+  embeddable: false
+- node_id: film_actor
+  attribute: film_id
+  description: Foreign key to film.
+  embeddable: false
+- node_id: film_actor
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: film_category
+  attribute: film_id
+  description: Foreign key to film.
+  embeddable: false
+- node_id: film_category
+  attribute: category_id
+  description: Foreign key to category.
+  embeddable: false
+- node_id: film_category
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: inventory
+  attribute: inventory_id
+  description: Foreign key to inventory.
+  embeddable: false
+- node_id: inventory
+  attribute: film_id
+  description: Foreign key to film.
+  embeddable: false
+- node_id: inventory
+  attribute: store_id
+  description: Foreign key to store.
+  embeddable: false
+- node_id: inventory
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: language
+  attribute: language_id
+  description: Foreign key to language.
+  embeddable: false
+- node_id: language
+  attribute: name
+  description: Name; Fixed-length text.
+  embeddable: true
+- node_id: language
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: payment
+  attribute: payment_id
+  description: Foreign key to payment.
+  embeddable: false
+- node_id: payment
+  attribute: customer_id
+  description: Foreign key to customer.
+  embeddable: false
+- node_id: payment
+  attribute: staff_id
+  description: Foreign key to staff.
+  embeddable: false
+- node_id: payment
+  attribute: rental_id
+  description: Foreign key to rental.
+  embeddable: false
+- node_id: payment
+  attribute: amount
+  description: Amount; Decimal amount.
+  embeddable: false
+- node_id: payment
+  attribute: payment_date
+  description: Payment date; Timestamp with time zone.
+  embeddable: false
+- node_id: rental
+  attribute: rental_id
+  description: Foreign key to rental.
+  embeddable: false
+- node_id: rental
+  attribute: rental_date
+  description: Rental date; Timestamp with time zone.
+  embeddable: false
+- node_id: rental
+  attribute: inventory_id
+  description: Foreign key to inventory.
+  embeddable: false
+- node_id: rental
+  attribute: customer_id
+  description: Foreign key to customer.
+  embeddable: false
+- node_id: rental
+  attribute: return_date
+  description: Return date; Timestamp with time zone.
+  embeddable: false
+- node_id: rental
+  attribute: staff_id
+  description: Foreign key to staff.
+  embeddable: false
+- node_id: rental
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: staff
+  attribute: staff_id
+  description: Foreign key to staff.
+  embeddable: false
+- node_id: staff
+  attribute: first_name
+  description: First name; Text value.
+  embeddable: true
+- node_id: staff
+  attribute: last_name
+  description: Last name; Text value.
+  embeddable: true
+- node_id: staff
+  attribute: address_id
+  description: Foreign key to address.
+  embeddable: false
+- node_id: staff
+  attribute: email
+  description: Email; Text value.
+  embeddable: true
+- node_id: staff
+  attribute: store_id
+  description: Foreign key to store.
+  embeddable: false
+- node_id: staff
+  attribute: active
+  description: Active; Boolean flag.
+  embeddable: false
+- node_id: staff
+  attribute: username
+  description: Username; Text value.
+  embeddable: true
+- node_id: staff
+  attribute: password
+  description: Password; Text value.
+  embeddable: true
+- node_id: staff
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false
+- node_id: staff
+  attribute: picture
+  description: Picture; bytea column.
+  embeddable: false
+- node_id: store
+  attribute: store_id
+  description: Foreign key to store.
+  embeddable: false
+- node_id: store
+  attribute: manager_staff_id
+  description: Foreign key to manager staff.
+  embeddable: false
+- node_id: store
+  attribute: address_id
+  description: Foreign key to address.
+  embeddable: false
+- node_id: store
+  attribute: last_update
+  description: Last update; Timestamp with time zone.
+  embeddable: false

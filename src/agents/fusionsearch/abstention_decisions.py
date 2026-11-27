@@ -3,7 +3,7 @@
 from langchain_core.decisions import Choice
 
 from src.config import ReasoningEffort, Settings
-from src.platform.decisions import DecisionsClient, DecisionEvaluator
+from src.platform.decisions import DecisionEvaluator, DecisionsClient
 
 from .models import AnswerJudgement
 from .prompts import (

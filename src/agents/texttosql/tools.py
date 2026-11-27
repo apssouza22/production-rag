@@ -44,7 +44,7 @@ def create_sql_tools(
     @tool(
         "sql_db_query",
         description=(
-            "Input to this tool is a detailed and correct SQL query, output is a result from the database. "
+            "Execute a read-only SQL query against the database. "
             "If the query is not correct, an error message will be returned. "
             "If an error is returned, rewrite the query, check the query, and try again. "
             "If you encounter an issue with Unknown column in field list, use sql_db_schema "
@@ -55,6 +55,7 @@ def create_sql_tools(
         validation_error = _validate_read_only_query(query)
         if validation_error:
             return validation_error
-        return db.run_no_throw(query)
+        result = db.run_no_throw(query)
+        return result
 
     return [list_tables_tool, get_schema_tool, sql_db_query], db

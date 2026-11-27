@@ -1,0 +1,21 @@
+nodes:
+  - id: film
+    description: DVD catalog title.
+    example: '{"film_id": 1, "title": "Example"}'
+    query: SELECT film_id, title FROM film LIMIT 5
+  - id: customer
+    description: Rental store customer.
+    query: SELECT customer_id FROM customer LIMIT 5
+edges:
+  - relation: rental_by_customer
+    source_id: rental
+    target_id: customer
+    description: Customer who rented the item.
+    query: SELECT src.customer_id, tgt.customer_id FROM rental src JOIN customer tgt ON src.customer_id = tgt.customer_id LIMIT 5
+metrics:
+  - id: customer_total_payments
+    node_id: customer
+    kind: sql
+    description: Total payment amount per customer.
+    query: SELECT customer_id, SUM(amount) AS total FROM payment GROUP BY customer_id
+    embeddable: false

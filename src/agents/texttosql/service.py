@@ -35,7 +35,7 @@ class TextToSQLService:
         self.agent_config = agent_config or TextToSQLConfig()
 
         self.tools, self.db = create_sql_tools(
-            database_url=self.agent_config.settings.postgres_database_url,
+            database_url=self.agent_config.settings.text_to_sql.database_url,
             include_tables=self.agent_config.include_tables,
             sample_rows_in_table_info=self.agent_config.sample_rows_in_table_info,
         )
@@ -101,7 +101,10 @@ class TextToSQLService:
     async def _core_invoke(self, ctx: AgentContext) -> list:
         """Run the LangGraph workflow; graph result is stored on ctx.metadata."""
         config = dict(ctx.config.get("graph_config", {}))
-        result = await self.graph.ainvoke({"messages": list(ctx.messages)}, config=config)
+        result = await self.graph.ainvoke(
+            {"messages": list(ctx.messages), "query_loop_count": 0},
+            config=config,
+        )
         ctx.metadata["graph_result"] = result
         return result.get("messages", [])
 

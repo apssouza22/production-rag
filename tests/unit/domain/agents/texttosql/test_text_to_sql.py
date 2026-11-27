@@ -23,7 +23,12 @@ def test_service(monkeypatch):
     return TextToSQLService(
         chat_model=Mock(),
         langfuse_tracer=None,
-        agent_config=TextToSQLConfig(model="gpt-4o-mini", top_k=5),
+        agent_config=TextToSQLConfig(
+            model="gpt-4o-mini",
+            top_k=5,
+            include_tables=["film"],
+            ontology_prompt="### table: `film`",
+        ),
     )
 
 
