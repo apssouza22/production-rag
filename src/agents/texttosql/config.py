@@ -20,5 +20,6 @@ class TextToSQLConfig(BaseModel):
     ontology_prompt: str = ""
     include_tables: Optional[List[str]] = None
     sample_rows_in_table_info: int = 3
+    max_query_loops: int = 5
     fault_tolerance: FaultToleranceConfig = Field(default_factory=FaultToleranceConfig)
     settings: Settings = Field(default_factory=get_settings)
