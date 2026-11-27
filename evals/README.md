@@ -5,6 +5,7 @@ Evaluation frameworks for the API, integrated with the main project. For archite
 - **example_eval** — minimal, dependency-free example using the shared eval infrastructure
 - **live_req_evals** — scores Langfuse traces with LLM-as-judge metrics
 - **rag_evals** — Ragas retrieval evaluation using contexts from `rerank_search_service.search`
+- **texttosql_evals** — execution-accuracy evaluation for `TextToSQLService` against Pagila gold SQL
 - **experiments** — self-contained experiment: ingests local PDFs, generates its own question set, then scores retrieval with Ragas
 
 Evals share the root virtualenv and `.env` file. Import from `src` the same way tests do (e.g. `from src.domain.search.factory import make_rerank_search_service`), and use the `evals.*` package namespace for eval code (e.g. `from evals.live_req_evals.config import get_settings`).
@@ -165,6 +166,48 @@ uv run python -m evals.rag_evals.main --langfuse-experiment --dataset-name my-ra
 ```
 
 Local summaries use the unified report schema. When using a hosted dataset, Langfuse also provides a dataset run URL for side-by-side comparison in the UI.
+
+## Text-to-SQL execution accuracy (`texttosql_evals`)
+
+Evaluates whether `TextToSQLService` returns the same SQL **result rows** as reference queries on the Pagila sample database. For each item, the harness calls `make_text_to_sql_service()` in-process, executes the agent’s last SQL query and the gold `reference_sql`, and scores deterministic `execution_accuracy`.
+
+### Prerequisites
+
+1. Postgres with Pagila loaded (`make start`, then `make pagila-db` if needed)
+2. `TEXT_TO_SQL__DATABASE_URL` reachable from the host running the eval (use `localhost` when not inside Docker)
+3. `OPENAI_API_KEY` for the text-to-SQL agent model
+
+### Dataset format
+
+```json
+[
+  {
+    "id": "film_count",
+    "user_input": "How many films are in the database?",
+    "reference_sql": "SELECT COUNT(*) FROM film"
+  }
+]
+```
+
+`reference` answer strings are **not** required; gold results are computed by executing `reference_sql` at eval time.
+
+### Configuration
+
+| Variable | Description |
+|----------|-------------|
+| `TEXT_TO_SQL_EVAL_DATASET_PATH` | JSON file (default: `evals/texttosql_evals/queries.json`) |
+| `TEXT_TO_SQL_EVAL_MODEL` | Optional override for the agent model |
+| `TEXT_TO_SQL_EVAL_ITEM_DELAY_SECONDS` | Delay between samples (default: `0`) |
+
+### Usage
+
+```bash
+make texttosql-eval
+make texttosql-eval-no-report
+uv run python -m evals.texttosql_evals.main --quick
+```
+
+Reports use `run_type` `texttosql_evaluation` in the unified schema.
 
 ## Local-PDF Experiment (`experiments`)
 
